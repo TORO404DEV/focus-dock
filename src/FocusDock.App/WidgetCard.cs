@@ -170,6 +170,9 @@ public sealed class WidgetCard : Border
         if (!resizing) return;
         resizing = false; resizeEdge = ""; owner.PersistWidget(this);
     }
+    internal void BeginOverlayResize(string edge) => BeginResize(edge);
+    internal void UpdateOverlayResize() => UpdateGesture();
+    internal void EndOverlayResize() => EndResize();
     private string KindLabel() => Config.Kind == "window" ? "APP" : Config.Kind == "web" ? "WEB" : Config.Kind == "stats" ? "STATS" : "TXT";
     private void BuildWindow()
     {

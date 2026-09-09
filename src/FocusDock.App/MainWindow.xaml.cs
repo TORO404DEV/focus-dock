@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer ticker = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly List<WidgetCard> cards = [];
     private readonly Dictionary<WidgetCard, Popup> overlayCards = [];
+    private readonly Dictionary<WidgetCard, Popup> interactionOverlays = [];
     private WorkTask? selectedTask;
     private int ticks;
     private bool fullscreen, exiting;
@@ -269,6 +270,7 @@ public partial class MainWindow : Window
     internal void BringCardToFront(WidgetCard card)
     {
         foreach (var other in cards) Panel.SetZIndex(other, 0);
+        foreach (var other in cards.Where(c => c != card)) HideInteractionOverlay(other);
         Panel.SetZIndex(card, 1);
         if (cards.Any(c => c.IsExternalAttached))
         {
@@ -279,6 +281,8 @@ public partial class MainWindow : Window
             }
             else ShowOverlay(card);
         }
+        if (interactionOverlays.ContainsKey(card)) UpdateInteractionOverlayPosition(card);
+        else ShowInteractionOverlay(card);
     }
     private void ShowOverlay(WidgetCard card)
     {
@@ -297,6 +301,7 @@ public partial class MainWindow : Window
     }
     private void HideOverlay(WidgetCard card)
     {
+        HideInteractionOverlay(card);
         if (!overlayCards.Remove(card, out var popup)) return;
         popup.IsOpen = false; popup.Child = null;
         if (!WidgetArea.Children.Contains(card)) WidgetArea.Children.Add(card);
@@ -305,6 +310,7 @@ public partial class MainWindow : Window
     private void UpdateOverlayPositions()
     {
         foreach (var card in overlayCards.Keys.ToArray()) UpdateOverlayPosition(card);
+        foreach (var card in interactionOverlays.Keys.ToArray()) UpdateInteractionOverlayPosition(card);
     }
     private void UpdateOverlayPosition(WidgetCard card)
     {
@@ -316,6 +322,45 @@ public partial class MainWindow : Window
         popup.Width = card.Width; popup.Height = card.Height;
     }
     internal void UpdateCardOverlayPosition(WidgetCard card) => UpdateOverlayPosition(card);
+    internal void UpdateCardInteractionOverlayPosition(WidgetCard card) => UpdateInteractionOverlayPosition(card);
+    private void ShowInteractionOverlay(WidgetCard card)
+    {
+        if (interactionOverlays.TryGetValue(card, out var existing))
+        {
+            existing.IsOpen = false; existing.IsOpen = true; UpdateInteractionOverlayPosition(card); return;
+        }
+        var root = new Grid { Width = card.Width, Height = card.Height, IsHitTestVisible = true };
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) }); root.RowDefinitions.Add(new RowDefinition()); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) }); root.ColumnDefinitions.Add(new ColumnDefinition()); root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(10) });
+        AddInteractionThumb(root, card, "NW", 0, 0, Cursors.SizeNWSE); AddInteractionThumb(root, card, "N", 0, 1, Cursors.SizeNS); AddInteractionThumb(root, card, "NE", 0, 2, Cursors.SizeNESW);
+        AddInteractionThumb(root, card, "W", 1, 0, Cursors.SizeWE); AddInteractionThumb(root, card, "E", 1, 2, Cursors.SizeWE);
+        AddInteractionThumb(root, card, "SW", 2, 0, Cursors.SizeNESW); AddInteractionThumb(root, card, "S", 2, 1, Cursors.SizeNS); AddInteractionThumb(root, card, "SE", 2, 2, Cursors.SizeNWSE);
+        var popup = new Popup { Child = root, AllowsTransparency = true, StaysOpen = true, Placement = PlacementMode.Absolute, PopupAnimation = PopupAnimation.None, Focusable = false, IsOpen = true };
+        interactionOverlays[card] = popup; UpdateInteractionOverlayPosition(card);
+    }
+    private static Thumb CreateInteractionThumb(Cursor cursor)
+    {
+        var visual = new FrameworkElementFactory(typeof(Border)); visual.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        return new Thumb { Cursor = cursor, Template = new ControlTemplate(typeof(Thumb)) { VisualTree = visual } };
+    }
+    private static void AddInteractionThumb(Grid root, WidgetCard card, string edge, int row, int column, Cursor cursor)
+    {
+        var thumb = CreateInteractionThumb(cursor); System.Windows.Automation.AutomationProperties.SetName(thumb, "Redimensionar " + edge);
+        thumb.DragStarted += (_, _) => card.BeginOverlayResize(edge); thumb.DragDelta += (_, _) => card.UpdateOverlayResize(); thumb.DragCompleted += (_, _) => card.EndOverlayResize();
+        Grid.SetRow(thumb, row); Grid.SetColumn(thumb, column); root.Children.Add(thumb);
+    }
+    private void HideInteractionOverlay(WidgetCard card)
+    {
+        if (!interactionOverlays.Remove(card, out var popup)) return;
+        popup.IsOpen = false; popup.Child = null;
+    }
+    private void UpdateInteractionOverlayPosition(WidgetCard card)
+    {
+        if (!interactionOverlays.TryGetValue(card, out var popup) || !popup.IsOpen) return;
+        if (popup.Child is FrameworkElement root) { root.Width = card.Width; root.Height = card.Height; }
+        var screen = WidgetArea.PointToScreen(new Point(Canvas.GetLeft(card), Canvas.GetTop(card))); var dpi = VisualTreeHelper.GetDpi(this);
+        popup.HorizontalOffset = screen.X / dpi.DpiScaleX; popup.VerticalOffset = screen.Y / dpi.DpiScaleY; popup.Width = card.Width; popup.Height = card.Height;
+    }
     public void LoadLayout(List<WidgetConfig> widgets)
     {
         foreach (var card in cards.ToArray()) RemoveCard(card);
@@ -364,6 +409,7 @@ public partial class MainWindow : Window
     }
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         try { foreach (var card in cards) card.Release(); }
         catch (Exception ex) { e.Cancel = true; Status(ex.Message); return; }
