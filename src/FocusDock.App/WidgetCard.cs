@@ -141,6 +141,7 @@ public sealed class WidgetCard : Border
         }
         x = Math.Max(0, x); y = Math.Max(0, y);
         Width = width; Height = height; Canvas.SetLeft(this, x); Canvas.SetTop(this, y); Config.X = x; Config.Y = y; Config.Width = width; Config.Height = height;
+        owner.UpdateCardOverlayPosition(this);
     }
     private void EndResize()
     {

@@ -315,6 +315,7 @@ public partial class MainWindow : Window
         popup.VerticalOffset = screen.Y / dpi.DpiScaleY;
         popup.Width = card.Width; popup.Height = card.Height;
     }
+    internal void UpdateCardOverlayPosition(WidgetCard card) => UpdateOverlayPosition(card);
     public void LoadLayout(List<WidgetConfig> widgets)
     {
         foreach (var card in cards.ToArray()) RemoveCard(card);
