@@ -234,11 +234,13 @@ public partial class MainWindow : Window
             config.Y = 12 + row * (config.Height + 16);
         }
         var card = new WidgetCard(this, config); cards.Add(card); WidgetArea.Children.Add(card);
-        ArrangeCards(); if (save) SaveState(); return card;
+        ArrangeCards();
+        if (IsLoaded) ShowInteractionOverlay(card);
+        if (save) SaveState(); return card;
     }
     public void RemoveCard(WidgetCard card)
     {
-        HideOverlay(card);
+        HideInteractionOverlay(card); HideOverlay(card);
         card.Release(); WidgetArea.Children.Remove(card); cards.Remove(card); ArrangeCards(); SaveState();
     }
     public void MoveCard(WidgetCard card, int direction)
@@ -270,7 +272,6 @@ public partial class MainWindow : Window
     internal void BringCardToFront(WidgetCard card)
     {
         foreach (var other in cards) Panel.SetZIndex(other, 0);
-        foreach (var other in cards.Where(c => c != card)) HideInteractionOverlay(other);
         Panel.SetZIndex(card, 1);
         if (cards.Any(c => c.IsExternalAttached))
         {
@@ -281,7 +282,11 @@ public partial class MainWindow : Window
             }
             else ShowOverlay(card);
         }
-        if (interactionOverlays.ContainsKey(card)) UpdateInteractionOverlayPosition(card);
+        if (interactionOverlays.ContainsKey(card))
+        {
+            UpdateInteractionOverlayPosition(card);
+            BringInteractionOverlayToFront(card);
+        }
         else ShowInteractionOverlay(card);
     }
     private void ShowOverlay(WidgetCard card)
@@ -301,7 +306,6 @@ public partial class MainWindow : Window
     }
     private void HideOverlay(WidgetCard card)
     {
-        HideInteractionOverlay(card);
         if (!overlayCards.Remove(card, out var popup)) return;
         popup.IsOpen = false; popup.Child = null;
         if (!WidgetArea.Children.Contains(card)) WidgetArea.Children.Add(card);
@@ -327,7 +331,7 @@ public partial class MainWindow : Window
     {
         if (interactionOverlays.TryGetValue(card, out var existing))
         {
-            existing.IsOpen = false; existing.IsOpen = true; UpdateInteractionOverlayPosition(card); return;
+            existing.IsOpen = false; existing.IsOpen = true; UpdateInteractionOverlayPosition(card); BringPopupToFront(existing); return;
         }
         var root = new Grid { Width = card.Width, Height = card.Height, IsHitTestVisible = true };
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) }); root.RowDefinitions.Add(new RowDefinition()); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) });
@@ -335,13 +339,15 @@ public partial class MainWindow : Window
         AddInteractionThumb(root, card, "NW", 0, 0, Cursors.SizeNWSE); AddInteractionThumb(root, card, "N", 0, 1, Cursors.SizeNS); AddInteractionThumb(root, card, "NE", 0, 2, Cursors.SizeNESW);
         AddInteractionThumb(root, card, "W", 1, 0, Cursors.SizeWE); AddInteractionThumb(root, card, "E", 1, 2, Cursors.SizeWE);
         AddInteractionThumb(root, card, "SW", 2, 0, Cursors.SizeNESW); AddInteractionThumb(root, card, "S", 2, 1, Cursors.SizeNS); AddInteractionThumb(root, card, "SE", 2, 2, Cursors.SizeNWSE);
-        var popup = new Popup { Child = root, AllowsTransparency = true, StaysOpen = true, Placement = PlacementMode.Absolute, PopupAnimation = PopupAnimation.None, Focusable = false, IsOpen = true };
+        var popup = new Popup { Child = root, AllowsTransparency = true, StaysOpen = true, Placement = PlacementMode.Absolute, PopupAnimation = PopupAnimation.None, Focusable = false };
+        popup.Opened += (_, _) => BringPopupToFront(popup);
         interactionOverlays[card] = popup; UpdateInteractionOverlayPosition(card);
+        popup.IsOpen = true; BringPopupToFront(popup);
     }
     private static Thumb CreateInteractionThumb(Cursor cursor)
     {
-        var visual = new FrameworkElementFactory(typeof(Border)); visual.SetValue(Border.BackgroundProperty, Brushes.Transparent);
-        return new Thumb { Cursor = cursor, Template = new ControlTemplate(typeof(Thumb)) { VisualTree = visual } };
+        var visual = new FrameworkElementFactory(typeof(Border)); visual.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(2, 23, 25, 22)));
+        return new Thumb { Cursor = cursor, IsHitTestVisible = true, Template = new ControlTemplate(typeof(Thumb)) { VisualTree = visual } };
     }
     private static void AddInteractionThumb(Grid root, WidgetCard card, string edge, int row, int column, Cursor cursor)
     {
@@ -354,12 +360,21 @@ public partial class MainWindow : Window
         if (!interactionOverlays.Remove(card, out var popup)) return;
         popup.IsOpen = false; popup.Child = null;
     }
+    private void BringInteractionOverlayToFront(WidgetCard card)
+    {
+        if (interactionOverlays.TryGetValue(card, out var popup)) BringPopupToFront(popup);
+    }
     private void UpdateInteractionOverlayPosition(WidgetCard card)
     {
         if (!interactionOverlays.TryGetValue(card, out var popup) || !popup.IsOpen) return;
         if (popup.Child is FrameworkElement root) { root.Width = card.Width; root.Height = card.Height; }
         var screen = WidgetArea.PointToScreen(new Point(Canvas.GetLeft(card), Canvas.GetTop(card))); var dpi = VisualTreeHelper.GetDpi(this);
         popup.HorizontalOffset = screen.X / dpi.DpiScaleX; popup.VerticalOffset = screen.Y / dpi.DpiScaleY; popup.Width = card.Width; popup.Height = card.Height;
+    }
+    private static void BringPopupToFront(Popup popup)
+    {
+        if (popup.Child is Visual visual && PresentationSource.FromVisual(visual) is HwndSource source)
+            Win32.SetWindowPos(source.Handle, Win32.HWND_TOP, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
     }
     public void LoadLayout(List<WidgetConfig> widgets)
     {
