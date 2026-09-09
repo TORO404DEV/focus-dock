@@ -41,7 +41,6 @@ public sealed class ReportWindow : Window
     public ReportWindow(MainWindow owner)
     {
         this.owner = owner;
-        Owner = owner;
         Title = "POMODOCK / REPORTE";
         Width = 820;
         Height = 880;
@@ -55,7 +54,6 @@ public sealed class ReportWindow : Window
         Background = Brushes.Transparent;
         ResizeMode = ResizeMode.CanResizeWithGrip;
         ShowInTaskbar = false;
-        Topmost = true;
 
         var shell = new DockPanel { Margin = new Thickness(18) };
         Content = shell;
@@ -110,7 +108,45 @@ public sealed class ReportWindow : Window
         shell.Children.Add(scroller);
 
         ReloadData();
-        Dialogs.Modalize(this);
+    }
+
+    internal FrameworkElement TakeModalContent(Action close, double width, double height)
+    {
+        if (Content is not FrameworkElement shell) throw new InvalidOperationException("El reporte ya está abierto.");
+        Content = null;
+        var frame = new Border
+        {
+            Width = width,
+            Height = height,
+            Background = Resource("Surface"),
+            BorderBrush = Resource("Line"),
+            BorderThickness = new Thickness(2)
+        };
+        var root = new Grid();
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) });
+        root.RowDefinitions.Add(new RowDefinition());
+        var header = new DockPanel { Background = Resource("Ink"), LastChildFill = true };
+        var dismiss = new Button
+        {
+            Content = "×", Padding = new Thickness(14, 2, 14, 2), Margin = new Thickness(0),
+            BorderThickness = new Thickness(0), Foreground = Resource("Paper"), Background = Brushes.Transparent,
+            FontSize = 18, ToolTip = "Cerrar reporte"
+        };
+        dismiss.Click += (_, _) => close();
+        DockPanel.SetDock(dismiss, Dock.Right);
+        header.Children.Add(dismiss);
+        header.Children.Add(new TextBlock
+        {
+            Text = "REPORTE / TU HISTORIAL",
+            Foreground = Resource("Paper"), FontWeight = FontWeights.Bold, FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0)
+        });
+        root.Children.Add(header);
+        Grid.SetRow(shell, 1);
+        root.Children.Add(shell);
+        frame.Child = root;
+        frame.PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { close(); e.Handled = true; } };
+        return frame;
     }
 
     private void ReloadData()
@@ -452,15 +488,15 @@ public sealed class ReportWindow : Window
 
     private void Edit(Session session)
     {
-        var projectName = Dialogs.Prompt(this, "CLASIFICAR SESIÓN", "Proyecto", session.Project);
+        var projectName = Dialogs.Prompt(owner, "CLASIFICAR SESIÓN", "Proyecto", session.Project);
         if (projectName is null) return;
-        var taskName = Dialogs.Prompt(this, "CLASIFICAR SESIÓN", "Tarea", session.Task);
+        var taskName = Dialogs.Prompt(owner, "CLASIFICAR SESIÓN", "Tarea", session.Task);
         if (taskName is null) return;
-        var minutes = Dialogs.Prompt(this, "CORREGIR DURACIÓN", "Minutos reales (la corrección queda identificada)", (session.Seconds / 60).ToString("0.###", CultureInfo.CurrentCulture));
+        var minutes = Dialogs.Prompt(owner, "CORREGIR DURACIÓN", "Minutos reales (la corrección queda identificada)", (session.Seconds / 60).ToString("0.###", CultureInfo.CurrentCulture));
         if (minutes is null) return;
         if (!double.TryParse(minutes, NumberStyles.Float, CultureInfo.CurrentCulture, out var value) || !double.IsFinite(value) || value <= 0 || value > 1440)
         {
-            Dialogs.Alert(this, "DURACIÓN INVÁLIDA", "La duración debe estar entre 0 y 1440 minutos.");
+            Dialogs.Alert(owner, "DURACIÓN INVÁLIDA", "La duración debe estar entre 0 y 1440 minutos.");
             return;
         }
         session.Project = string.IsNullOrWhiteSpace(projectName) ? "Sin proyecto" : projectName;
@@ -480,7 +516,7 @@ public sealed class ReportWindow : Window
     private void ExportCsv()
     {
         var dialog = new SaveFileDialog { Filter = "CSV|*.csv", FileName = $"pomodock-{DateTime.Today:yyyy-MM-dd}.csv" };
-        if (dialog.ShowDialog(this) != true) return;
+        if (dialog.ShowDialog(owner) != true) return;
         Store.ExportCsv(dialog.FileName, exportSessions);
         owner.Status($"CSV EXPORTADO · {exportSessions.Count:N0} sesiones del periodo visible.");
     }
@@ -488,7 +524,7 @@ public sealed class ReportWindow : Window
     private void ExportJson()
     {
         var dialog = new SaveFileDialog { Filter = "JSON|*.json", FileName = $"pomodock-backup-{DateTime.Today:yyyy-MM-dd}.json" };
-        if (dialog.ShowDialog(this) != true) return;
+        if (dialog.ShowDialog(owner) != true) return;
         owner.SaveState();
         owner.Store.ExportJson(dialog.FileName);
         owner.Status("BACKUP EXPORTADO · Historial y configuración.");
@@ -497,7 +533,7 @@ public sealed class ReportWindow : Window
     private void Import()
     {
         var dialog = new OpenFileDialog { Filter = "Pomofocus / PomoDock|*.csv;*.tsv;*.json|CSV de Pomofocus|*.csv;*.tsv|PomoDock JSON|*.json|Todos los archivos|*.*", Multiselect = false };
-        if (dialog.ShowDialog(this) != true) return;
+        if (dialog.ShowDialog(owner) != true) return;
         try
         {
             var backupDirectory = Path.Combine(owner.Store.DirectoryPath, "backups");
@@ -517,7 +553,7 @@ public sealed class ReportWindow : Window
         }
         catch (Exception ex)
         {
-            Dialogs.Alert(this, "IMPORTACIÓN FALLIDA", "No se pudo importar: " + ex.Message);
+            Dialogs.Alert(owner, "IMPORTACIÓN FALLIDA", "No se pudo importar: " + ex.Message);
         }
     }
 

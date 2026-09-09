@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
@@ -43,6 +44,8 @@ public partial class MainWindow : Window
     private double timerStartX, timerStartY, timerStartWidth, timerStartHeight;
     private bool appliedTimerAtBottom;
     private Popup? timerOverlay;
+    private Popup? reportPopup;
+    private ReportWindow? reportContent;
     private bool timerPointerPressed, timerWantsFront;
     public bool DiagnosticMode { get; }
     public static double Monotonic => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
@@ -73,7 +76,7 @@ public partial class MainWindow : Window
         TimerFrame.PreviewMouseDown += TimerFrameMouseDown;
         TimerFrame.AddHandler(Mouse.PreviewMouseUpEvent, new MouseButtonEventHandler(TimerFrameMouseUp), true);
         Deactivated += (_, _) => CancelTimerGesture();
-        ApplyTimerPosition(); ApplyTheme();
+        ApplyTimerPosition(); ApplyTheme(); UpdateHeaderClock();
         Width = Math.Max(MinWidth, Settings.WindowWidth); Height = Math.Max(MinHeight, Settings.WindowHeight);
         Left = Settings.WindowLeft; Top = Settings.WindowTop;
         Topmost = Settings.AlwaysOnTop;
@@ -160,6 +163,7 @@ public partial class MainWindow : Window
     private Brush PhaseBrush() => new SolidColorBrush(ParseColor(Timer.Phase == Phase.Focus ? Settings.FocusColor : Timer.Phase == Phase.ShortBreak ? Settings.ShortBreakColor : Settings.LongBreakColor, Colors.Transparent));
     private void UpdateTimer()
     {
+        UpdateHeaderClock();
         var remaining = TimeSpan.FromSeconds(Math.Ceiling(Timer.Remaining));
         ClockText.Text = $"{(int)remaining.TotalMinutes:00}:{remaining.Seconds:00}";
         StartButton.Content = Timer.Running ? "PAUSE Ⅱ" : Timer.Active is null ? "START →" : "RESUME →";
@@ -196,6 +200,13 @@ public partial class MainWindow : Window
         TimerSurface.BeginAnimation(OpacityProperty, new DoubleAnimation(0.65, 1, TimeSpan.FromMilliseconds(180)));
     }
     public void Status(string text) => StatusText.Text = text;
+    private void UpdateHeaderClock()
+    {
+        var now = DateTime.Now;
+        var culture = CultureInfo.GetCultureInfo("es-MX");
+        HeaderDateText.Text = now.ToString("ddd dd MMM yyyy", culture).ToUpper(culture);
+        HeaderTimeText.Text = now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+    }
     private void TasksClick(object sender, RoutedEventArgs e)
     {
         var dialog = new TasksWindow(this); dialog.ShowDialog();
@@ -207,7 +218,71 @@ public partial class MainWindow : Window
         }
         UpdateTimer(); SaveState();
     }
-    private void ReportClick(object sender, RoutedEventArgs e) { new ReportWindow(this).ShowDialog(); }
+    private void ReportClick(object sender, RoutedEventArgs e) => ShowReportModal();
+
+    private void ShowReportModal()
+    {
+        if (reportPopup is { IsOpen: true } existing) { BringPopupToFront(existing); return; }
+        CancelTimerGesture();
+        var backdrop = new Grid
+        {
+            Background = new SolidColorBrush(Color.FromArgb(180, 23, 25, 22)),
+            Focusable = true
+        };
+        var report = new ReportWindow(this);
+        reportContent = report;
+        var panel = report.TakeModalContent(HideReportModal,
+            Math.Clamp(Root.ActualWidth - 44, 540, 820),
+            Math.Clamp(Root.ActualHeight - 44, 500, 880));
+        panel.HorizontalAlignment = HorizontalAlignment.Center;
+        panel.VerticalAlignment = VerticalAlignment.Center;
+        backdrop.Children.Add(panel);
+        backdrop.MouseLeftButtonDown += (_, e) => { if (ReferenceEquals(e.OriginalSource, backdrop)) HideReportModal(); };
+        var popup = new Popup
+        {
+            Placement = PlacementMode.Relative,
+            PlacementTarget = Root,
+            HorizontalOffset = 0,
+            VerticalOffset = 0,
+            AllowsTransparency = true,
+            StaysOpen = true,
+            Focusable = true,
+            Child = backdrop
+        };
+        reportPopup = popup;
+        popup.Opened += (_, _) => { UpdateReportModalPosition(); BringPopupToFront(popup); Keyboard.Focus(panel); };
+        popup.IsOpen = true;
+    }
+
+    private void HideReportModal()
+    {
+        if (reportPopup is null) return;
+        reportPopup.IsOpen = false;
+        reportPopup.Child = null;
+        reportPopup = null;
+        reportContent = null;
+        if (!exiting) Focus();
+    }
+
+    private void UpdateReportModalPosition()
+    {
+        if (reportPopup?.Child is not Grid backdrop || !reportPopup.IsOpen) return;
+        backdrop.Width = Math.Max(1, Root.ActualWidth);
+        backdrop.Height = Math.Max(1, Root.ActualHeight);
+        if (backdrop.Children.Count > 0 && backdrop.Children[0] is FrameworkElement panel)
+        {
+            panel.Width = Math.Clamp(Root.ActualWidth - 44, 540, 820);
+            panel.Height = Math.Clamp(Root.ActualHeight - 44, 500, 880);
+        }
+    }
+
+    internal bool IsReportModalOpen => reportPopup is { IsOpen: true };
+    internal string HeaderClockText => $"{HeaderDateText.Text} {HeaderTimeText.Text}";
+    internal int ReportVisibleSessionCount => reportContent?.VisibleSessionCount ?? 0;
+    internal FrameworkElement? ReportModalSurface => reportPopup?.Child as FrameworkElement;
+    internal void ShowReportForDiagnostics() => ShowReportModal();
+    internal void ShowReportDetailForDiagnostics() => reportContent?.ShowDetailForDiagnostics();
+    internal void HideReportForDiagnostics() => HideReportModal();
     private void SettingsClick(object sender, RoutedEventArgs e) { new SettingsWindow(this).ShowDialog(); Settings.Validate(); ApplyTimerPosition(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); SaveState(); }
     private void LayoutsClick(object sender, RoutedEventArgs e) { new LayoutsWindow(this).ShowDialog(); }
     private static Color ParseColor(string value, Color fallback)
@@ -603,6 +678,7 @@ public partial class MainWindow : Window
         foreach (var card in overlayCards.Keys.ToArray()) UpdateOverlayPosition(card);
         foreach (var card in interactionOverlays.Keys.ToArray()) UpdateInteractionOverlayPosition(card);
         UpdateTimerOverlayPosition();
+        UpdateReportModalPosition();
     }
     private void UpdateOverlayPosition(WidgetCard card)
     {
@@ -706,13 +782,14 @@ public partial class MainWindow : Window
     }
     private void OnKey(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && reportPopup is { IsOpen: true }) { HideReportModal(); e.Handled = true; return; }
         if (e.Key == Key.F11 && !hotkeyRegistered) { ToggleFullscreen(); e.Handled = true; }
         if (e.Key == Key.Escape && fullscreen) { ToggleFullscreen(); e.Handled = true; }
         if (e.Key == Key.Space && e.OriginalSource is not TextBox && e.OriginalSource is not Button) { ToggleTimer(); e.Handled = true; }
     }
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        CancelTimerGesture(); HideTimerOverlay();
+        CancelTimerGesture(); HideReportModal(); HideTimerOverlay();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         try { foreach (var card in cards) card.Release(); }

@@ -33,6 +33,7 @@ internal static class Diagnostics
             main.Settings.ReduceMotion = true; main.Show();
             await Task.Delay(350);
             Assert(main.IsLoaded, "native shell loads");
+            Assert(!main.HeaderClockText.Contains("POMODOCK", StringComparison.OrdinalIgnoreCase) && main.HeaderClockText.Contains(DateTime.Now.Year.ToString()), "workspace header shows the live date and time");
             Render(main, Path.Combine(directory, "main-light.png"));
             main.ToggleTimer(); await Task.Delay(1200); main.ToggleTimer(); Assert(main.Timer.Active!.Seconds >= 1, "UI start and pause record monotonic work");
             if (main.Settings.Fullscreen) main.ToggleFullscreen();
@@ -95,12 +96,15 @@ internal static class Diagnostics
                 var end = DateTimeOffset.Now.AddDays(-d).AddHours(-1);
                 main.Store.Save(new() { Started = end.AddMinutes(-25), Ended = end, PlannedSeconds = 1500, Outcome = Outcome.Completed, Project = d % 2 == 0 ? "Demo / producto" : "Demo / aprender", Task = "Sesión de demostración", Segments = [new(end.AddMinutes(-25), end)] });
             }
-            var report = new ReportWindow(main); report.Show(); await Task.Delay(100);
-            Assert(report.VisibleSessionCount >= 14, "report summary loads persisted focus history");
-            Render(report, Path.Combine(directory, "report.png"));
-            report.ShowDetailForDiagnostics(); await Task.Delay(100);
-            Assert(report.VisibleSessionCount >= 14, "report detail keeps the selected period data");
-            Render(report, Path.Combine(directory, "report-detail.png")); report.Close();
+            main.ShowReportForDiagnostics(); await Task.Delay(100);
+            Assert(main.IsReportModalOpen, "report opens inside the main window modal layer");
+            Assert(main.ReportVisibleSessionCount >= 14, "report summary loads persisted focus history");
+            Render(main.ReportModalSurface!, Path.Combine(directory, "report.png"));
+            main.ShowReportDetailForDiagnostics(); await Task.Delay(100);
+            Assert(main.ReportVisibleSessionCount >= 14, "report detail keeps the selected period data");
+            Render(main.ReportModalSurface!, Path.Combine(directory, "report-detail.png"));
+            main.HideReportForDiagnostics();
+            Assert(!main.IsReportModalOpen, "report modal closes without a second app window");
             main.SaveState();
             var persistedWidgets = main.Store.Read<Settings>("settings")!.Widgets;
             Assert(new[] { "notes", "stats", "todo", "habits" }.All(kind => persistedWidgets.Any(widget => widget.Kind == kind)), "widget layout persisted");
@@ -123,15 +127,15 @@ internal static class Diagnostics
             Application.Current.Shutdown(Environment.ExitCode);
         }
     }
-    internal static void Render(Window window, string file)
+    internal static void Render(FrameworkElement element, string file)
     {
-        window.UpdateLayout();
-        var dpi = VisualTreeHelper.GetDpi(window);
+        element.UpdateLayout();
+        var dpi = VisualTreeHelper.GetDpi(element);
         var bitmap = new RenderTargetBitmap(
-            Math.Max(1, (int)Math.Ceiling(window.ActualWidth * dpi.DpiScaleX)),
-            Math.Max(1, (int)Math.Ceiling(window.ActualHeight * dpi.DpiScaleY)),
+            Math.Max(1, (int)Math.Ceiling(element.ActualWidth * dpi.DpiScaleX)),
+            Math.Max(1, (int)Math.Ceiling(element.ActualHeight * dpi.DpiScaleY)),
             dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
-        bitmap.Render(window);
+        bitmap.Render(element);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap)); using var output = File.Create(file); encoder.Save(output);
     }
 }

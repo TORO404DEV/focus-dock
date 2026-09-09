@@ -12,8 +12,8 @@
    </Grid>
    <Grid Grid.Row="1" Margin="16,8,16,8">
     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-    <TextBlock Text="POMODOCK" FontSize="18" FontWeight="Black" VerticalAlignment="Center" TextWrapping="NoWrap"/>
-    <TextBlock Grid.Column="1" Text="TU ESPACIO" FontSize="10" FontWeight="Black" Foreground="{DynamicResource Muted}" Margin="12,1,0,0" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+    <TextBlock x:Name="HeaderDateText" Text="MIÉ 09 SEP" FontFamily="Consolas" FontSize="13" FontWeight="Black" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+    <TextBlock x:Name="HeaderTimeText" Grid.Column="1" Text="00:00:00" FontFamily="Consolas" FontSize="11" FontWeight="Black" Foreground="{DynamicResource Muted}" Margin="12,1,0,0" VerticalAlignment="Center" TextWrapping="NoWrap"/>
     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
      <Button Content="▥" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="#171916" FontSize="16" Padding="6,3" ToolTip="REPORT · Abrir reportes"/>
      <Button Content="☷" Click="TasksClick" FontSize="15" Padding="6,3" ToolTip="Tareas y proyectos"/>
