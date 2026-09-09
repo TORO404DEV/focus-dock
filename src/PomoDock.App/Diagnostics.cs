@@ -91,6 +91,8 @@ internal static class Diagnostics
             }
             var report = new ReportWindow(main); report.Show(); await Task.Delay(100); Render(report, Path.Combine(directory, "report.png")); report.Close();
             main.SaveState(); Assert(main.Store.Read<Settings>("settings")!.Widgets.Count == 4, "widget layout persisted");
+            var savedTimer = main.Store.Read<Settings>("settings")!.TimerWidget;
+            Assert(savedTimer.Kind == "timer" && savedTimer.Width >= 360 && savedTimer.Height >= 300, "permanent timer widget layout persisted");
             main.Close(); main = null;
             using var recovered = new Store(Path.Combine(directory, "data")); Assert(recovered.Read<Session>("checkpoint") is not null, "paused session survives normal close");
             File.WriteAllText(Path.Combine(directory, "results.json"), JsonSerializer.Serialize(new { success = true, tests = results }, new JsonSerializerOptions { WriteIndented = true }));

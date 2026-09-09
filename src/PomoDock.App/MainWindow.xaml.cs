@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private readonly List<WidgetCard> cards = [];
     private readonly Dictionary<WidgetCard, Popup> overlayCards = [];
     private readonly Dictionary<WidgetCard, Popup> interactionOverlays = [];
+    private readonly List<Thumb> timerGestureHandles = [];
     private WorkTask? selectedTask;
     private int ticks;
     private bool fullscreen, exiting;
@@ -36,6 +37,12 @@ public partial class MainWindow : Window
     private nint hwnd, focusHook;
     private readonly Win32.WinEventProc foregroundCallback;
     private bool hotkeyRegistered;
+    private bool timerResizing;
+    private string timerResizeEdge = "";
+    private Point timerPointerStart;
+    private double timerStartX, timerStartY, timerStartWidth, timerStartHeight;
+    private bool appliedTimerAtBottom;
+    private Popup? timerOverlay;
     public bool DiagnosticMode { get; }
     public static double Monotonic => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
     private static string ResolveDataPath()
@@ -56,7 +63,15 @@ public partial class MainWindow : Window
         Settings = Store.Read<Settings>("settings") ?? new(); Settings.Validate();
         Timer = new(Settings);
         Sounds = new(Settings);
-        InitializeComponent(); ApplyTimerPosition(); ApplyTheme();
+        InitializeComponent();
+        appliedTimerAtBottom = Settings.TimerAtBottom;
+        BuildTimerHandles();
+        TimerMoveHeader.PreviewMouseLeftButtonDown += TimerMoveHeaderDown;
+        TimerMoveHeader.PreviewMouseMove += TimerMoveHeaderMove;
+        TimerMoveHeader.PreviewMouseLeftButtonUp += TimerMoveHeaderUp;
+        TimerFrame.PreviewMouseDown += TimerFrameMouseDown;
+        Deactivated += (_, _) => CancelTimerGesture();
+        ApplyTimerPosition(); ApplyTheme();
         Width = Math.Max(MinWidth, Settings.WindowWidth); Height = Math.Max(MinHeight, Settings.WindowHeight);
         Left = Settings.WindowLeft; Top = Settings.WindowTop;
         Topmost = Settings.AlwaysOnTop;
@@ -90,7 +105,7 @@ public partial class MainWindow : Window
         var source = HwndSource.FromHwnd(hwnd); source?.AddHook(WindowMessages);
         focusHook = Win32.SetWinEventHook(3, 3, 0, foregroundCallback, 0, 0, 0);
         foreach (var config in Settings.Widgets) AddCard(config, false);
-        ArrangeCards(); ticker.Start(); UpdateHotkey();
+        ArrangeCards(); ArrangeTimerWidget(); ticker.Start(); UpdateHotkey();
         if (Settings.Fullscreen) ToggleFullscreen();
         if (!DiagnosticMode)
         {
@@ -110,6 +125,13 @@ public partial class MainWindow : Window
     public void SaveState()
     {
         Settings.Widgets = cards.Select(c => c.Config).ToList();
+        if (!double.IsNaN(Canvas.GetLeft(TimerFrame)))
+        {
+            Settings.TimerWidget.X = Canvas.GetLeft(TimerFrame);
+            Settings.TimerWidget.Y = Canvas.GetTop(TimerFrame);
+            Settings.TimerWidget.Width = TimerFrame.Width;
+            Settings.TimerWidget.Height = TimerFrame.Height;
+        }
         if (!fullscreen && WindowState == WindowState.Normal) { Settings.WindowLeft = Left; Settings.WindowTop = Top; Settings.WindowWidth = Width; Settings.WindowHeight = Height; }
         Settings.Fullscreen = fullscreen;
         Store.Write("settings", Settings); Store.Write("checkpoint", Timer.Active);
@@ -200,10 +222,187 @@ public partial class MainWindow : Window
     }
     private void ApplyTimerPosition()
     {
-        bool bottom = Settings.TimerAtBottom;
-        Grid.SetRow(Workspace, bottom ? 2 : 3); Grid.SetRow(TimerFrame, bottom ? 3 : 2);
-        Root.RowDefinitions[2].Height = bottom ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
-        Root.RowDefinitions[3].Height = bottom ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
+        // TimerAtBottom remains the quick placement preference from Settings.
+        // Once the user moves the timer manually, its canvas coordinates win
+        // until that preference is changed again.
+        if (Settings.TimerAtBottom != appliedTimerAtBottom)
+        {
+            Settings.TimerPositionCustomized = false;
+            appliedTimerAtBottom = Settings.TimerAtBottom;
+        }
+        ArrangeTimerWidget();
+    }
+
+    private void BuildTimerHandles()
+    {
+        TimerHandles.RowDefinitions.Add(new RowDefinition { Height = new GridLength(9) });
+        TimerHandles.RowDefinitions.Add(new RowDefinition());
+        TimerHandles.RowDefinitions.Add(new RowDefinition { Height = new GridLength(9) });
+        TimerHandles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(9) });
+        TimerHandles.ColumnDefinitions.Add(new ColumnDefinition());
+        TimerHandles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(9) });
+        AddTimerHandle("NW", 0, 0, Cursors.SizeNWSE);
+        AddTimerHandle("N", 0, 1, Cursors.SizeNS);
+        AddTimerHandle("NE", 0, 2, Cursors.SizeNESW);
+        AddTimerHandle("W", 1, 0, Cursors.SizeWE);
+        AddTimerHandle("E", 1, 2, Cursors.SizeWE);
+        AddTimerHandle("SW", 2, 0, Cursors.SizeNESW);
+        AddTimerHandle("S", 2, 1, Cursors.SizeNS);
+        AddTimerHandle("SE", 2, 2, Cursors.SizeNWSE);
+    }
+
+    private void AddTimerHandle(string edge, int row, int column, Cursor cursor)
+    {
+        var visual = new FrameworkElementFactory(typeof(Border));
+        visual.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        var thumb = new Thumb
+        {
+            Cursor = cursor,
+            IsHitTestVisible = true,
+            Template = new ControlTemplate(typeof(Thumb)) { VisualTree = visual }
+        };
+        System.Windows.Automation.AutomationProperties.SetName(thumb, "Redimensionar temporizador " + edge);
+        timerGestureHandles.Add(thumb);
+        thumb.PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { thumb.CancelDrag(); e.Handled = true; } };
+        thumb.DragStarted += (_, _) => BeginTimerGesture(edge);
+        thumb.DragDelta += (_, _) => UpdateTimerGesture();
+        thumb.DragCompleted += (_, _) => EndTimerGesture();
+        Grid.SetRow(thumb, row); Grid.SetColumn(thumb, column); TimerHandles.Children.Add(thumb);
+    }
+
+    private void TimerFrameMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!IsTimerGestureSource(e.OriginalSource))
+        {
+            // Defer reparenting into the top-level popup until the current
+            // click has completed. This keeps timer buttons and text inputs
+            // reliable even when the timer crosses a native hosted window.
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(BringTimerToFront));
+        }
+    }
+
+    private void TimerMoveHeaderDown(object sender, MouseButtonEventArgs e)
+    {
+        BeginTimerGesture("MOVE");
+        if (TimerMoveHeader.CaptureMouse()) e.Handled = true;
+    }
+
+    private void TimerMoveHeaderMove(object sender, MouseEventArgs e)
+    {
+        if (timerResizing && timerResizeEdge == "MOVE" && TimerMoveHeader.IsMouseCaptured && e.LeftButton == MouseButtonState.Pressed)
+            UpdateTimerGesture();
+    }
+
+    private void TimerMoveHeaderUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!timerResizing || timerResizeEdge != "MOVE") return;
+        TimerMoveHeader.ReleaseMouseCapture(); EndTimerGesture(); e.Handled = true;
+    }
+
+    private static bool IsTimerGestureSource(object source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
+            if (current is Thumb) return true;
+        return false;
+    }
+
+    private void CancelTimerGesture()
+    {
+        if (TimerMoveHeader.IsMouseCaptured) TimerMoveHeader.ReleaseMouseCapture();
+        foreach (var handle in timerGestureHandles) if (handle.IsDragging) handle.CancelDrag();
+        timerResizing = false; timerResizeEdge = "";
+    }
+
+    private Point CurrentTimerPointer()
+    {
+        if (Win32.GetCursorPos(out var screen))
+        {
+            try { return WidgetArea.PointFromScreen(new Point(screen.X, screen.Y)); }
+            catch (InvalidOperationException) { }
+        }
+        return Mouse.GetPosition(WidgetArea);
+    }
+
+    private void BeginTimerGesture(string edge)
+    {
+        timerResizing = true; timerResizeEdge = edge;
+        timerStartX = Canvas.GetLeft(TimerFrame); timerStartY = Canvas.GetTop(TimerFrame);
+        timerStartWidth = TimerFrame.ActualWidth > 0 ? TimerFrame.ActualWidth : TimerFrame.Width;
+        timerStartHeight = TimerFrame.ActualHeight > 0 ? TimerFrame.ActualHeight : TimerFrame.Height;
+        timerPointerStart = CurrentTimerPointer();
+        BringTimerToFront();
+    }
+
+    private void UpdateTimerGesture()
+    {
+        if (!timerResizing) return;
+        var pointer = CurrentTimerPointer();
+        double dx = pointer.X - timerPointerStart.X, dy = pointer.Y - timerPointerStart.Y;
+        double x = timerStartX, y = timerStartY, width = timerStartWidth, height = timerStartHeight;
+        const double minWidth = 360, minHeight = 300;
+        double maxX = Math.Max(minWidth, WidgetArea.ActualWidth), maxY = Math.Max(minHeight, WidgetArea.ActualHeight);
+        if (timerResizeEdge == "MOVE")
+        {
+            x = Math.Clamp(x + dx, 0, Math.Max(0, maxX - width));
+            y = Math.Clamp(y + dy, 0, Math.Max(0, maxY - height));
+        }
+        else
+        {
+            dx = Math.Clamp(dx, -timerStartX, Math.Max(0, maxX - timerStartX));
+            dy = Math.Clamp(dy, -timerStartY, Math.Max(0, maxY - timerStartY));
+            if (timerResizeEdge.Contains('W')) { width = Math.Max(minWidth, timerStartWidth - dx); x = timerStartX + timerStartWidth - width; }
+            if (timerResizeEdge.Contains('E')) width = Math.Max(minWidth, timerStartWidth + dx);
+            if (timerResizeEdge.Contains('N')) { height = Math.Max(minHeight, timerStartHeight - dy); y = timerStartY + timerStartHeight - height; }
+            if (timerResizeEdge.Contains('S')) height = Math.Max(minHeight, timerStartHeight + dy);
+            width = Math.Min(width, Math.Max(minWidth, maxX - x));
+            height = Math.Min(height, Math.Max(minHeight, maxY - y));
+        }
+        x = Math.Max(0, x); y = Math.Max(0, y);
+        TimerFrame.Width = width; TimerFrame.Height = height;
+        Canvas.SetLeft(TimerFrame, x); Canvas.SetTop(TimerFrame, y);
+        Settings.TimerWidget.X = x; Settings.TimerWidget.Y = y; Settings.TimerWidget.Width = width; Settings.TimerWidget.Height = height;
+        Settings.TimerPositionCustomized = true;
+        UpdateTimerOverlayPosition();
+    }
+
+    private void EndTimerGesture()
+    {
+        if (!timerResizing) return;
+        timerResizing = false; timerResizeEdge = ""; Settings.TimerPositionCustomized = true; SaveState();
+    }
+
+    private void ArrangeTimerWidget()
+    {
+        if (TimerFrame is null) return;
+        var config = Settings.TimerWidget ??= new WidgetConfig { Kind = "timer", Title = "POMODORO" };
+        config.Kind = "timer"; if (string.IsNullOrWhiteSpace(config.Title)) config.Title = "POMODORO";
+        double canvasWidth = WidgetArea.ActualWidth > 0 ? WidgetArea.ActualWidth : 720;
+        double canvasHeight = WidgetArea.ActualHeight > 0 ? WidgetArea.ActualHeight : 720;
+        double maxWidth = Math.Max(360, canvasWidth), maxHeight = Math.Max(300, canvasHeight);
+        if (config.Width <= 0) config.Width = Math.Min(560, maxWidth);
+        if (config.Height <= 0) config.Height = Math.Min(360, maxHeight);
+        if (!Settings.TimerPositionCustomized)
+        {
+            config.X = 12;
+            config.Y = Settings.TimerAtBottom ? Math.Max(12, canvasHeight - config.Height - 12) : 12;
+        }
+        config.Width = Math.Clamp(config.Width, 360, maxWidth);
+        config.Height = Math.Clamp(config.Height, 300, maxHeight);
+        config.X = Math.Clamp(config.X, 0, Math.Max(0, canvasWidth - config.Width));
+        config.Y = Math.Clamp(config.Y, 0, Math.Max(0, canvasHeight - config.Height));
+        TimerFrame.Width = config.Width; TimerFrame.Height = config.Height;
+        Canvas.SetLeft(TimerFrame, config.X); Canvas.SetTop(TimerFrame, config.Y);
+        UpdateTimerOverlayPosition();
+    }
+
+    private void UpdateTimerOverlayPosition()
+    {
+        if (timerOverlay is null || !timerOverlay.IsOpen) return;
+        var screen = WidgetArea.PointToScreen(new Point(Canvas.GetLeft(TimerFrame), Canvas.GetTop(TimerFrame)));
+        var dpi = VisualTreeHelper.GetDpi(this);
+        timerOverlay.HorizontalOffset = screen.X / dpi.DpiScaleX;
+        timerOverlay.VerticalOffset = screen.Y / dpi.DpiScaleY;
+        timerOverlay.Width = TimerFrame.Width; timerOverlay.Height = TimerFrame.Height;
     }
     private void AddWidgetClick(object sender, RoutedEventArgs e)
     {
@@ -280,6 +479,7 @@ public partial class MainWindow : Window
             Canvas.SetLeft(card, Math.Clamp(card.Config.X, 0, Math.Max(0, WidgetArea.ActualWidth - card.Width)));
             Canvas.SetTop(card, Math.Clamp(card.Config.Y, 0, Math.Max(0, WidgetArea.ActualHeight - card.Height)));
         }
+        ArrangeTimerWidget();
         UpdateOverlayPositions();
     }
     private void WidgetAreaSizeChanged(object sender, SizeChangedEventArgs e) => ArrangeCards();
@@ -291,6 +491,8 @@ public partial class MainWindow : Window
     }
     internal void BringCardToFront(WidgetCard card)
     {
+        HideTimerOverlay();
+        Panel.SetZIndex(TimerFrame, 0);
         foreach (var other in cards) Panel.SetZIndex(other, 0);
         Panel.SetZIndex(card, 1);
         if (cards.Any(c => c.IsExternalAttached))
@@ -308,6 +510,42 @@ public partial class MainWindow : Window
             BringInteractionOverlayToFront(card);
         }
         else ShowInteractionOverlay(card);
+    }
+
+    private void BringTimerToFront()
+    {
+        foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
+        foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
+        foreach (var other in cards) Panel.SetZIndex(other, 0);
+        Panel.SetZIndex(TimerFrame, 20);
+        if (cards.Any(c => c.IsExternalAttached)) ShowTimerOverlay();
+    }
+
+    private void ShowTimerOverlay()
+    {
+        if (timerOverlay is not null)
+        {
+            timerOverlay.IsOpen = false; timerOverlay.IsOpen = true;
+            UpdateTimerOverlayPosition(); BringPopupToFront(timerOverlay); return;
+        }
+        if (TimerFrame.Parent == WidgetArea) WidgetArea.Children.Remove(TimerFrame);
+        timerOverlay = new Popup
+        {
+            Child = TimerFrame, AllowsTransparency = true, StaysOpen = true,
+            Placement = PlacementMode.Absolute, PopupAnimation = PopupAnimation.None,
+            Focusable = false, IsOpen = true
+        };
+        timerOverlay.Opened += (_, _) => BringPopupToFront(timerOverlay);
+        UpdateTimerOverlayPosition(); BringPopupToFront(timerOverlay);
+    }
+
+    private void HideTimerOverlay()
+    {
+        if (timerOverlay is null) return;
+        timerOverlay.IsOpen = false; timerOverlay.Child = null; timerOverlay = null;
+        if (!WidgetArea.Children.Contains(TimerFrame)) WidgetArea.Children.Add(TimerFrame);
+        Panel.SetZIndex(TimerFrame, 20);
+        ArrangeTimerWidget();
     }
     private void ShowOverlay(WidgetCard card)
     {
@@ -343,6 +581,7 @@ public partial class MainWindow : Window
     {
         foreach (var card in overlayCards.Keys.ToArray()) UpdateOverlayPosition(card);
         foreach (var card in interactionOverlays.Keys.ToArray()) UpdateInteractionOverlayPosition(card);
+        UpdateTimerOverlayPosition();
     }
     private void UpdateOverlayPosition(WidgetCard card)
     {
@@ -452,6 +691,7 @@ public partial class MainWindow : Window
     }
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        CancelTimerGesture(); HideTimerOverlay();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         try { foreach (var card in cards) card.Release(); }

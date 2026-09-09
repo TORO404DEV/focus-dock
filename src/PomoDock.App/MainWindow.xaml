@@ -2,8 +2,8 @@
  Title="POMODOCK" Width="620" Height="940" MinWidth="460" MinHeight="700" WindowStyle="None" ResizeMode="CanResize" Background="{DynamicResource Paper}">
  <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/></shell:WindowChrome.WindowChrome>
  <Border BorderBrush="{DynamicResource Line}" BorderThickness="2">
-  <Grid x:Name="Root">
-   <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions>
+   <Grid x:Name="Root">
+   <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="0"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions>
    <Grid x:Name="TitleBar" Background="{DynamicResource Ink}" MouseLeftButtonDown="DragTitle">
     <TextBlock Text="POMODOCK     /     DESKTOP EDITION" Foreground="{DynamicResource Paper}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,110,0"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -15,21 +15,6 @@
     <StackPanel VerticalAlignment="Center"><TextBlock Text="POMO / DOCK" FontSize="23" FontWeight="Black"/><TextBlock Text="HAZ ESPACIO PARA LO QUE IMPORTA." FontSize="9" Foreground="{DynamicResource Muted}" Margin="0,3,0,0"/></StackPanel>
     <WrapPanel Grid.Column="1" VerticalAlignment="Center"><Button Content="REPORT ↗" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="#171916"/><Button Content="☷" Click="TasksClick" ToolTip="Tareas y proyectos"/><Button Content="⚙" Click="SettingsClick" ToolTip="Ajustes"/><Button Content="⛶" Click="FullscreenClick" ToolTip="Pantalla completa · F11"/></WrapPanel>
    </Grid>
-   <Border x:Name="TimerFrame" Grid.Row="2" Margin="20,0,20,14" BorderThickness="2" BorderBrush="{DynamicResource Line}" Background="{DynamicResource Surface}">
-    <Grid x:Name="TimerSurface" Margin="16,14,16,15">
-     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="104"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <UniformGrid Columns="3"><Button x:Name="FocusButton" Content="POMODORO" Tag="Focus" Click="PhaseClick" FontSize="11" Padding="6,9"/><Button x:Name="ShortButton" Content="SHORT BREAK" Tag="ShortBreak" Click="PhaseClick" FontSize="11" Padding="6,9"/><Button x:Name="LongButton" Content="LONG BREAK" Tag="LongBreak" Click="PhaseClick" FontSize="11" Padding="6,9" Margin="0"/></UniformGrid>
-     <Viewbox Grid.Row="1" Stretch="Uniform" Margin="0,4"><TextBlock x:Name="ClockText" Text="25:00" FontFamily="Consolas" FontSize="94" FontWeight="Bold"/></Viewbox>
-     <Grid Grid.Row="2" Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <TextBlock x:Name="PhaseLabel" Text="01 / TIEMPO DE ENFOQUE" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/><TextBlock Grid.Column="1" x:Name="CycleText" Text="CICLO 1 / 4" FontSize="10" Foreground="{DynamicResource Muted}"/>
-     </Grid>
-     <Grid Grid.Row="3"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <Button x:Name="StartButton" Content="START →" Click="StartClick" Background="{DynamicResource Ink}" Foreground="{DynamicResource Paper}" FontSize="19" Padding="12,12"/>
-      <Button Grid.Column="1" Content="↺" Click="ResetClick" FontSize="20" ToolTip="Guardar parcial y reiniciar"/><Button Grid.Column="2" Content="↠" Click="SkipClick" FontSize="20" Margin="0" ToolTip="Guardar parcial y saltar fase"/>
-     </Grid>
-     <Button Grid.Row="4" x:Name="ContextButton" Content="○  ENFOQUE LIBRE   /   Elegir tarea" Click="TasksClick" BorderThickness="0" Background="Transparent" HorizontalAlignment="Left" Padding="0,12,0,0" FontSize="11"/>
-    </Grid>
-   </Border>
    <Grid x:Name="Workspace" Grid.Row="3" Margin="20,0,20,10">
     <Grid.RowDefinitions><RowDefinition Height="38"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <TextBlock Text="TU ESPACIO" FontWeight="Black" FontSize="12" VerticalAlignment="Center"/>
@@ -42,6 +27,31 @@
        <Button Content="+ INCRUSTAR UNA VENTANA" Click="AddWindowClick" Background="{DynamicResource Accent}" Foreground="#171916" HorizontalAlignment="Left"/>
        <TextBlock Text="También puedes añadir una web, notas o métricas." FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,12,0,0"/>
       </StackPanel>
+     </Border>
+     <Border x:Name="TimerFrame" Canvas.Left="12" Canvas.Top="12" Width="560" Height="360" MinWidth="360" MinHeight="300" Panel.ZIndex="20" BorderThickness="2" BorderBrush="{DynamicResource Line}" Background="{DynamicResource Surface}">
+      <Grid x:Name="TimerFrameRoot">
+       <Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+       <Border x:Name="TimerMoveHeader" Grid.Row="0" Background="{DynamicResource Ink}" Cursor="SizeAll">
+        <DockPanel LastChildFill="True" Margin="10,0,4,0">
+         <TextBlock Text="POMODORO / TIMER · FIJO" Foreground="{DynamicResource Paper}" FontSize="9" FontWeight="Bold" VerticalAlignment="Center"/>
+         <TextBlock Text="ARRASTRA PARA MOVER" Foreground="{DynamicResource Paper}" Opacity="0.65" FontSize="8" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+        </DockPanel>
+       </Border>
+       <Grid x:Name="TimerSurface" Grid.Row="1" Margin="16,10,16,12">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <UniformGrid Columns="3"><Button x:Name="FocusButton" Content="POMODORO" Tag="Focus" Click="PhaseClick" FontSize="11" Padding="6,9"/><Button x:Name="ShortButton" Content="SHORT BREAK" Tag="ShortBreak" Click="PhaseClick" FontSize="11" Padding="6,9"/><Button x:Name="LongButton" Content="LONG BREAK" Tag="LongBreak" Click="PhaseClick" FontSize="11" Padding="6,9" Margin="0"/></UniformGrid>
+     <Viewbox Grid.Row="1" Stretch="Uniform" Margin="0,4"><TextBlock x:Name="ClockText" Text="25:00" FontFamily="Consolas" FontSize="94" FontWeight="Bold"/></Viewbox>
+     <Grid Grid.Row="2" Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock x:Name="PhaseLabel" Text="01 / TIEMPO DE ENFOQUE" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/><TextBlock Grid.Column="1" x:Name="CycleText" Text="CICLO 1 / 4" FontSize="10" Foreground="{DynamicResource Muted}"/>
+     </Grid>
+     <Grid Grid.Row="3"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <Button x:Name="StartButton" Content="START →" Click="StartClick" Background="{DynamicResource Ink}" Foreground="{DynamicResource Paper}" FontSize="19" Padding="12,12"/>
+      <Button Grid.Column="1" Content="↺" Click="ResetClick" FontSize="20" ToolTip="Guardar parcial y reiniciar"/><Button Grid.Column="2" Content="↠" Click="SkipClick" FontSize="20" Margin="0" ToolTip="Guardar parcial y saltar fase"/>
+     </Grid>
+     <Button Grid.Row="4" x:Name="ContextButton" Content="○  ENFOQUE LIBRE   /   Elegir tarea" Click="TasksClick" BorderThickness="0" Background="Transparent" HorizontalAlignment="Left" Padding="0,12,0,0" FontSize="11"/>
+       </Grid>
+       <Grid x:Name="TimerHandles" Grid.RowSpan="2" Panel.ZIndex="30" IsHitTestVisible="True"/>
+      </Grid>
      </Border>
     </Canvas>
    </Grid>

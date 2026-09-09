@@ -34,7 +34,7 @@ public sealed class SettingsWindow : Window
         Toggle("Ruido blanco durante el enfoque", settings.WhiteNoise, v => settings.WhiteNoise = v);
         Toggle("Alarma al terminar", settings.AlarmEnabled, v => settings.AlarmEnabled = v);
         Toggle("Sonido general habilitado", settings.Sound, v => settings.Sound = v);
-        Toggle("Colocar el temporizador abajo", settings.TimerAtBottom, v => settings.TimerAtBottom = v);
+        Toggle("Colocar el temporizador abajo al iniciar", settings.TimerAtBottom, v => settings.TimerAtBottom = v);
         Toggle("Modo oscuro", settings.Dark, v => settings.Dark = v);
         Toggle("Reducir movimiento", settings.ReduceMotion, v => settings.ReduceMotion = v);
         Toggle("Mantener la ventana encima", settings.AlwaysOnTop, v => settings.AlwaysOnTop = v);
