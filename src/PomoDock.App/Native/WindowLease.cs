@@ -190,6 +190,20 @@ public sealed class ExternalWindowHost : HwndHost
     public void BringToFront()
     {
         if (lease is null || !lease.IsAlive) return;
+        // HwndHost content lives in a real child HWND. Reordering only the
+        // foreign window is insufficient when two hosted widgets overlap:
+        // their host containers still keep the original native z-order.
+        if (Handle != 0)
+        {
+            // WPF may place each HwndHost behind its own child parent. Lift
+            // that parent first, then the returned hosted window itself.
+            var hostParent = Win32.GetParent(Handle);
+            if (hostParent != 0 && (Win32.GetWindowLongPtr(hostParent, Win32.GWL_STYLE).ToInt64() & Win32.WS_CHILD) != 0)
+                Win32.SetWindowPos(hostParent, Win32.HWND_TOP, 0, 0, 0, 0,
+                    Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
+            Win32.SetWindowPos(Handle, Win32.HWND_TOP, 0, 0, 0, 0,
+                Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
+        }
         Win32.SetWindowPos(lease.Handle, Win32.HWND_TOP, 0, 0, 0, 0,
             Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
     }

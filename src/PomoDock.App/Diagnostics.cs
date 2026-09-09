@@ -25,7 +25,7 @@ internal static class Diagnostics
         Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         Directory.CreateDirectory(directory);
         var results = new List<string>();
-        MainWindow? main = null; Process? fixture = null; Window? harness = null;
+        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null;
         void Assert(bool condition, string label) { if (!condition) throw new Exception(label); results.Add("PASS " + label); }
         try
         {
@@ -61,6 +61,24 @@ internal static class Diagnostics
             Assert(Win32.GetWindowLongPtr(foreign, Win32.GWL_STYLE) == originalStyle, "original window styles restored");
             Win32.GetWindowRect(foreign, out var restored); Assert(restored.Left == originalRect.Left && restored.Right == originalRect.Right, "original bounds restored");
             host.Dispose(); harness.Close(); harness = null;
+            var fixturePath2 = Path.Combine(directory, "fixture-hwnd-2.txt");
+            var start2 = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden };
+            start2.ArgumentList.Add("--fixture"); start2.ArgumentList.Add(fixturePath2); fixture2 = Process.Start(start2)!;
+            for (int i = 0; i < 100 && !File.Exists(fixturePath2); i++) await Task.Delay(100);
+            Assert(File.Exists(fixturePath2), "second disposable foreign process created");
+            nint foreign2 = (nint)long.Parse(File.ReadAllText(fixturePath2));
+            var dualSurface = new Canvas();
+            var dualA = new ExternalWindowHost { Width = 320, Height = 300 };
+            var dualB = new ExternalWindowHost { Width = 320, Height = 300 };
+            dualSurface.Children.Add(dualA); dualSurface.Children.Add(dualB); Canvas.SetLeft(dualA, 10); Canvas.SetTop(dualA, 10); Canvas.SetLeft(dualB, 80); Canvas.SetTop(dualB, 70);
+            dualHarness = new Window { Title = "PomoDock dual host integration test", Content = dualSurface, Width = 520, Height = 420 }; dualHarness.Show(); await Task.Delay(150);
+            dualA.Attach(foreign, Path.Combine(directory, "journal-dual-a.json")); dualB.Attach(foreign2, Path.Combine(directory, "journal-dual-b.json")); await Task.Delay(150);
+            Assert(Win32.GetParent(dualA.Handle) == Win32.GetParent(dualB.Handle), "overlapping hosted widgets share a native parent");
+            dualA.BringToFront(); await Task.Delay(50); dualB.BringToFront(); await Task.Delay(50);
+            Assert(Win32.GetWindow(dualA.Handle, 3) == dualB.Handle, "second hosted widget can move above the first");
+            dualA.BringToFront(); await Task.Delay(50);
+            Assert(Win32.GetWindow(dualB.Handle, 3) == dualA.Handle, "first hosted widget can move back above the second");
+            dualA.Detach(); dualB.Detach(); dualA.Dispose(); dualB.Dispose(); dualHarness.Close(); dualHarness = null;
             main.AddCard(new() { Kind = "notes", Title = "MI SIGUIENTE PASO", Value = "Una cosa a la vez.\n\n1. Elegir el siguiente resultado\n2. Iniciar una sesión\n3. Revisar lo aprendido" }, true);
             main.AddCard(new() { Kind = "stats", Title = "MI ENFOQUE" }, true);
             await Task.Delay(100); Render(main, Path.Combine(directory, "widgets.png"));
@@ -82,8 +100,9 @@ internal static class Diagnostics
         }
         finally
         {
-            harness?.Close(); main?.Close();
+            dualHarness?.Close(); harness?.Close(); main?.Close();
             if (fixture is not null) { if (!fixture.HasExited) fixture.CloseMainWindow(); fixture.Dispose(); }
+            if (fixture2 is not null) { if (!fixture2.HasExited) fixture2.CloseMainWindow(); fixture2.Dispose(); }
             Application.Current.Shutdown(Environment.ExitCode);
         }
     }
