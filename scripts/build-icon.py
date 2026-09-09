@@ -7,19 +7,18 @@ assets.mkdir(parents=True, exist_ok=True)
 
 def icon(size: int) -> Image.Image:
     scale = 4
-    n = size * scale
-    image = Image.new("RGBA", (n, n), "#171916")
+    n = 256 * scale
+    image = Image.new("RGBA", (n, n), "#F15B4E")
     draw = ImageDraw.Draw(image)
 
     def rect(x0, y0, x1, y1, fill, outline=None, width=1):
         draw.rectangle((x0 * scale, y0 * scale, x1 * scale, y1 * scale), fill=fill, outline=outline, width=width * scale)
 
-    rect(18, 18, 238, 238, "#F1F0E9", "#171916", 10)
-    rect(38, 38, 218, 218, "#D7D9D1", "#171916", 10)
-    draw.ellipse((71 * scale, 71 * scale, 185 * scale, 185 * scale), fill="#171916")
-    draw.line([(96 * scale, 128 * scale), (118 * scale, 150 * scale), (162 * scale, 100 * scale)], fill="#F1F0E9", width=15 * scale, joint="curve")
-    rect(38, 38, 96, 56, "#B84B4B")
-    rect(160, 200, 218, 218, "#B84B4B")
+    rect(14, 14, 242, 242, "#F1F0E9", "#171916", 12)
+    draw.ellipse((54 * scale, 54 * scale, 202 * scale, 202 * scale), fill="#171916")
+    draw.line([(91 * scale, 128 * scale), (116 * scale, 153 * scale), (168 * scale, 94 * scale)], fill="#F15B4E", width=19 * scale, joint="curve")
+    rect(26, 26, 84, 41, "#171916")
+    rect(172, 215, 230, 230, "#171916")
     return image.resize((size, size), Image.Resampling.LANCZOS)
 
 frames = [icon(size) for size in (16, 24, 32, 48, 64, 128, 256)]
