@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     public Store Store { get; }
     public Settings Settings { get; }
     public TimerEngine Timer { get; }
+    public SoundEngine Sounds { get; }
     private readonly DispatcherTimer ticker = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly List<WidgetCard> cards = [];
     private WorkTask? selectedTask;
@@ -33,12 +34,14 @@ public partial class MainWindow : Window
     public bool DiagnosticMode { get; }
     public static double Monotonic => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
     public string Journal => Path.Combine(Store.DirectoryPath, "windows.json");
+    internal Canvas WidgetCanvas => WidgetArea;
     public MainWindow(string? data = null, bool diagnostic = false)
     {
         DiagnosticMode = diagnostic;
         Store = new(data ?? DataPath);
         Settings = Store.Read<Settings>("settings") ?? new(); Settings.Validate();
         Timer = new(Settings);
+        Sounds = new(Settings);
         InitializeComponent(); ApplyTheme();
         Width = Math.Max(MinWidth, Settings.WindowWidth); Height = Math.Max(MinHeight, Settings.WindowHeight);
         Left = Settings.WindowLeft; Top = Settings.WindowTop;
@@ -98,13 +101,18 @@ public partial class MainWindow : Window
     {
         Store.Complete(session);
         if (session.Outcome != Outcome.Completed) return;
-        if (Settings.Sound) System.Media.SystemSounds.Exclamation.Play();
+        Sounds.StopNoise();
+        Sounds.Completed(session.Phase);
         Status(session.Phase == Phase.Focus ? "SESIÓN COMPLETA · Es momento de descansar." : "DESCANSO COMPLETO · Puedes volver a enfocarte.");
         var next = Timer.NextPhase();
         Dispatcher.BeginInvoke(() =>
         {
             Timer.Select(next, DateTimeOffset.UtcNow, Monotonic);
-            if ((next == Phase.Focus && Settings.AutoFocus) || (next != Phase.Focus && Settings.AutoBreak)) Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask);
+            if ((next == Phase.Focus && Settings.AutoFocus) || (next != Phase.Focus && Settings.AutoBreak))
+            {
+                Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask);
+                if (next == Phase.Focus) Sounds.StartNoise();
+            }
             AnimateTimer(); UpdateTimer(); SaveState();
         });
     }
@@ -122,23 +130,24 @@ public partial class MainWindow : Window
             button.SetResourceReference(BackgroundProperty, active ? "Ink" : "Surface");
             button.SetResourceReference(ForegroundProperty, active ? "Paper" : "Ink");
         }
+        TimerSurface.Background = new SolidColorBrush(ParseColor(Timer.Phase == Phase.Focus ? Settings.FocusColor : Timer.Phase == Phase.ShortBreak ? Settings.ShortBreakColor : Settings.LongBreakColor, Colors.Transparent));
         ContextButton.Content = Timer.Active is { } s ? $"●  {s.Project} / {s.Task}" : selectedTask is null ? "○  ENFOQUE LIBRE   /   Elegir tarea" : $"○  {selectedTask.Project} / {selectedTask.Name}";
     }
-    private void StartClick(object sender, RoutedEventArgs e) => ToggleTimer();
+    private void StartClick(object sender, RoutedEventArgs e) { Sounds.Button(Timer.Running ? "pause" : "start"); ToggleTimer(); }
     internal void ToggleTimer()
     {
-        if (Timer.Running) { Timer.Pause(DateTimeOffset.UtcNow, Monotonic); Status("PAUSADO · Tu progreso está guardado."); }
-        else { Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask); Status("EN CURSO · Una cosa a la vez."); }
+        if (Timer.Running) { Timer.Pause(DateTimeOffset.UtcNow, Monotonic); Sounds.StopNoise(); Status("PAUSADO · Tu progreso está guardado."); }
+        else { Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask); if (Timer.Phase == Phase.Focus) Sounds.StartNoise(); Status("EN CURSO · Una cosa a la vez."); }
         UpdateTimer(); SaveState();
     }
     private void PhaseClick(object sender, RoutedEventArgs e)
     {
         var phase = Enum.Parse<Phase>(((Button)sender).Tag.ToString()!);
         if (phase == Timer.Phase) return;
-        Timer.Select(phase, DateTimeOffset.UtcNow, Monotonic); UpdateTimer(); AnimateTimer(); SaveState();
+        Sounds.Button("phase"); Sounds.StopNoise(); Timer.Select(phase, DateTimeOffset.UtcNow, Monotonic); UpdateTimer(); AnimateTimer(); SaveState();
     }
-    private void ResetClick(object sender, RoutedEventArgs e) { Timer.Select(Timer.Phase, DateTimeOffset.UtcNow, Monotonic); UpdateTimer(); SaveState(); Status("REINICIADO · El tiempo trabajado se guardó como parcial."); }
-    private void SkipClick(object sender, RoutedEventArgs e) { var next = Timer.NextPhase(); Timer.Select(next, DateTimeOffset.UtcNow, Monotonic); UpdateTimer(); AnimateTimer(); SaveState(); }
+    private void ResetClick(object sender, RoutedEventArgs e) { Sounds.Button("reset"); Sounds.StopNoise(); Timer.Select(Timer.Phase, DateTimeOffset.UtcNow, Monotonic); UpdateTimer(); SaveState(); Status("REINICIADO · El tiempo trabajado se guardó como parcial."); }
+    private void SkipClick(object sender, RoutedEventArgs e) { Sounds.Button("skip"); Sounds.StopNoise(); var next = Timer.NextPhase(); Timer.Select(next, DateTimeOffset.UtcNow, Monotonic); UpdateTimer(); AnimateTimer(); SaveState(); }
     private void AnimateTimer()
     {
         if (Settings.ReduceMotion) return;
@@ -150,6 +159,7 @@ public partial class MainWindow : Window
         var dialog = new TasksWindow(this); dialog.ShowDialog();
         if (dialog.SelectionChanged)
         {
+            Sounds.StopNoise();
             Timer.Pause(DateTimeOffset.UtcNow, Monotonic); Timer.Finish(Outcome.Partial, DateTimeOffset.UtcNow);
             selectedTask = dialog.SelectedTask; Status("CONTEXTO ACTUALIZADO · Inicia la siguiente sesión.");
         }
@@ -158,12 +168,17 @@ public partial class MainWindow : Window
     private void ReportClick(object sender, RoutedEventArgs e) { new ReportWindow(this).ShowDialog(); }
     private void SettingsClick(object sender, RoutedEventArgs e) { new SettingsWindow(this).ShowDialog(); Settings.Validate(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); SaveState(); }
     private void LayoutsClick(object sender, RoutedEventArgs e) { new LayoutsWindow(this).ShowDialog(); }
+    private static Color ParseColor(string value, Color fallback)
+    {
+        try { return (Color)ColorConverter.ConvertFromString(value); } catch { return fallback; }
+    }
     public void ApplyTheme()
     {
         var resources = Application.Current.Resources;
-        string[] keys = ["Paper", "Ink", "Muted", "Surface", "Line"];
-        string[] colors = Settings.Dark ? ["#191B18", "#EEEEE5", "#AFB3A4", "#252822", "#C2C6B8"] : ["#F1F0E9", "#171916", "#66695E", "#FAF9F3", "#171916"];
-        for (int i = 0; i < keys.Length; i++) resources[keys[i]] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i]));
+        string[] keys = ["Paper", "Ink", "Muted", "Surface", "Line", "Accent"];
+        string[] colors = Settings.Dark ? ["#191B18", "#EEEEE5", "#AFB3A4", "#252822", "#C2C6B8", Settings.AccentColor] : ["#F1F0E9", "#171916", "#66695E", "#FAF9F3", "#171916", Settings.AccentColor];
+        for (int i = 0; i < keys.Length; i++) resources[keys[i]] = new SolidColorBrush(ParseColor(colors[i], Colors.Transparent));
+        TimerSurface.Background = new SolidColorBrush(ParseColor(Settings.FocusColor, Colors.Transparent));
     }
     private void AddWidgetClick(object sender, RoutedEventArgs e)
     {
@@ -187,6 +202,23 @@ public partial class MainWindow : Window
     }
     public WidgetCard AddCard(WidgetConfig config, bool save)
     {
+        var newPlacement = config.Width <= 0 && config.Height <= 0 && config.X == 0 && config.Y == 0;
+        var canvasWidth = WidgetArea.ActualWidth > 0 ? WidgetArea.ActualWidth : 720;
+        if (config.Width <= 0)
+        {
+            var twoColumnWidth = (canvasWidth - 40) / 2;
+            config.Width = canvasWidth >= 560 ? Math.Max(240, twoColumnWidth) : Math.Max(280, canvasWidth - 24);
+        }
+        if (config.Height <= 0) config.Height = config.Kind == "stats" ? 260 : 300;
+        if (newPlacement)
+        {
+            int index = cards.Count;
+            int columns = canvasWidth >= 560 ? 2 : 1;
+            int column = index % columns;
+            int row = index / columns;
+            config.X = 12 + column * (config.Width + 16);
+            config.Y = 12 + row * (config.Height + 16);
+        }
         var card = new WidgetCard(this, config); cards.Add(card); WidgetArea.Children.Add(card);
         ArrangeCards(); if (save) SaveState(); return card;
     }
@@ -199,22 +231,21 @@ public partial class MainWindow : Window
     }
     public void ArrangeCards()
     {
-        foreach (var split in WidgetArea.Children.OfType<GridSplitter>().ToArray()) WidgetArea.Children.Remove(split);
-        WidgetArea.RowDefinitions.Clear(); Welcome.Visibility = cards.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        for (int i = 0; i < cards.Count; i++)
+        Welcome.Visibility = cards.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        Welcome.Width = Math.Max(1, WidgetArea.ActualWidth); Welcome.Height = Math.Max(1, WidgetArea.ActualHeight);
+        foreach (var card in cards)
         {
-            var config = cards[i].Config;
-            WidgetArea.RowDefinitions.Add(new RowDefinition { Height = config.Collapsed ? new GridLength(40) : new GridLength(Math.Max(0.1, config.Weight), GridUnitType.Star), MinHeight = config.Collapsed ? 40 : 90 });
-            Grid.SetRow(cards[i], i * 2);
-            if (i < cards.Count - 1)
-            {
-                WidgetArea.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
-                var splitter = new GridSplitter { Height = 8, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, Background = Brushes.Transparent, ResizeDirection = GridResizeDirection.Rows, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
-                Grid.SetRow(splitter, i * 2 + 1);
-                splitter.DragCompleted += (_, _) => { for (int j = 0; j < cards.Count; j++) if (!cards[j].Config.Collapsed) cards[j].Config.Weight = WidgetArea.RowDefinitions[j * 2].ActualHeight; SaveState(); };
-                WidgetArea.Children.Add(splitter);
-            }
+            card.Width = Math.Clamp(card.Config.Width, 220, Math.Max(220, WidgetArea.ActualWidth));
+            card.Height = Math.Clamp(card.Config.Collapsed ? 42 : card.Config.Height, 42, Math.Max(42, WidgetArea.ActualHeight));
+            Canvas.SetLeft(card, Math.Clamp(card.Config.X, 0, Math.Max(0, WidgetArea.ActualWidth - card.Width)));
+            Canvas.SetTop(card, Math.Clamp(card.Config.Y, 0, Math.Max(0, WidgetArea.ActualHeight - card.Height)));
         }
+    }
+    private void WidgetAreaSizeChanged(object sender, SizeChangedEventArgs e) => ArrangeCards();
+    public void PersistWidget(WidgetCard card, bool save = true)
+    {
+        card.Config.X = Canvas.GetLeft(card); card.Config.Y = Canvas.GetTop(card); card.Config.Width = card.ActualWidth; card.Config.Height = card.ActualHeight;
+        if (save) SaveState();
     }
     public void LoadLayout(List<WidgetConfig> widgets)
     {
@@ -266,10 +297,10 @@ public partial class MainWindow : Window
     {
         try { foreach (var card in cards) card.Release(); }
         catch (Exception ex) { e.Cancel = true; Status(ex.Message); return; }
-        Timer.Pause(DateTimeOffset.UtcNow, Monotonic); SaveState();
+        Sounds.StopNoise(); Timer.Pause(DateTimeOffset.UtcNow, Monotonic); SaveState();
         exiting = true; ticker.Stop(); SystemEvents.PowerModeChanged -= PowerChanged;
         Win32.UnregisterHotKey(hwnd, 11); if (focusHook != 0) Win32.UnhookWinEvent(focusHook);
-        Store.Dispose();
+        Sounds.Dispose(); Store.Dispose();
     }
     private void FullscreenClick(object sender, RoutedEventArgs e) => ToggleFullscreen();
     private void DragTitle(object sender, MouseButtonEventArgs e) { if (e.ClickCount == 2) MaximizeClick(sender, e); else if (e.OriginalSource is TextBlock || e.OriginalSource == TitleBar) DragMove(); }

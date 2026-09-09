@@ -10,7 +10,7 @@ public sealed class TasksWindow : Window
     public bool SelectionChanged { get; private set; }
     public TasksWindow(MainWindow owner)
     {
-        Owner = owner; Title = "FOCUS DOCK / Tareas y proyectos"; Width = 640; Height = 700; MinWidth = 440; MinHeight = 480; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Owner = owner; Title = "FOCUS DOCK / Tareas y proyectos"; Width = 640; Height = 700; MinWidth = 440; MinHeight = 480; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
         var panel = new DockPanel { Margin = new Thickness(22) }; Content = panel;
         var heading = Dialogs.Heading("QUÉ VAS A HACER."); DockPanel.SetDock(heading, Dock.Top); panel.Children.Add(heading);
         var tabs = new TabControl(); panel.Children.Add(tabs);
@@ -34,7 +34,7 @@ public sealed class TasksWindow : Window
         }
         var add = Dialogs.Button("+ AÑADIR", () =>
         {
-            if (string.IsNullOrWhiteSpace(name.Text) || !int.TryParse(estimate.Text, out int value) || value < 1 || value > 999) { MessageBox.Show(this, "Escribe un nombre y una estimación entre 1 y 999."); return; }
+            if (string.IsNullOrWhiteSpace(name.Text) || !int.TryParse(estimate.Text, out int value) || value < 1 || value > 999) { Dialogs.Alert(this, "TAREA INVÁLIDA", "Escribe un nombre y una estimación entre 1 y 999."); return; }
             owner.Settings.Tasks.Add(new() { Name = name.Text.Trim(), Project = project.SelectedItem?.ToString() ?? "Sin proyecto", Estimate = value }); name.Clear(); Refresh(); owner.SaveState();
         }); form.Children.Add(add);
         var actions = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) }; DockPanel.SetDock(actions, Dock.Bottom); taskPanel.Children.Add(actions);
@@ -54,6 +54,6 @@ public sealed class TasksWindow : Window
         var templatePanel = new DockPanel { Margin = new Thickness(14) }; templates.Content = templatePanel;
         void RefreshTemplates() => templateList.ItemsSource = owner.Settings.Tasks.Where(t => t.Template).ToList();
         var use = Dialogs.Button("CREAR TAREA DESDE PLANTILLA", () => { if (templateList.SelectedItem is WorkTask t) { owner.Settings.Tasks.Add(new() { Name = t.Name, Project = t.Project, Estimate = t.Estimate }); Refresh(); owner.SaveState(); tabs.SelectedItem = tasks; } });
-        DockPanel.SetDock(use, Dock.Bottom); templatePanel.Children.Add(use); templatePanel.Children.Add(templateList); RefreshTemplates();
+        DockPanel.SetDock(use, Dock.Bottom); templatePanel.Children.Add(use); templatePanel.Children.Add(templateList); RefreshTemplates(); Dialogs.Modalize(this);
     }
 }

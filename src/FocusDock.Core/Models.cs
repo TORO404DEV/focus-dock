@@ -40,6 +40,10 @@ public sealed class WidgetConfig
     public string Title { get; set; } = "Notas";
     public string Value { get; set; } = "";
     public double Weight { get; set; } = 1;
+    public double X { get; set; } = 0;
+    public double Y { get; set; } = 0;
+    public double Width { get; set; } = 0;
+    public double Height { get; set; } = 0;
     public bool KeepAlive { get; set; }
     public bool Collapsed { get; set; }
 }
@@ -53,6 +57,11 @@ public sealed class Settings
     public bool AutoBreak { get; set; }
     public bool AutoFocus { get; set; }
     public bool Sound { get; set; } = true;
+    public bool ButtonSounds { get; set; } = true;
+    public bool WhiteNoise { get; set; }
+    public int WhiteNoiseVolume { get; set; } = 18;
+    public bool AlarmEnabled { get; set; } = true;
+    public int AlarmRepeats { get; set; } = 3;
     public bool Dark { get; set; }
     public bool ReduceMotion { get; set; }
     public bool AlwaysOnTop { get; set; }
@@ -61,6 +70,10 @@ public sealed class Settings
     public double WindowWidth { get; set; } = 620;
     public double WindowHeight { get; set; } = 940;
     public bool Fullscreen { get; set; }
+    public string FocusColor { get; set; } = "#D7D9D1";
+    public string ShortBreakColor { get; set; } = "#BFD7EA";
+    public string LongBreakColor { get; set; } = "#F3C4A8";
+    public string AccentColor { get; set; } = "#D7D9D1";
     public List<string> Projects { get; set; } = [];
     public List<WorkTask> Tasks { get; set; } = [];
     public List<WidgetConfig> Widgets { get; set; } = [];
@@ -72,6 +85,8 @@ public sealed class Settings
         LongMinutes = Math.Clamp(LongMinutes, 1, 120);
         LongInterval = Math.Clamp(LongInterval, 1, 12);
         DailyGoalMinutes = Math.Clamp(DailyGoalMinutes, 1, 1440);
+        WhiteNoiseVolume = Math.Clamp(WhiteNoiseVolume, 0, 100);
+        AlarmRepeats = Math.Clamp(AlarmRepeats, 1, 8);
     }
     public double Duration(Phase phase) => 60 * (phase == Phase.Focus ? FocusMinutes : phase == Phase.ShortBreak ? ShortMinutes : LongMinutes);
 }

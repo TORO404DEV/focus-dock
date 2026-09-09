@@ -17,7 +17,7 @@ public sealed class ReportWindow : Window
     private List<Session> filtered = [];
     public ReportWindow(MainWindow owner)
     {
-        this.owner = owner; Owner = owner; Title = "FOCUS DOCK / Report"; Width = 790; Height = 850; MinWidth = 470; MinHeight = 500; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        this.owner = owner; Owner = owner; Title = "FOCUS DOCK / Report"; Width = 790; Height = 850; MinWidth = 470; MinHeight = 500; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
         var shell = new DockPanel { Margin = new Thickness(24) }; Content = shell;
         var top = new StackPanel(); DockPanel.SetDock(top, Dock.Top); shell.Children.Add(top);
         top.Children.Add(Dialogs.Heading("LO QUE MIDES,\nLO PUEDES MEJORAR."));
@@ -35,7 +35,7 @@ public sealed class ReportWindow : Window
             to.SelectedDate = today; Refresh();
         };
         from.SelectedDateChanged += (_, _) => Refresh(); to.SelectedDateChanged += (_, _) => Refresh(); project.SelectionChanged += (_, _) => Refresh();
-        Refresh();
+        Refresh(); Dialogs.Modalize(this);
     }
     private void Refresh()
     {
@@ -106,7 +106,7 @@ public sealed class ReportWindow : Window
         var projectName = Dialogs.Prompt(this, "CLASIFICAR SESIÓN", "Proyecto", session.Project); if (projectName is null) return;
         var taskName = Dialogs.Prompt(this, "CLASIFICAR SESIÓN", "Tarea", session.Task); if (taskName is null) return;
         var minutes = Dialogs.Prompt(this, "CORREGIR DURACIÓN", "Minutos reales (la corrección queda identificada)", (session.Seconds / 60).ToString("0.###", CultureInfo.CurrentCulture)); if (minutes is null) return;
-        if (!double.TryParse(minutes, out var value) || !double.IsFinite(value) || value <= 0 || value > 1440) { MessageBox.Show(this, "La duración debe estar entre 0 y 1440 minutos."); return; }
+        if (!double.TryParse(minutes, out var value) || !double.IsFinite(value) || value <= 0 || value > 1440) { Dialogs.Alert(this, "DURACIÓN INVÁLIDA", "La duración debe estar entre 0 y 1440 minutos."); return; }
         session.Project = string.IsNullOrWhiteSpace(projectName) ? "Sin proyecto" : projectName; session.Task = string.IsNullOrWhiteSpace(taskName) ? "Enfoque libre" : taskName;
         if (Math.Abs(value * 60 - session.Seconds) > 0.1)
         {
@@ -134,7 +134,7 @@ public sealed class ReportWindow : Window
         if (dialog.ShowDialog(this) == true)
         {
             try { int count = owner.Store.ImportJson(dialog.FileName); owner.Status($"IMPORTADAS {count} SESIONES · Se conservaron las existentes."); Refresh(); }
-            catch (Exception ex) { MessageBox.Show(this, "No se pudo importar: " + ex.Message); }
+            catch (Exception ex) { Dialogs.Alert(this, "IMPORTACIÓN FALLIDA", "No se pudo importar: " + ex.Message); }
         }
     }
 }

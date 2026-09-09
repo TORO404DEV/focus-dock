@@ -1,6 +1,8 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using FocusDock.Core;
 using FocusDock.App.Native;
@@ -14,21 +16,23 @@ public sealed class WidgetCard : Border
     public WidgetConfig Config { get; }
     private readonly MainWindow owner;
     private readonly Grid body = new();
+    private readonly Grid shell = new();
     private readonly TextBlock title;
     private ExternalWindowHost? host;
     private WebView2? web;
     private bool released;
+    private bool dragging, resizing;
+    private Point pointerStart;
+    private double elementStartX, elementStartY, elementStartWidth, elementStartHeight;
     private static Task<CoreWebView2Environment>? browserEnvironment;
     public WidgetCard(MainWindow owner, WidgetConfig config)
     {
         this.owner = owner; Config = config;
         BorderThickness = new Thickness(1.5); SetResourceReference(BorderBrushProperty, "Line"); SetResourceReference(BackgroundProperty, "Surface");
-        var grid = new Grid(); grid.RowDefinitions.Add(new() { Height = new GridLength(38) }); grid.RowDefinitions.Add(new()); Child = grid;
+        shell.RowDefinitions.Add(new() { Height = new GridLength(38) }); shell.RowDefinitions.Add(new()); Child = shell;
         var header = new DockPanel { LastChildFill = true, Margin = new Thickness(9, 0, 2, 0) };
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         foreach (var (label, tip, action) in new (string, string, Action)[] {
-            ("↑", "Mover arriba", () => owner.MoveCard(this, -1)),
-            ("↓", "Mover abajo", () => owner.MoveCard(this, 1)),
             ("⋯", "Opciones del widget", Options),
             ("−", "Contraer / expandir", ToggleCollapsed),
             ("×", "Quitar widget y liberar ventana", () => owner.RemoveCard(this)) })
@@ -38,8 +42,13 @@ public sealed class WidgetCard : Border
         }
         DockPanel.SetDock(actions, Dock.Right); header.Children.Add(actions);
         title = new TextBlock { Text = $"{KindLabel()} / {config.Title}", FontWeight = FontWeights.Bold, FontSize = 10, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
-        header.Children.Add(title); grid.Children.Add(header);
-        Grid.SetRow(body, 1); grid.Children.Add(body);
+        header.Children.Add(title); header.MouseLeftButtonDown += HeaderDown; header.MouseMove += HeaderMove; header.MouseLeftButtonUp += HeaderUp; shell.Children.Add(header);
+        Grid.SetRow(body, 1); shell.Children.Add(body);
+        var grip = new Thumb { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Cursor = Cursors.SizeNWSE, Opacity = .65, Background = Brushes.Transparent };
+        grip.DragStarted += (_, _) => { resizing = true; elementStartWidth = ActualWidth; elementStartHeight = ActualHeight; pointerStart = Mouse.GetPosition(owner.WidgetCanvas); CaptureMouse(); };
+        grip.DragDelta += (_, e) => { if (!resizing) return; Width = Math.Max(220, elementStartWidth + e.HorizontalChange); Height = Math.Max(42, elementStartHeight + e.VerticalChange); Config.Width = Width; Config.Height = Height; };
+        grip.DragCompleted += (_, _) => { resizing = false; ReleaseMouseCapture(); owner.PersistWidget(this); };
+        Grid.SetRow(grip, 1); Panel.SetZIndex(grip, 20); shell.Children.Add(grip);
         body.Visibility = config.Collapsed ? Visibility.Collapsed : Visibility.Visible;
         if (config.Kind == "window") BuildWindow();
         else if (config.Kind == "web") Loaded += async (_, _) => await BuildWeb();
@@ -50,6 +59,21 @@ public sealed class WidgetCard : Border
             body.Children.Add(notes);
         }
         else Refresh();
+    }
+    private void HeaderDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is Button) return;
+        dragging = true; pointerStart = e.GetPosition(owner.WidgetCanvas); elementStartX = Canvas.GetLeft(this); elementStartY = Canvas.GetTop(this); CaptureMouse(); e.Handled = true;
+    }
+    private void HeaderMove(object sender, MouseEventArgs e)
+    {
+        if (!dragging || e.LeftButton != MouseButtonState.Pressed) return;
+        var now = e.GetPosition(owner.WidgetCanvas); Canvas.SetLeft(this, Math.Max(0, elementStartX + now.X - pointerStart.X)); Canvas.SetTop(this, Math.Max(0, elementStartY + now.Y - pointerStart.Y));
+        owner.PersistWidget(this, false);
+    }
+    private void HeaderUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!dragging) return; dragging = false; ReleaseMouseCapture(); owner.PersistWidget(this); e.Handled = true;
     }
     private string KindLabel() => Config.Kind == "window" ? "APP" : Config.Kind == "web" ? "WEB" : Config.Kind == "stats" ? "STATS" : "TXT";
     private void BuildWindow()
@@ -75,7 +99,7 @@ public sealed class WidgetCard : Border
         {
             host?.Dispose(); host = null; body.Children.Clear(); BuildWindow();
             owner.Status("No se pudo conectar: " + ex.Message);
-            MessageBox.Show(owner, ex.Message, "Compatibilidad de la ventana", MessageBoxButton.OK, MessageBoxImage.Information);
+            Dialogs.Alert(owner, "COMPATIBILIDAD DE LA VENTANA", ex.Message);
         }
     }
     private async Task BuildWeb()
@@ -155,9 +179,24 @@ public sealed class WidgetCard : Border
         if (Config.Kind != "stats") return;
         var sessions = owner.Store.Sessions(); var daily = Reports.Daily(sessions, TimeZoneInfo.Local);
         var today = DateOnly.FromDateTime(DateTime.Now);
-        var stack = new StackPanel { Margin = new Thickness(18, 12, 18, 12), VerticalAlignment = VerticalAlignment.Center };
-        stack.Children.Add(new TextBlock { Text = $"{daily.GetValueOrDefault(today):0} MIN", FontSize = 34, FontWeight = FontWeights.Black, FontFamily = new FontFamily("Consolas") });
-        stack.Children.Add(new TextBlock { Text = $"HOY / META {owner.Settings.DailyGoalMinutes} MIN     ·     RACHA {Reports.Streak(daily, today)} DÍAS", FontSize = 10 });
+        var stack = new StackPanel { Margin = new Thickness(16, 12, 16, 12) };
+        int streak = Reports.Streak(daily, today); double todayMinutes = daily.GetValueOrDefault(today); double weekly = daily.Where(x => x.Key >= today.AddDays(-6) && x.Key <= today).Sum(x => x.Value); int level = Math.Max(1, (int)(weekly / Math.Max(1, owner.Settings.DailyGoalMinutes) * 10));
+        var heading = new Grid(); heading.ColumnDefinitions.Add(new()); heading.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        heading.Children.Add(new TextBlock { Text = $"{todayMinutes:0} MIN", FontSize = 30, FontWeight = FontWeights.Black, FontFamily = new FontFamily("Consolas") });
+        var streakText = new TextBlock { Text = $"🔥 {streak} DÍAS\nNIVEL {level:00}", FontSize = 12, FontWeight = FontWeights.Bold, TextAlignment = TextAlignment.Right }; Grid.SetColumn(streakText, 1); heading.Children.Add(streakText); stack.Children.Add(heading);
+        stack.Children.Add(new TextBlock { Text = $"HOY / META {owner.Settings.DailyGoalMinutes} MIN     ·     {weekly:0} MIN ESTA SEMANA", FontSize = 9, Foreground = (Brush)Application.Current.Resources["Muted"] });
+        var weekBars = new UniformGrid { Columns = 7, Height = 118, Margin = new Thickness(0, 14, 0, 0) };
+        double peak = Math.Max(owner.Settings.FocusMinutes, Enumerable.Range(0, 7).Select(i => daily.GetValueOrDefault(today.AddDays(-6 + i))).DefaultIfEmpty(0).Max());
+        for (int i = 0; i < 7; i++)
+        {
+            var day = today.AddDays(-6 + i); double value = daily.GetValueOrDefault(day); var cell = new Grid { Margin = new Thickness(3, 0, 3, 0), VerticalAlignment = VerticalAlignment.Stretch };
+            var track = new Border { Background = new SolidColorBrush(Color.FromArgb(28, 0, 0, 0)), VerticalAlignment = VerticalAlignment.Bottom, Height = 94 };
+            var fill = new Border { Background = (Brush)Application.Current.Resources["Ink"], Height = Math.Max(value > 0 ? 5 : 0, 94 * value / peak), VerticalAlignment = VerticalAlignment.Bottom };
+            cell.Children.Add(track); cell.Children.Add(fill); cell.Children.Add(new TextBlock { Text = day.ToString("dd"), VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, -18), FontSize = 9, HorizontalAlignment = HorizontalAlignment.Center }); weekBars.Children.Add(cell);
+        }
+        stack.Children.Add(weekBars);
+        var progress = new ProgressBar { Minimum = 0, Maximum = Math.Max(1, owner.Settings.DailyGoalMinutes), Value = Math.Min(todayMinutes, owner.Settings.DailyGoalMinutes), Height = 8, Margin = new Thickness(0, 20, 0, 5) }; stack.Children.Add(progress);
+        stack.Children.Add(new TextBlock { Text = todayMinutes >= owner.Settings.DailyGoalMinutes ? "META SUPERADA · SIGUE CON INTENCIÓN." : $"FALTAN {Math.Max(0, owner.Settings.DailyGoalMinutes - todayMinutes):0} MIN PARA TU META", FontSize = 10, FontWeight = FontWeights.Bold });
         body.Children.Clear(); body.Children.Add(stack);
     }
     public void Release()

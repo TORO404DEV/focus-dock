@@ -34,8 +34,8 @@
     <Grid.RowDefinitions><RowDefinition Height="38"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <TextBlock Text="TU ESPACIO" FontWeight="Black" FontSize="12" VerticalAlignment="Center"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="LAYOUTS" Click="LayoutsClick" FontSize="10" Padding="8,6"/><Button Content="+ WIDGET" Click="AddWidgetClick" FontSize="10" Padding="8,6" Margin="0"/></StackPanel>
-    <Grid Grid.Row="1" x:Name="WidgetArea">
-     <Border x:Name="Welcome" BorderBrush="{DynamicResource Muted}" BorderThickness="1" Background="{DynamicResource Surface}">
+    <Canvas Grid.Row="1" x:Name="WidgetArea" Background="Transparent" ClipToBounds="True" SizeChanged="WidgetAreaSizeChanged">
+     <Border x:Name="Welcome" BorderBrush="{DynamicResource Muted}" BorderThickness="1" Background="{DynamicResource Surface}" Canvas.Left="0" Canvas.Top="0">
       <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="26">
        <TextBlock Text="UN MONITOR.&#10;TU UNIVERSO." FontSize="32" FontWeight="Black" LineHeight="34"/>
        <TextBlock Text="Tu música, tu mini app, tus herramientas.&#10;Dales un lugar junto a tu enfoque." FontSize="13" Foreground="{DynamicResource Muted}" Margin="0,18,0,22"/>
@@ -43,7 +43,7 @@
        <TextBlock Text="También puedes añadir una web, notas o métricas." FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,12,0,0"/>
       </StackPanel>
      </Border>
-    </Grid>
+    </Canvas>
    </Grid>
    <Grid Grid.Row="4" Background="{DynamicResource Ink}"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <TextBlock x:Name="StatusText" Foreground="{DynamicResource Paper}" Text="LISTO PARA ENFOCARTE" FontFamily="Consolas" FontSize="10" Margin="12,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
