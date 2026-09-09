@@ -68,6 +68,14 @@ try
   string path = Path.Combine(directory, "export.csv"); Store.ExportCsv(path, [new() { Project = "=HYPERLINK(\"evil\")", Task = "comma, and \"quote\"" }]);
   string text = File.ReadAllText(path); Assert(text.Contains("\"'=HYPERLINK")); Assert(text.Contains("comma, and \"\"quote\"\""));
  });
+ Test("Pomofocus tab CSV imports focus time and deduplicates rows", () => {
+  string importDirectory = Path.Combine(directory, "pomofocus"); string path = Path.Combine(directory, "pomofocus.csv");
+  File.WriteAllText(path, "date\tproject\ttask\thours\tstartTime\tendTime\n20260909\t\"Airdrop\"\t\"Task, one\"\t0.83\t11:38\t12:51\n20260909\t\"Airdrop\"\t\"Task, one\"\t0\t13:00\t13:00\n20260909\t\"Airdrop\"\t\"Inferred\"\t0.5\t14:00\t \n");
+  using var store = new Store(importDirectory); var settings = new Settings();
+  var result = PomofocusCsv.Import(store, settings, path); Equal(3, result.Imported); Equal(0, result.Skipped); Equal(0, result.Invalid); Equal(3, store.Sessions().Count);
+  Assert(store.Sessions().Any(s => s.Project == "Airdrop" && s.Task == "Task, one" && Math.Abs(s.Seconds - 2988) < .1)); Assert(settings.Tasks.Count == 2 && settings.Projects.Contains("Airdrop"));
+  var again = PomofocusCsv.Import(store, settings, path); Equal(0, again.Imported); Equal(3, again.Skipped); Equal(0, again.Invalid);
+ });
 }
 finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); Directory.Delete(directory, true); }
 Console.WriteLine($"\n{passed} tests passed.");

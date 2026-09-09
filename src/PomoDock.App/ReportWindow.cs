@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -26,7 +27,7 @@ public sealed class ReportWindow : Window
         filters.Children.Add(range); filters.Children.Add(from); filters.Children.Add(new TextBlock { Text = " → ", VerticalAlignment = VerticalAlignment.Center }); filters.Children.Add(to);
         project.ItemsSource = new[] { "Todos los proyectos" }.Concat(owner.Store.Sessions().Select(s => s.Project).Distinct().Order()); project.SelectedIndex = 0; project.Margin = new Thickness(8, 0, 0, 0); filters.Children.Add(project);
         var export = new WrapPanel { Margin = new Thickness(0, 0, 0, 14) }; top.Children.Add(export);
-        export.Children.Add(Dialogs.Button("CSV", ExportCsv)); export.Children.Add(Dialogs.Button("BACKUP JSON", ExportJson)); export.Children.Add(Dialogs.Button("IMPORTAR SESIONES", Import));
+        export.Children.Add(Dialogs.Button("CSV", ExportCsv)); export.Children.Add(Dialogs.Button("BACKUP JSON", ExportJson)); export.Children.Add(Dialogs.Button("IMPORTAR CSV / JSON", Import));
         var scroller = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }; shell.Children.Add(scroller);
         range.SelectionChanged += (_, _) =>
         {
@@ -130,10 +131,23 @@ public sealed class ReportWindow : Window
     }
     private void Import()
     {
-        var dialog = new OpenFileDialog { Filter = "PomoDock JSON|*.json" };
+        var dialog = new OpenFileDialog { Filter = "Pomofocus / PomoDock|*.csv;*.tsv;*.json|CSV de Pomofocus|*.csv;*.tsv|PomoDock JSON|*.json|Todos los archivos|*.*", Multiselect = false };
         if (dialog.ShowDialog(this) == true)
         {
-            try { int count = owner.Store.ImportJson(dialog.FileName); owner.Status($"IMPORTADAS {count} SESIONES · Se conservaron las existentes."); Refresh(); }
+            try
+            {
+                if (string.Equals(Path.GetExtension(dialog.FileName), ".json", StringComparison.OrdinalIgnoreCase))
+                {
+                    int count = owner.Store.ImportJson(dialog.FileName);
+                    owner.Status($"IMPORTADAS {count} SESIONES · Se conservaron las existentes.");
+                }
+                else
+                {
+                    var result = PomofocusCsv.Import(owner.Store, owner.Settings, dialog.FileName);
+                    owner.Status($"POMOfocus · {result.Imported} SESIONES IMPORTADAS · {result.Skipped} YA EXISTÍAN · {result.Invalid} FILAS OMITIDAS.");
+                }
+                Refresh();
+            }
             catch (Exception ex) { Dialogs.Alert(this, "IMPORTACIÓN FALLIDA", "No se pudo importar: " + ex.Message); }
         }
     }
