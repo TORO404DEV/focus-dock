@@ -6,16 +6,16 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using FocusDock.App.Native;
-using FocusDock.Core;
+using PomoDock.App.Native;
+using PomoDock.Core;
 
-namespace FocusDock.App;
+namespace PomoDock.App;
 
 internal static class Diagnostics
 {
     public static void RunFixture(string path)
     {
-        var window = new Window { Title = "FocusDock disposable integration fixture", Width = 360, Height = 440, Content = new TextBox { Text = "Disposable window fixture. No user app is involved.", AcceptsReturn = true } };
+        var window = new Window { Title = "PomoDock disposable integration fixture", Width = 360, Height = 440, Content = new TextBox { Text = "Disposable window fixture. No user app is involved.", AcceptsReturn = true } };
         Application.Current.MainWindow = window;
         window.SourceInitialized += (_, _) => File.WriteAllText(path, new WindowInteropHelper(window).Handle.ToInt64().ToString());
         window.Show();
@@ -49,7 +49,7 @@ internal static class Diagnostics
             nint foreign = (nint)long.Parse(File.ReadAllText(fixturePath));
             Win32.GetWindowRect(foreign, out var originalRect); var originalStyle = Win32.GetWindowLongPtr(foreign, Win32.GWL_STYLE);
             var host = new ExternalWindowHost();
-            harness = new Window { Title = "FocusDock hosting integration test", Content = host, Width = 450, Height = 520 }; harness.Show(); await Task.Delay(150);
+            harness = new Window { Title = "PomoDock hosting integration test", Content = host, Width = 450, Height = 520 }; harness.Show(); await Task.Delay(150);
             host.Attach(foreign, Path.Combine(directory, "journal.json")); await Task.Delay(150);
             Assert(host.Alive && Win32.GetParent(foreign) == host.Handle, "real cross-process HWND embedded");
             harness.Width = 570; harness.Height = 620; await Task.Delay(150);

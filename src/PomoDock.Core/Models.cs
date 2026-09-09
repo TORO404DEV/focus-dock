@@ -1,4 +1,4 @@
-namespace FocusDock.Core;
+namespace PomoDock.Core;
 
 public enum Phase { Focus, ShortBreak, LongBreak }
 public enum Outcome { Completed, Partial, Recovered }

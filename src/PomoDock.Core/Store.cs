@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
-namespace FocusDock.Core;
+namespace PomoDock.Core;
 
 public sealed class Store : IDisposable
 {
@@ -14,7 +14,18 @@ public sealed class Store : IDisposable
     {
         DirectoryPath = directory;
         Directory.CreateDirectory(directory);
-        db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.Combine(directory, "focus-dock.db") }.ToString());
+        var database = Path.Combine(directory, "pomo-dock.db");
+        var legacyDatabase = Path.Combine(directory, "focus-dock.db");
+        if (!File.Exists(database) && File.Exists(legacyDatabase))
+        {
+            foreach (var suffix in new[] { "", "-wal", "-shm" })
+            {
+                var oldFile = legacyDatabase + suffix; var newFile = database + suffix;
+                if (!File.Exists(oldFile)) continue;
+                try { File.Move(oldFile, newFile); } catch { }
+            }
+        }
+        db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database }.ToString());
         db.Open();
         using var cmd = db.CreateCommand();
         cmd.CommandText = "PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, payload TEXT NOT NULL); CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY, payload TEXT NOT NULL);";

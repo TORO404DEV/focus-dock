@@ -9,15 +9,17 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
-using FocusDock.Core;
-using FocusDock.App.Native;
+using PomoDock.Core;
+using PomoDock.App.Native;
 using Microsoft.Win32;
 
-namespace FocusDock.App;
+namespace PomoDock.App;
 
 public partial class MainWindow : Window
 {
-    public static string DataPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FocusDock");
+    private static string ProductDataPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PomoDock");
+    private static string LegacyDataPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FocusDock");
+    public static string DataPath => ResolveDataPath();
     public Store Store { get; }
     public Settings Settings { get; }
     public TimerEngine Timer { get; }
@@ -36,6 +38,15 @@ public partial class MainWindow : Window
     private bool hotkeyRegistered;
     public bool DiagnosticMode { get; }
     public static double Monotonic => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
+    private static string ResolveDataPath()
+    {
+        if (!Directory.Exists(ProductDataPath) && Directory.Exists(LegacyDataPath))
+        {
+            try { Directory.Move(LegacyDataPath, ProductDataPath); }
+            catch { return LegacyDataPath; }
+        }
+        return ProductDataPath;
+    }
     public string Journal => Path.Combine(Store.DirectoryPath, "windows.json");
     internal Canvas WidgetCanvas => WidgetArea;
     public MainWindow(string? data = null, bool diagnostic = false)

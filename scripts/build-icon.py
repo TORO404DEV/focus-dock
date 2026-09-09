@@ -2,7 +2,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 root = Path(__file__).resolve().parents[1]
-assets = root / "src" / "FocusDock.App" / "Assets"
+assets = root / "src" / "PomoDock.App" / "Assets"
 assets.mkdir(parents=True, exist_ok=True)
 
 def icon(size: int) -> Image.Image:
@@ -22,5 +22,5 @@ def icon(size: int) -> Image.Image:
     return image.resize((size, size), Image.Resampling.LANCZOS)
 
 frames = [icon(size) for size in (16, 24, 32, 48, 64, 128, 256)]
-frames[-1].save(assets / "FocusDock.ico", format="ICO", sizes=[(f.width, f.height) for f in frames], append_images=frames[:-1])
-print(assets / "FocusDock.ico")
+frames[-1].save(assets / "PomoDock.ico", format="ICO", sizes=[(f.width, f.height) for f in frames], append_images=frames[:-1])
+print(assets / "PomoDock.ico")

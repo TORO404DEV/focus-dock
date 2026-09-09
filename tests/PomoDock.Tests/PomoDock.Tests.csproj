@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework></PropertyGroup>
- <ItemGroup><ProjectReference Include="../../src/FocusDock.Core/FocusDock.Core.csproj"/></ItemGroup>
+ <ItemGroup><ProjectReference Include="../../src/PomoDock.Core/PomoDock.Core.csproj"/></ItemGroup>
 </Project>

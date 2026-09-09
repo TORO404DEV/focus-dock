@@ -1,8 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
-using FocusDock.Core;
+using PomoDock.Core;
 
-namespace FocusDock.App;
+namespace PomoDock.App;
 
 public sealed class TasksWindow : Window
 {
@@ -10,7 +10,7 @@ public sealed class TasksWindow : Window
     public bool SelectionChanged { get; private set; }
     public TasksWindow(MainWindow owner)
     {
-        Owner = owner; Title = "FOCUS DOCK / Tareas y proyectos"; Width = 640; Height = 700; MinWidth = 440; MinHeight = 480; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
+        Owner = owner; Title = "POMODOCK / Tareas y proyectos"; Width = 640; Height = 700; MinWidth = 440; MinHeight = 480; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
         var panel = new DockPanel { Margin = new Thickness(22) }; Content = panel;
         var heading = Dialogs.Heading("QUÉ VAS A HACER."); DockPanel.SetDock(heading, Dock.Top); panel.Children.Add(heading);
         var tabs = new TabControl(); panel.Children.Add(tabs);

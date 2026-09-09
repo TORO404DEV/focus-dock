@@ -6,14 +6,14 @@ using System.Windows.Media;
 using System.Windows.Data;
 using System.Windows.Media.Imaging;
 using System.Windows.Controls.Primitives;
-using FocusDock.App.Native;
+using PomoDock.App.Native;
 
-namespace FocusDock.App;
+namespace PomoDock.App;
 
 internal static class Dialogs
 {
     public static Window Window(Window? owner, string title, double width = 500, double height = 420) => new()
-    { Owner = owner, Title = "FOCUS DOCK / " + title, Width = width, Height = height, MinWidth = 360, MinHeight = 240, WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false, WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent, ResizeMode = ResizeMode.CanResizeWithGrip };
+    { Owner = owner, Title = "POMODOCK / " + title, Width = width, Height = height, MinWidth = 360, MinHeight = 240, WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false, WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent, ResizeMode = ResizeMode.CanResizeWithGrip };
     public static void Modalize(Window window)
     {
         if (window.Content is not FrameworkElement content || content is ModalSurface) return;
@@ -120,7 +120,7 @@ internal static class Dialogs
         var selectedTrigger = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true }; selectedTrigger.Setters.Add(new Setter(Control.BorderBrushProperty, (Brush)Application.Current.Resources["Ink"])); selectedTrigger.Setters.Add(new Setter(Control.BackgroundProperty, (Brush)Application.Current.Resources["Accent"])); selectedStyle.Triggers.Add(selectedTrigger); list.ItemContainerStyle = selectedStyle;
         Grid.SetRow(list, 3); grid.Children.Add(list);
 
-        var hint = new TextBlock { Text = "La ventana seguirá perteneciendo a su aplicación. Al liberarla volverá al escritorio. Para mejores resultados, usa apps con permisos de administrador iguales a Focus Dock.", FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 12, 0, 12), TextWrapping = TextWrapping.Wrap }; Grid.SetRow(hint, 4); grid.Children.Add(hint);
+        var hint = new TextBlock { Text = "La ventana seguirá perteneciendo a su aplicación. Al liberarla volverá al escritorio. Para mejores resultados, usa apps con permisos de administrador iguales a PomoDock.", FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 12, 0, 12), TextWrapping = TextWrapping.Wrap }; Grid.SetRow(hint, 4); grid.Children.Add(hint);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         WindowCandidate? selected = null;
         embed = Button("INCRUSTAR VENTANA", () => { if (list.SelectedItem is WindowCandidate c) { selected = c; window.DialogResult = true; } }); embed.IsDefault = true; embed.Padding = new Thickness(14, 9, 14, 9); buttons.Children.Add(embed);

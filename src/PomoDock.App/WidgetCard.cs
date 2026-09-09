@@ -4,12 +4,12 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
-using FocusDock.Core;
-using FocusDock.App.Native;
+using PomoDock.Core;
+using PomoDock.App.Native;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
-namespace FocusDock.App;
+namespace PomoDock.App;
 
 public sealed class WidgetCard : Border
 {

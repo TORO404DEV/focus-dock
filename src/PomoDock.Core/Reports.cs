@@ -1,4 +1,4 @@
-namespace FocusDock.Core;
+namespace PomoDock.Core;
 
 public static class Reports
 {

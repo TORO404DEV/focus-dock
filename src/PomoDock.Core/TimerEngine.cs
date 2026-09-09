@@ -1,4 +1,4 @@
-namespace FocusDock.Core;
+namespace PomoDock.Core;
 
 /// <summary>Monotonic deltas measure work. Wall clock is only used to place segments in reports.</summary>
 public sealed class TimerEngine

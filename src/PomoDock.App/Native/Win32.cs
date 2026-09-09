@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace FocusDock.App.Native;
+namespace PomoDock.App.Native;
 
 internal static class Win32
 {

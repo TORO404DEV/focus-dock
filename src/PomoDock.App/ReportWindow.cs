@@ -2,10 +2,10 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using FocusDock.Core;
+using PomoDock.Core;
 using Microsoft.Win32;
 
-namespace FocusDock.App;
+namespace PomoDock.App;
 
 public sealed class ReportWindow : Window
 {
@@ -17,7 +17,7 @@ public sealed class ReportWindow : Window
     private List<Session> filtered = [];
     public ReportWindow(MainWindow owner)
     {
-        this.owner = owner; Owner = owner; Title = "FOCUS DOCK / Report"; Width = 790; Height = 850; MinWidth = 470; MinHeight = 500; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
+        this.owner = owner; Owner = owner; Title = "POMODOCK / Report"; Width = 790; Height = 850; MinWidth = 470; MinHeight = 500; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
         var shell = new DockPanel { Margin = new Thickness(24) }; Content = shell;
         var top = new StackPanel(); DockPanel.SetDock(top, Dock.Top); shell.Children.Add(top);
         top.Children.Add(Dialogs.Heading("LO QUE MIDES,\nLO PUEDES MEJORAR."));
@@ -120,17 +120,17 @@ public sealed class ReportWindow : Window
     }
     private void ExportCsv()
     {
-        var dialog = new SaveFileDialog { Filter = "CSV|*.csv", FileName = "focus-dock-report.csv" };
+        var dialog = new SaveFileDialog { Filter = "CSV|*.csv", FileName = "pomo-dock-report.csv" };
         if (dialog.ShowDialog(this) == true) { Store.ExportCsv(dialog.FileName, filtered); owner.Status("CSV EXPORTADO · Incluye la duración completa de las sesiones seleccionadas."); }
     }
     private void ExportJson()
     {
-        var dialog = new SaveFileDialog { Filter = "JSON|*.json", FileName = "focus-dock-backup.json" };
+        var dialog = new SaveFileDialog { Filter = "JSON|*.json", FileName = "pomo-dock-backup.json" };
         if (dialog.ShowDialog(this) == true) { owner.SaveState(); owner.Store.ExportJson(dialog.FileName); owner.Status("BACKUP EXPORTADO · Historial y configuración."); }
     }
     private void Import()
     {
-        var dialog = new OpenFileDialog { Filter = "Focus Dock JSON|*.json" };
+        var dialog = new OpenFileDialog { Filter = "PomoDock JSON|*.json" };
         if (dialog.ShowDialog(this) == true)
         {
             try { int count = owner.Store.ImportJson(dialog.FileName); owner.Status($"IMPORTADAS {count} SESIONES · Se conservaron las existentes."); Refresh(); }

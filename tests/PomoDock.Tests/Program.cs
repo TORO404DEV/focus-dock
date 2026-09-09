@@ -1,4 +1,4 @@
-using FocusDock.Core;
+using PomoDock.Core;
 
 int passed = 0;
 void Test(string name, Action action) { action(); passed++; Console.WriteLine("PASS " + name); }
@@ -52,7 +52,7 @@ Test("timezone boundaries use the user's calendar", () => {
 Test("streak tolerates a not-yet-started today", () => {
  var today = new DateOnly(2026, 9, 9); Equal(2, Reports.Streak(new() { [today.AddDays(-1)] = 10, [today.AddDays(-2)] = 2 }, today));
 });
-var directory = Path.Combine(Path.GetTempPath(), "FocusDock-tests-" + Guid.NewGuid());
+var directory = Path.Combine(Path.GetTempPath(), "PomoDock-tests-" + Guid.NewGuid());
 Directory.CreateDirectory(directory);
 try
 {

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Focus Dock">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="PomoDock">
   <rect width="256" height="256" fill="#F15B4E"/>
   <rect x="14" y="14" width="228" height="228" fill="#F1F0E9" stroke="#171916" stroke-width="12"/>
   <circle cx="128" cy="128" r="74" fill="#171916"/>

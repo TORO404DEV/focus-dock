@@ -1,13 +1,13 @@
 using System.Windows;
 using System.Windows.Controls;
 
-namespace FocusDock.App;
+namespace PomoDock.App;
 
 public sealed class SettingsWindow : Window
 {
     public SettingsWindow(MainWindow owner)
     {
-        Owner = owner; Title = "FOCUS DOCK / Ajustes"; Width = 500; Height = 710; MinWidth = 400; MinHeight = 400; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
+        Owner = owner; Title = "POMODOCK / Ajustes"; Width = 500; Height = 710; MinWidth = 400; MinHeight = 400; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
         var stack = new StackPanel { Margin = new Thickness(24) }; Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         stack.Children.Add(Dialogs.Heading("A TU RITMO."));
         var numbers = new List<(TextBox Box, Action<int> Set, int Max)>();
@@ -54,7 +54,7 @@ public sealed class LayoutsWindow : Window
 {
     public LayoutsWindow(MainWindow owner)
     {
-        Owner = owner; Title = "FOCUS DOCK / Distribuciones"; Width = 500; Height = 460; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
+        Owner = owner; Title = "POMODOCK / Distribuciones"; Width = 500; Height = 460; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
         var stack = new StackPanel { Margin = new Thickness(22) }; Content = stack; stack.Children.Add(Dialogs.Heading("GUARDA TU ESPACIO."));
         stack.Children.Add(new TextBlock { Text = "Guarda widgets y proporciones. Al cargar otra distribución se liberan las ventanas actuales; podrás reconectarlas." });
         var input = new TextBox { Text = "Mi escritorio" }; stack.Children.Add(input);
@@ -63,7 +63,7 @@ public sealed class LayoutsWindow : Window
         {
             if (string.IsNullOrWhiteSpace(input.Text)) return;
             owner.SaveState();
-            owner.Settings.Layouts[input.Text.Trim()] = System.Text.Json.JsonSerializer.Deserialize<List<FocusDock.Core.WidgetConfig>>(System.Text.Json.JsonSerializer.Serialize(owner.Settings.Widgets))!;
+            owner.Settings.Layouts[input.Text.Trim()] = System.Text.Json.JsonSerializer.Deserialize<List<PomoDock.Core.WidgetConfig>>(System.Text.Json.JsonSerializer.Serialize(owner.Settings.Widgets))!;
             owner.SaveState(); list.ItemsSource = owner.Settings.Layouts.Keys.ToList();
         }));
         stack.Children.Add(list);

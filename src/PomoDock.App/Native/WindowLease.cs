@@ -8,7 +8,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 
-namespace FocusDock.App.Native;
+namespace PomoDock.App.Native;
 
 public record WindowCandidate(nint Handle, string Title, string ProcessName, uint ProcessId)
 {
@@ -30,7 +30,7 @@ public sealed class WindowSnapshot
     public int Width { get; set; }
     public int Height { get; set; }
     public int ShowCmd { get; set; }
-    public string Marker { get; set; } = "FocusDock." + Guid.NewGuid().ToString("N");
+    public string Marker { get; set; } = "PomoDock." + Guid.NewGuid().ToString("N");
 }
 
 public sealed class WindowLease : IDisposable
@@ -197,7 +197,7 @@ public sealed class ExternalWindowHost : HwndHost
     {
         disposed = false;
         var previousHosting = Win32.TrySetThreadDpiHostingBehavior(1);
-        container = Win32.CreateWindowEx(0, "static", "FocusDockHost", unchecked((int)(Win32.WS_CHILD | Win32.WS_VISIBLE)), 0, 0, 10, 10, parent.Handle, 0, 0, 0);
+        container = Win32.CreateWindowEx(0, "static", "PomoDockHost", unchecked((int)(Win32.WS_CHILD | Win32.WS_VISIBLE)), 0, 0, 10, 10, parent.Handle, 0, 0, 0);
         Win32.TryRestoreThreadDpiHostingBehavior(previousHosting);
         if (container == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
         return new(this, container);

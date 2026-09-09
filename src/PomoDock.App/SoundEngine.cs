@@ -1,9 +1,9 @@
 using System.Media;
 using System.IO;
 using System.Windows.Threading;
-using FocusDock.Core;
+using PomoDock.Core;
 
-namespace FocusDock.App;
+namespace PomoDock.App;
 
 /// <summary>Small generated PCM sounds keep the app self-contained and avoid shipping audio assets.</summary>
 public sealed class SoundEngine : IDisposable

@@ -1,18 +1,18 @@
-<Window x:Class="FocusDock.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
- Title="FOCUS DOCK" Width="620" Height="940" MinWidth="460" MinHeight="700" WindowStyle="None" ResizeMode="CanResize" Background="{DynamicResource Paper}">
+<Window x:Class="PomoDock.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+ Title="POMODOCK" Width="620" Height="940" MinWidth="460" MinHeight="700" WindowStyle="None" ResizeMode="CanResize" Background="{DynamicResource Paper}">
  <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/></shell:WindowChrome.WindowChrome>
  <Border BorderBrush="{DynamicResource Line}" BorderThickness="2">
   <Grid x:Name="Root">
    <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions>
    <Grid x:Name="TitleBar" Background="{DynamicResource Ink}" MouseLeftButtonDown="DragTitle">
-    <TextBlock Text="FOCUS DOCK     /     DESKTOP EDITION" Foreground="{DynamicResource Paper}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,110,0"/>
+    <TextBlock Text="POMODOCK     /     DESKTOP EDITION" Foreground="{DynamicResource Paper}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,110,0"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
      <Button Content="—" Click="MinimizeClick" ToolTip="Minimizar" Padding="10,2" Margin="0"/><Button Content="□" Click="MaximizeClick" ToolTip="Maximizar" Padding="10,2" Margin="0"/><Button Content="×" Click="CloseClick" ToolTip="Cerrar y liberar ventanas" Padding="10,2" Margin="0"/>
     </StackPanel>
    </Grid>
    <Grid Grid.Row="1" Margin="20,18,14,12">
     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-    <StackPanel VerticalAlignment="Center"><TextBlock Text="FOCUS / DOCK" FontSize="23" FontWeight="Black"/><TextBlock Text="HAZ ESPACIO PARA LO QUE IMPORTA." FontSize="9" Foreground="{DynamicResource Muted}" Margin="0,3,0,0"/></StackPanel>
+    <StackPanel VerticalAlignment="Center"><TextBlock Text="POMO / DOCK" FontSize="23" FontWeight="Black"/><TextBlock Text="HAZ ESPACIO PARA LO QUE IMPORTA." FontSize="9" Foreground="{DynamicResource Muted}" Margin="0,3,0,0"/></StackPanel>
     <WrapPanel Grid.Column="1" VerticalAlignment="Center"><Button Content="REPORT ↗" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="#171916"/><Button Content="☷" Click="TasksClick" ToolTip="Tareas y proyectos"/><Button Content="⚙" Click="SettingsClick" ToolTip="Ajustes"/><Button Content="⛶" Click="FullscreenClick" ToolTip="Pantalla completa · F11"/></WrapPanel>
    </Grid>
    <Border x:Name="TimerFrame" Grid.Row="2" Margin="20,0,20,14" BorderThickness="2" BorderBrush="{DynamicResource Line}" Background="{DynamicResource Surface}">
