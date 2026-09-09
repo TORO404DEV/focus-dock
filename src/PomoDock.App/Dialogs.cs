@@ -18,7 +18,7 @@ internal static class Dialogs
         var window = new Window
         {
             Owner = owner, Title = "POMODOCK / " + title, Width = width, Height = height, MinWidth = 360, MinHeight = 240,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false, WindowStyle = WindowStyle.None,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false, Topmost = true, WindowStyle = WindowStyle.None,
             AllowsTransparency = true, Background = Brushes.Transparent, ResizeMode = ResizeMode.CanResizeWithGrip
         };
         // Embedded applications and widget cards can have their own native
@@ -34,7 +34,10 @@ internal static class Dialogs
     {
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == 0) return;
-        Win32.SetWindowPos(handle, Win32.HWND_TOP, 0, 0, 0, 0,
+        // Widget cards use independent WPF/Win32 surfaces. TOP is not enough
+        // when one of those popups was created later, so modals temporarily
+        // use the topmost band while they are open.
+        Win32.SetWindowPos(handle, Win32.HWND_TOPMOST, 0, 0, 0, 0,
             Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
     }
     public static void Modalize(Window window)
