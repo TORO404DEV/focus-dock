@@ -17,6 +17,7 @@ public sealed class WidgetCard : Border
     private readonly MainWindow owner;
     private readonly Grid body = new();
     private readonly Grid shell = new();
+    private readonly Grid moveSurface = new();
     private readonly TextBlock title;
     private ExternalWindowHost? host;
     private WebView2? web;
@@ -45,13 +46,24 @@ public sealed class WidgetCard : Border
         }
         DockPanel.SetDock(actions, Dock.Right); header.Children.Add(actions);
         title = new TextBlock { Text = $"{KindLabel()} / {config.Title}", FontWeight = FontWeights.Bold, FontSize = 10, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
-        var titleArea = new Grid();
-        var move = CreateHandle("Mover widget", Cursors.SizeAll);
-        move.DragStarted += (_, _) => BeginResize("MOVE");
-        move.DragDelta += (_, _) => UpdateGesture();
-        move.DragCompleted += (_, _) => EndResize();
+        var titleArea = moveSurface;
+        titleArea.Background = Brushes.Transparent; titleArea.Cursor = Cursors.SizeAll;
+        titleArea.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            BeginResize("MOVE");
+            if (titleArea.CaptureMouse()) e.Handled = true;
+        };
+        titleArea.PreviewMouseMove += (_, e) =>
+        {
+            if (resizing && resizeEdge == "MOVE" && titleArea.IsMouseCaptured && e.LeftButton == MouseButtonState.Pressed) UpdateGesture();
+        };
+        titleArea.PreviewMouseLeftButtonUp += (_, e) =>
+        {
+            if (!resizing || resizeEdge != "MOVE") return;
+            titleArea.ReleaseMouseCapture(); EndResize(); e.Handled = true;
+        };
         title.IsHitTestVisible = false;
-        titleArea.Children.Add(move); titleArea.Children.Add(title);
+        titleArea.Children.Add(title);
         header.Children.Add(titleArea); shell.Children.Add(header);
         owner.Deactivated += CancelGesture;
         PreviewMouseDown += (_, e) => { if (!IsGestureSource(e.OriginalSource)) owner.BringCardToFront(this); };
@@ -98,6 +110,7 @@ public sealed class WidgetCard : Border
     }
     private void CancelGesture(object? sender, EventArgs e)
     {
+        if (moveSurface.IsMouseCaptured) moveSurface.ReleaseMouseCapture();
         foreach (var handle in gestureHandles) if (handle.IsDragging) handle.CancelDrag();
     }
     private void AddResizeHandle(Grid grid, string edge, int row, int column, Cursor cursor)
