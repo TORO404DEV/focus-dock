@@ -36,6 +36,7 @@ public sealed class WindowLease : IDisposable
     public nint Handle => (nint)Snapshot.Handle;
     private bool disposed;
     private static readonly List<WindowSnapshot> leased = [];
+    private static readonly object journalLock = new();
     public static List<WindowCandidate> Candidates()
     {
         var windows = new List<WindowCandidate>();
@@ -64,8 +65,12 @@ public sealed class WindowLease : IDisposable
             Style = Win32.GetWindowLongPtr(window, Win32.GWL_STYLE).ToInt64(), ExStyle = Win32.GetWindowLongPtr(window, Win32.GWL_EXSTYLE).ToInt64(),
             Owner = Win32.GetWindow(window, 4).ToInt64(), Left = rect.Left, Top = rect.Top, Width = rect.Right - rect.Left, Height = rect.Bottom - rect.Top, ShowCmd = placement.ShowCmd };
         if (!Win32.SetProp(window, Snapshot.Marker, 1)) throw new Win32Exception(Marshal.GetLastWin32Error(), "No se pudo acceder a esta ventana. Ejecuta ambas apps con los mismos permisos.");
-        leased.Add(Snapshot);
-        Persist(); // Store restoration information BEFORE changing the foreign window.
+        lock (journalLock)
+        {
+            leased.Add(Snapshot);
+            try { Persist(); } // Store restoration information BEFORE changing the foreign window.
+            catch { leased.Remove(Snapshot); Win32.RemoveProp(window, Snapshot.Marker); throw; }
+        }
         var previousHosting = -1;
         nint previousDpi = 0;
         try
@@ -78,12 +83,16 @@ public sealed class WindowLease : IDisposable
             Win32.SetWindowLongPtr(window, Win32.GWL_STYLE, (nint)style);
             int error = Marshal.GetLastPInvokeError(); if (error != 0) throw new Win32Exception(error);
             var exStyle = (Snapshot.ExStyle | Win32.WS_EX_TOOLWINDOW) & ~Win32.WS_EX_APPWINDOW;
+            Marshal.SetLastPInvokeError(0);
             Win32.SetWindowLongPtr(window, Win32.GWL_EXSTYLE, (nint)exStyle);
+            error = Marshal.GetLastPInvokeError(); if (error != 0) throw new Win32Exception(error, "No se pudo preparar la ventana seleccionada.");
             Marshal.SetLastPInvokeError(0);
             Win32.SetParent(window, container);
             error = Marshal.GetLastPInvokeError();
             if (error != 0 || Win32.GetParent(window) != container) throw new Win32Exception(error, "La aplicación no permite incrustar esta ventana.");
+            Marshal.SetLastPInvokeError(0);
             Win32.SetWindowPos(window, 0, 0, 0, 300, 300, Win32.SWP_FRAMECHANGED | Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
+            error = Marshal.GetLastPInvokeError(); if (error != 0) throw new Win32Exception(error, "No se pudo ajustar el tamaño de la ventana.");
         }
         catch { Dispose(); throw; }
         finally { Win32.TryRestoreThreadDpiAwarenessContext(previousDpi); Win32.TryRestoreThreadDpiHostingBehavior(previousHosting); }
@@ -126,7 +135,8 @@ public sealed class WindowLease : IDisposable
     {
         if (disposed) return;
         if (!Restore(Snapshot)) throw new InvalidOperationException("No se pudo liberar la ventana. La app permanecerá abierta para que puedas recuperarla.");
-        disposed = true; leased.Remove(Snapshot); Persist();
+        disposed = true;
+        lock (journalLock) { leased.Remove(Snapshot); Persist(); }
     }
     public static void Recover(string path)
     {
@@ -147,10 +157,17 @@ public sealed class ExternalWindowHost : HwndHost
     private nint container;
     private WindowLease? lease;
     private bool disposed;
+    public bool IsConnecting { get; private set; }
     public double CropTop { get; set; }
     public double CropBottom { get; set; }
     public nint ForeignHandle => lease?.Handle ?? 0;
     public bool Alive => lease?.IsAlive ?? false;
+    public void BringToFront()
+    {
+        if (lease is null || !lease.IsAlive) return;
+        Win32.SetWindowPos(lease.Handle, Win32.HWND_TOP, 0, 0, 0, 0,
+            Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
+    }
     protected override HandleRef BuildWindowCore(HandleRef parent)
     {
         disposed = false;
@@ -168,10 +185,27 @@ public sealed class ExternalWindowHost : HwndHost
     public async Task AttachAsync(nint hwnd, string journal)
     {
         if (container == 0) throw new InvalidOperationException("Espera a que el panel esté visible.");
-        var next = await Task.Run(() => new WindowLease(hwnd, container, journal));
-        if (disposed) { next.Dispose(); return; }
-        lease = next;
-        await Dispatcher.InvokeAsync(Resize);
+        if (IsConnecting || lease is not null) throw new InvalidOperationException("Este panel ya tiene una conexión en curso.");
+        var targetContainer = container;
+        IsConnecting = true;
+        try
+        {
+            var next = await Task.Run(() =>
+            {
+                Exception? last = null;
+                for (var attempt = 0; attempt < 3; attempt++)
+                {
+                    try { return new WindowLease(hwnd, targetContainer, journal); }
+                    catch (Win32Exception ex) when (attempt < 2 && ex.NativeErrorCode is 5 or 1400)
+                    { last = ex; Thread.Sleep(80); }
+                }
+                throw last ?? new InvalidOperationException("No se pudo preparar la ventana.");
+            });
+            if (disposed) { await Task.Run(next.Dispose); return; }
+            lease = next;
+            Resize();
+        }
+        finally { IsConnecting = false; }
     }
     public void Detach() { lease?.Dispose(); lease = null; }
     public void Resize()
@@ -180,7 +214,7 @@ public sealed class ExternalWindowHost : HwndHost
         Win32.GetClientRect(container, out var rect);
         var scale = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleY;
         int top = (int)(CropTop * scale), bottom = (int)(CropBottom * scale);
-        Win32.SetWindowPos(lease.Handle, 0, 0, -top, Math.Max(1, rect.Right), Math.Max(1, rect.Bottom + top + bottom), Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE);
+        Win32.SetWindowPos(lease.Handle, 0, 0, -top, Math.Max(1, rect.Right), Math.Max(1, rect.Bottom + top + bottom), Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE | 0x4000); // SWP_ASYNCWINDOWPOS: never wait for the foreign UI on resize.
     }
     protected override void OnWindowPositionChanged(Rect rect) { base.OnWindowPositionChanged(rect); Resize(); }
     protected override void DestroyWindowCore(HandleRef hwnd) { disposed = true; Detach(); Win32.DestroyWindow(hwnd.Handle); }

@@ -21,7 +21,8 @@ public sealed class WidgetCard : Border
     private ExternalWindowHost? host;
     private WebView2? web;
     private bool released;
-    private bool dragging, resizing;
+    private bool resizing;
+    private readonly List<Thumb> gestureHandles = [];
     private string resizeEdge = "";
     private Point pointerStart;
     private double elementStartX, elementStartY, elementStartWidth, elementStartHeight;
@@ -31,7 +32,7 @@ public sealed class WidgetCard : Border
         this.owner = owner; Config = config;
         BorderThickness = new Thickness(1.5); SetResourceReference(BorderBrushProperty, "Line"); SetResourceReference(BackgroundProperty, "Surface");
         shell.RowDefinitions.Add(new() { Height = new GridLength(38) }); shell.RowDefinitions.Add(new()); Child = shell;
-        body.Margin = new Thickness(5, 0, 5, 5);
+        body.Margin = new Thickness(8, 0, 8, 8);
         var header = new DockPanel { LastChildFill = true, Margin = new Thickness(9, 0, 2, 0), Cursor = Cursors.SizeAll };
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         foreach (var (label, tip, action) in new (string, string, Action)[] {
@@ -44,7 +45,17 @@ public sealed class WidgetCard : Border
         }
         DockPanel.SetDock(actions, Dock.Right); header.Children.Add(actions);
         title = new TextBlock { Text = $"{KindLabel()} / {config.Title}", FontWeight = FontWeights.Bold, FontSize = 10, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
-        header.Children.Add(title); header.MouseLeftButtonDown += HeaderDown; header.MouseMove += HeaderMove; header.MouseLeftButtonUp += HeaderUp; shell.Children.Add(header);
+        var titleArea = new Grid();
+        var move = CreateHandle("Mover widget", Cursors.SizeAll);
+        move.DragStarted += (_, _) => BeginResize("MOVE");
+        move.DragDelta += (_, _) => UpdateGesture();
+        move.DragCompleted += (_, _) => EndResize();
+        title.IsHitTestVisible = false;
+        titleArea.Children.Add(move); titleArea.Children.Add(title);
+        header.Children.Add(titleArea); shell.Children.Add(header);
+        owner.Deactivated += CancelGesture;
+        PreviewMouseDown += (_, e) => { if (!IsGestureSource(e.OriginalSource)) owner.BringCardToFront(this); };
+        Unloaded += (_, _) => CancelGesture(this, EventArgs.Empty);
         Grid.SetRow(body, 1); shell.Children.Add(body);
         var handles = new Grid(); Panel.SetZIndex(handles, 30);
         handles.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) }); handles.RowDefinitions.Add(new RowDefinition()); handles.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
@@ -64,50 +75,76 @@ public sealed class WidgetCard : Border
         }
         else Refresh();
     }
-    private void HeaderDown(object sender, MouseButtonEventArgs e)
+    internal bool IsExternalAttached => host?.Alive == true;
+    internal void BringExternalToFront() => host?.BringToFront();
+    private static bool IsGestureSource(object source)
     {
-        if (e.OriginalSource is Button) return;
-        dragging = true; pointerStart = e.GetPosition(owner.WidgetCanvas); elementStartX = Canvas.GetLeft(this); elementStartY = Canvas.GetTop(this); CaptureMouse(); e.Handled = true;
+        for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
+            if (current is Thumb) return true;
+        return false;
     }
-    private void HeaderMove(object sender, MouseEventArgs e)
+    private Thumb CreateHandle(string label, Cursor cursor)
     {
-        if (!dragging || e.LeftButton != MouseButtonState.Pressed) return;
-        var now = e.GetPosition(owner.WidgetCanvas);
-        var x = elementStartX + now.X - pointerStart.X; var y = elementStartY + now.Y - pointerStart.Y;
-        Canvas.SetLeft(this, Math.Clamp(x, 0, Math.Max(0, owner.WidgetCanvas.ActualWidth - ActualWidth)));
-        Canvas.SetTop(this, Math.Clamp(y, 0, Math.Max(0, owner.WidgetCanvas.ActualHeight - ActualHeight)));
-        owner.PersistWidget(this, false);
+        // Thumb owns the capture and releases it on mouse-up or cancellation.
+        // Capturing the card while listening on its header stranded the mouse.
+        var visual = new FrameworkElementFactory(typeof(Border));
+        visual.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+        var thumb = new Thumb { Cursor = cursor, ToolTip = label,
+            Template = new ControlTemplate(typeof(Thumb)) { VisualTree = visual } };
+        System.Windows.Automation.AutomationProperties.SetName(thumb, label);
+        gestureHandles.Add(thumb);
+        thumb.PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { thumb.CancelDrag(); e.Handled = true; } };
+        return thumb;
     }
-    private void HeaderUp(object sender, MouseButtonEventArgs e)
+    private void CancelGesture(object? sender, EventArgs e)
     {
-        if (!dragging) return; dragging = false; ReleaseMouseCapture(); owner.PersistWidget(this); e.Handled = true;
+        foreach (var handle in gestureHandles) if (handle.IsDragging) handle.CancelDrag();
     }
     private void AddResizeHandle(Grid grid, string edge, int row, int column, Cursor cursor)
     {
-        var thumb = new Thumb { Background = Brushes.Transparent, Cursor = cursor, ToolTip = "Redimensionar widget" };
+        var thumb = CreateHandle("Redimensionar " + edge, cursor);
         thumb.DragStarted += (_, _) => BeginResize(edge);
-        thumb.DragDelta += (_, e) => Resize(edge, e.HorizontalChange, e.VerticalChange);
+        thumb.DragDelta += (_, _) => UpdateGesture();
         thumb.DragCompleted += (_, _) => EndResize();
         Grid.SetRow(thumb, row); Grid.SetColumn(thumb, column); grid.Children.Add(thumb);
     }
     private void BeginResize(string edge)
     {
         resizing = true; resizeEdge = edge; elementStartX = Canvas.GetLeft(this); elementStartY = Canvas.GetTop(this); elementStartWidth = ActualWidth; elementStartHeight = ActualHeight;
+        pointerStart = Mouse.GetPosition(owner.WidgetCanvas);
+        owner.BringCardToFront(this);
     }
-    private void Resize(string edge, double dx, double dy)
+    private void UpdateGesture()
     {
-        if (!resizing || edge != resizeEdge) return;
+        if (!resizing) return;
+        var pointer = Mouse.GetPosition(owner.WidgetCanvas);
+        double dx = pointer.X - pointerStart.X, dy = pointer.Y - pointerStart.Y;
+        var edge = resizeEdge;
         double x = elementStartX, y = elementStartY, width = elementStartWidth, height = elementStartHeight;
         const double minWidth = 220, minHeight = 90;
+        var maxX = owner.WidgetCanvas.ActualWidth; var maxY = owner.WidgetCanvas.ActualHeight;
+        if (edge == "MOVE")
+        {
+            x = Math.Clamp(x + dx, 0, Math.Max(0, maxX - width));
+            y = Math.Clamp(y + dy, 0, Math.Max(0, maxY - height));
+        }
+        else
+        {
+        dx = Math.Clamp(dx, -elementStartX, Math.Max(0, maxX - elementStartX));
+        dy = Math.Clamp(dy, -elementStartY, Math.Max(0, maxY - elementStartY));
         if (edge.Contains('W')) { width = Math.Max(minWidth, elementStartWidth - dx); x = elementStartX + elementStartWidth - width; }
         if (edge.Contains('E')) width = Math.Max(minWidth, elementStartWidth + dx);
         if (edge.Contains('N')) { height = Math.Max(minHeight, elementStartHeight - dy); y = elementStartY + elementStartHeight - height; }
         if (edge.Contains('S')) height = Math.Max(minHeight, elementStartHeight + dy);
+        width = Math.Min(width, Math.Max(minWidth, maxX - x));
+        height = Math.Min(height, Math.Max(minHeight, maxY - y));
+        }
         x = Math.Max(0, x); y = Math.Max(0, y);
         Width = width; Height = height; Canvas.SetLeft(this, x); Canvas.SetTop(this, y); Config.X = x; Config.Y = y; Config.Width = width; Config.Height = height;
     }
     private void EndResize()
     {
+        if (!resizing) return;
         resizing = false; resizeEdge = ""; owner.PersistWidget(this);
     }
     private string KindLabel() => Config.Kind == "window" ? "APP" : Config.Kind == "web" ? "WEB" : Config.Kind == "stats" ? "STATS" : "TXT";
@@ -122,17 +159,22 @@ public sealed class WidgetCard : Border
     }
     public async Task Attach(nint hwnd)
     {
+        if (released || host?.IsConnecting == true) return;
+        ExternalWindowHost? connectingHost = null;
         try
         {
             if (host is not null) { host.Detach(); host.Dispose(); }
             body.Children.Clear();
-            host = new ExternalWindowHost(); body.Children.Add(host); body.UpdateLayout();
+            host = connectingHost = new ExternalWindowHost(); body.Children.Add(host); body.UpdateLayout();
             owner.Status("CONECTANDO VENTANA · La interfaz sigue disponible mientras se prepara.");
             await host.AttachAsync(hwnd, owner.Journal);
+            if (released || host != connectingHost) return;
+            owner.BringCardToFront(this);
             owner.Status("VENTANA CONECTADA · Usa la cabecera para moverla y cualquiera de sus bordes para cambiar su tamaño.");
         }
         catch (Exception ex)
         {
+            if (released || host != connectingHost) return;
             host?.Dispose(); host = null; body.Children.Clear(); BuildWindow();
             owner.Status("No se pudo conectar: " + ex.Message);
             Dialogs.Alert(owner, "NO SE PUDO INCRUSTAR", ex.Message);
@@ -211,7 +253,7 @@ public sealed class WidgetCard : Border
     }
     public void Refresh()
     {
-        if (host is not null && !host.Alive) { host.Dispose(); host = null; body.Children.Clear(); BuildWindow(); owner.Status("La ventana externa se cerró. Puedes conectar otra."); }
+        if (host is not null && !host.IsConnecting && !host.Alive) { host.Dispose(); host = null; body.Children.Clear(); BuildWindow(); owner.Status("La ventana externa se cerró. Puedes conectar otra."); }
         if (Config.Kind != "stats") return;
         var sessions = owner.Store.Sessions(); var daily = Reports.Daily(sessions, TimeZoneInfo.Local);
         var today = DateOnly.FromDateTime(DateTime.Now);
@@ -237,6 +279,7 @@ public sealed class WidgetCard : Border
     }
     public void Release()
     {
+        CancelGesture(this, EventArgs.Empty); owner.Deactivated -= CancelGesture;
         host?.Detach(); host?.Dispose(); host = null;
         web?.Dispose(); web = null; released = true;
     }

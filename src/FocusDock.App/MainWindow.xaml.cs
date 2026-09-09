@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
     public SoundEngine Sounds { get; }
     private readonly DispatcherTimer ticker = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly List<WidgetCard> cards = [];
+    private readonly Dictionary<WidgetCard, Popup> overlayCards = [];
     private WorkTask? selectedTask;
     private int ticks;
     private bool fullscreen, exiting;
@@ -48,6 +50,9 @@ public partial class MainWindow : Window
         Topmost = Settings.AlwaysOnTop;
         foregroundCallback = (_, _, _, _, _, _, _) => Dispatcher.BeginInvoke(UpdateHotkey);
         Loaded += OnLoaded;
+        LocationChanged += (_, _) => UpdateOverlayPositions();
+        SizeChanged += (_, _) => UpdateOverlayPositions();
+        StateChanged += (_, _) => UpdateOverlayPositions();
         PreviewKeyDown += OnKey;
         Closing += OnClosing;
         Timer.GapDetected += () => Status("PAUSADO · Se detectó suspensión o una interrupción del reloj.");
@@ -230,7 +235,11 @@ public partial class MainWindow : Window
         var card = new WidgetCard(this, config); cards.Add(card); WidgetArea.Children.Add(card);
         ArrangeCards(); if (save) SaveState(); return card;
     }
-    public void RemoveCard(WidgetCard card) { card.Release(); WidgetArea.Children.Remove(card); cards.Remove(card); ArrangeCards(); SaveState(); }
+    public void RemoveCard(WidgetCard card)
+    {
+        HideOverlay(card);
+        card.Release(); WidgetArea.Children.Remove(card); cards.Remove(card); ArrangeCards(); SaveState();
+    }
     public void MoveCard(WidgetCard card, int direction)
     {
         var index = cards.IndexOf(card); var next = index + direction;
@@ -248,12 +257,63 @@ public partial class MainWindow : Window
             Canvas.SetLeft(card, Math.Clamp(card.Config.X, 0, Math.Max(0, WidgetArea.ActualWidth - card.Width)));
             Canvas.SetTop(card, Math.Clamp(card.Config.Y, 0, Math.Max(0, WidgetArea.ActualHeight - card.Height)));
         }
+        UpdateOverlayPositions();
     }
     private void WidgetAreaSizeChanged(object sender, SizeChangedEventArgs e) => ArrangeCards();
     public void PersistWidget(WidgetCard card, bool save = true)
     {
-        card.Config.X = Canvas.GetLeft(card); card.Config.Y = Canvas.GetTop(card); card.Config.Width = card.ActualWidth; card.Config.Height = card.ActualHeight;
+        card.Config.X = Canvas.GetLeft(card); card.Config.Y = Canvas.GetTop(card); card.Config.Width = card.Width;
+        if (!card.Config.Collapsed) card.Config.Height = card.Height;
         if (save) SaveState();
+    }
+    internal void BringCardToFront(WidgetCard card)
+    {
+        foreach (var other in cards) Panel.SetZIndex(other, 0);
+        Panel.SetZIndex(card, 1);
+        if (cards.Any(c => c.IsExternalAttached))
+        {
+            if (card.IsExternalAttached)
+            {
+                foreach (var other in cards.Where(c => c != card)) HideOverlay(other);
+                card.BringExternalToFront();
+            }
+            else ShowOverlay(card);
+        }
+    }
+    private void ShowOverlay(WidgetCard card)
+    {
+        if (overlayCards.TryGetValue(card, out var existing))
+        {
+            existing.IsOpen = false; existing.IsOpen = true; UpdateOverlayPosition(card); return;
+        }
+        if (card.Parent == WidgetArea) WidgetArea.Children.Remove(card);
+        var popup = new Popup
+        {
+            Child = card, AllowsTransparency = true, StaysOpen = true, Placement = PlacementMode.Absolute,
+            PopupAnimation = PopupAnimation.None, Focusable = false, IsOpen = true
+        };
+        overlayCards[card] = popup;
+        UpdateOverlayPosition(card);
+    }
+    private void HideOverlay(WidgetCard card)
+    {
+        if (!overlayCards.Remove(card, out var popup)) return;
+        popup.IsOpen = false; popup.Child = null;
+        if (!WidgetArea.Children.Contains(card)) WidgetArea.Children.Add(card);
+        Panel.SetZIndex(card, 0);
+    }
+    private void UpdateOverlayPositions()
+    {
+        foreach (var card in overlayCards.Keys.ToArray()) UpdateOverlayPosition(card);
+    }
+    private void UpdateOverlayPosition(WidgetCard card)
+    {
+        if (!overlayCards.TryGetValue(card, out var popup) || !popup.IsOpen) return;
+        var screen = WidgetArea.PointToScreen(new Point(Canvas.GetLeft(card), Canvas.GetTop(card)));
+        var dpi = VisualTreeHelper.GetDpi(this);
+        popup.HorizontalOffset = screen.X / dpi.DpiScaleX;
+        popup.VerticalOffset = screen.Y / dpi.DpiScaleY;
+        popup.Width = card.Width; popup.Height = card.Height;
     }
     public void LoadLayout(List<WidgetConfig> widgets)
     {
@@ -303,6 +363,7 @@ public partial class MainWindow : Window
     }
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         try { foreach (var card in cards) card.Release(); }
         catch (Exception ex) { e.Cancel = true; Status(ex.Message); return; }
         Sounds.StopNoise(); Timer.Pause(DateTimeOffset.UtcNow, Monotonic); SaveState();
