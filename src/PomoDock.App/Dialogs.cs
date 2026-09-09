@@ -6,14 +6,37 @@ using System.Windows.Media;
 using System.Windows.Data;
 using System.Windows.Media.Imaging;
 using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using PomoDock.App.Native;
 
 namespace PomoDock.App;
 
 internal static class Dialogs
 {
-    public static Window Window(Window? owner, string title, double width = 500, double height = 420) => new()
-    { Owner = owner, Title = "POMODOCK / " + title, Width = width, Height = height, MinWidth = 360, MinHeight = 240, WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false, WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent, ResizeMode = ResizeMode.CanResizeWithGrip };
+    public static Window Window(Window? owner, string title, double width = 500, double height = 420)
+    {
+        var window = new Window
+        {
+            Owner = owner, Title = "POMODOCK / " + title, Width = width, Height = height, MinWidth = 360, MinHeight = 240,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false, WindowStyle = WindowStyle.None,
+            AllowsTransparency = true, Background = Brushes.Transparent, ResizeMode = ResizeMode.CanResizeWithGrip
+        };
+        // Embedded applications and widget cards can have their own native
+        // HWND surfaces. WPF ownership alone may leave a modal below one of
+        // those surfaces, so lift every PomoDock modal when its HWND exists
+        // and whenever it receives activation.
+        window.SourceInitialized += (_, _) => LiftModal(window);
+        window.ContentRendered += (_, _) => LiftModal(window);
+        window.Activated += (_, _) => LiftModal(window);
+        return window;
+    }
+    private static void LiftModal(Window window)
+    {
+        var handle = new WindowInteropHelper(window).Handle;
+        if (handle == 0) return;
+        Win32.SetWindowPos(handle, Win32.HWND_TOP, 0, 0, 0, 0,
+            Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
+    }
     public static void Modalize(Window window)
     {
         if (window.Content is not FrameworkElement content || content is ModalSurface) return;
