@@ -87,8 +87,10 @@ internal static class Dialogs
     }
     public static WindowCandidate? PickWindow(Window owner)
     {
-        var window = Window(owner, "INCRUSTAR VENTANA", 760, 640);
-        window.MinWidth = 600; window.MinHeight = 500;
+        var availableWidth = owner.ActualWidth > 0 ? owner.ActualWidth - 32 : SystemParameters.WorkArea.Width * 0.82;
+        var availableHeight = owner.ActualHeight > 0 ? owner.ActualHeight - 72 : SystemParameters.WorkArea.Height * 0.82;
+        var window = Window(owner, "INCRUSTAR VENTANA", Math.Clamp(availableWidth, 420, 700), Math.Clamp(availableHeight, 440, 600));
+        window.MinWidth = 420; window.MinHeight = 440;
         TextBox filter = null!; ComboBox category = null!; Button refreshButton = null!; TextBlock summary = null!; ListBox list = null!; Button embed = null!;
         var candidates = new List<WindowCandidate>();
         var grid = new Grid { Margin = new Thickness(24, 20, 24, 20) }; window.Content = grid;
@@ -158,7 +160,7 @@ internal static class Dialogs
         var row = new FrameworkElementFactory(typeof(StackPanel)); row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal); row.SetValue(StackPanel.MinHeightProperty, 52d);
         var icon = new FrameworkElementFactory(typeof(Border)); icon.SetValue(Border.WidthProperty, 36d); icon.SetValue(Border.HeightProperty, 36d); icon.SetValue(Border.BackgroundProperty, (Brush)Application.Current.Resources["Accent"]); icon.SetValue(Border.HorizontalAlignmentProperty, HorizontalAlignment.Left); icon.SetValue(Border.VerticalAlignmentProperty, VerticalAlignment.Center);
         var image = new FrameworkElementFactory(typeof(Image)); image.SetValue(Image.WidthProperty, 26d); image.SetValue(Image.HeightProperty, 26d); image.SetValue(Image.StretchProperty, Stretch.Uniform); image.SetBinding(Image.SourceProperty, new Binding(nameof(WindowCandidate.Icon))); icon.AppendChild(image); row.AppendChild(icon);
-        var text = new FrameworkElementFactory(typeof(StackPanel)); text.SetValue(StackPanel.MarginProperty, new Thickness(10, 0, 0, 0)); text.SetValue(FrameworkElement.WidthProperty, 590d);
+        var text = new FrameworkElementFactory(typeof(StackPanel)); text.SetValue(StackPanel.MarginProperty, new Thickness(10, 0, 0, 0)); text.SetValue(FrameworkElement.WidthProperty, 430d);
         var title = new FrameworkElementFactory(typeof(TextBlock)); title.SetBinding(TextBlock.TextProperty, new Binding(nameof(WindowCandidate.Title))); title.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold); title.SetValue(TextBlock.FontSizeProperty, 13d); title.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis); text.AppendChild(title);
         var process = new FrameworkElementFactory(typeof(TextBlock)); process.SetBinding(TextBlock.TextProperty, new Binding(nameof(WindowCandidate.ProcessLabel))); process.SetValue(TextBlock.FontFamilyProperty, new FontFamily("Consolas")); process.SetValue(TextBlock.FontSizeProperty, 10d); process.SetValue(TextBlock.ForegroundProperty, (Brush)Application.Current.Resources["Muted"]); text.AppendChild(process);
         row.AppendChild(text); card.AppendChild(row); template.VisualTree = card; return template;
