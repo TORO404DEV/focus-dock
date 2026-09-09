@@ -65,6 +65,7 @@ public sealed class Settings
     public bool Dark { get; set; }
     public bool ReduceMotion { get; set; }
     public bool AlwaysOnTop { get; set; }
+    public bool TimerAtBottom { get; set; }
     public double WindowLeft { get; set; } = 120;
     public double WindowTop { get; set; } = 60;
     public double WindowWidth { get; set; } = 620;

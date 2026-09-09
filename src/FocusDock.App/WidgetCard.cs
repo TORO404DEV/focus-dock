@@ -22,6 +22,7 @@ public sealed class WidgetCard : Border
     private WebView2? web;
     private bool released;
     private bool dragging, resizing;
+    private string resizeEdge = "";
     private Point pointerStart;
     private double elementStartX, elementStartY, elementStartWidth, elementStartHeight;
     private static Task<CoreWebView2Environment>? browserEnvironment;
@@ -30,7 +31,8 @@ public sealed class WidgetCard : Border
         this.owner = owner; Config = config;
         BorderThickness = new Thickness(1.5); SetResourceReference(BorderBrushProperty, "Line"); SetResourceReference(BackgroundProperty, "Surface");
         shell.RowDefinitions.Add(new() { Height = new GridLength(38) }); shell.RowDefinitions.Add(new()); Child = shell;
-        var header = new DockPanel { LastChildFill = true, Margin = new Thickness(9, 0, 2, 0) };
+        body.Margin = new Thickness(5, 0, 5, 5);
+        var header = new DockPanel { LastChildFill = true, Margin = new Thickness(9, 0, 2, 0), Cursor = Cursors.SizeAll };
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         foreach (var (label, tip, action) in new (string, string, Action)[] {
             ("⋯", "Opciones del widget", Options),
@@ -44,11 +46,13 @@ public sealed class WidgetCard : Border
         title = new TextBlock { Text = $"{KindLabel()} / {config.Title}", FontWeight = FontWeights.Bold, FontSize = 10, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
         header.Children.Add(title); header.MouseLeftButtonDown += HeaderDown; header.MouseMove += HeaderMove; header.MouseLeftButtonUp += HeaderUp; shell.Children.Add(header);
         Grid.SetRow(body, 1); shell.Children.Add(body);
-        var grip = new Thumb { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Cursor = Cursors.SizeNWSE, Opacity = .65, Background = Brushes.Transparent };
-        grip.DragStarted += (_, _) => { resizing = true; elementStartWidth = ActualWidth; elementStartHeight = ActualHeight; pointerStart = Mouse.GetPosition(owner.WidgetCanvas); CaptureMouse(); };
-        grip.DragDelta += (_, e) => { if (!resizing) return; Width = Math.Max(220, elementStartWidth + e.HorizontalChange); Height = Math.Max(42, elementStartHeight + e.VerticalChange); Config.Width = Width; Config.Height = Height; };
-        grip.DragCompleted += (_, _) => { resizing = false; ReleaseMouseCapture(); owner.PersistWidget(this); };
-        Grid.SetRow(grip, 1); Panel.SetZIndex(grip, 20); shell.Children.Add(grip);
+        var handles = new Grid(); Panel.SetZIndex(handles, 30);
+        handles.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) }); handles.RowDefinitions.Add(new RowDefinition()); handles.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
+        handles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) }); handles.ColumnDefinitions.Add(new ColumnDefinition()); handles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+        AddResizeHandle(handles, "NW", 0, 0, Cursors.SizeNWSE); AddResizeHandle(handles, "N", 0, 1, Cursors.SizeNS); AddResizeHandle(handles, "NE", 0, 2, Cursors.SizeNESW);
+        AddResizeHandle(handles, "W", 1, 0, Cursors.SizeWE); AddResizeHandle(handles, "E", 1, 2, Cursors.SizeWE);
+        AddResizeHandle(handles, "SW", 2, 0, Cursors.SizeNESW); AddResizeHandle(handles, "S", 2, 1, Cursors.SizeNS); AddResizeHandle(handles, "SE", 2, 2, Cursors.SizeNWSE);
+        Grid.SetRowSpan(handles, 2); shell.Children.Add(handles);
         body.Visibility = config.Collapsed ? Visibility.Collapsed : Visibility.Visible;
         if (config.Kind == "window") BuildWindow();
         else if (config.Kind == "web") Loaded += async (_, _) => await BuildWeb();
@@ -68,12 +72,43 @@ public sealed class WidgetCard : Border
     private void HeaderMove(object sender, MouseEventArgs e)
     {
         if (!dragging || e.LeftButton != MouseButtonState.Pressed) return;
-        var now = e.GetPosition(owner.WidgetCanvas); Canvas.SetLeft(this, Math.Max(0, elementStartX + now.X - pointerStart.X)); Canvas.SetTop(this, Math.Max(0, elementStartY + now.Y - pointerStart.Y));
+        var now = e.GetPosition(owner.WidgetCanvas);
+        var x = elementStartX + now.X - pointerStart.X; var y = elementStartY + now.Y - pointerStart.Y;
+        Canvas.SetLeft(this, Math.Clamp(x, 0, Math.Max(0, owner.WidgetCanvas.ActualWidth - ActualWidth)));
+        Canvas.SetTop(this, Math.Clamp(y, 0, Math.Max(0, owner.WidgetCanvas.ActualHeight - ActualHeight)));
         owner.PersistWidget(this, false);
     }
     private void HeaderUp(object sender, MouseButtonEventArgs e)
     {
         if (!dragging) return; dragging = false; ReleaseMouseCapture(); owner.PersistWidget(this); e.Handled = true;
+    }
+    private void AddResizeHandle(Grid grid, string edge, int row, int column, Cursor cursor)
+    {
+        var thumb = new Thumb { Background = Brushes.Transparent, Cursor = cursor, ToolTip = "Redimensionar widget" };
+        thumb.DragStarted += (_, _) => BeginResize(edge);
+        thumb.DragDelta += (_, e) => Resize(edge, e.HorizontalChange, e.VerticalChange);
+        thumb.DragCompleted += (_, _) => EndResize();
+        Grid.SetRow(thumb, row); Grid.SetColumn(thumb, column); grid.Children.Add(thumb);
+    }
+    private void BeginResize(string edge)
+    {
+        resizing = true; resizeEdge = edge; elementStartX = Canvas.GetLeft(this); elementStartY = Canvas.GetTop(this); elementStartWidth = ActualWidth; elementStartHeight = ActualHeight;
+    }
+    private void Resize(string edge, double dx, double dy)
+    {
+        if (!resizing || edge != resizeEdge) return;
+        double x = elementStartX, y = elementStartY, width = elementStartWidth, height = elementStartHeight;
+        const double minWidth = 220, minHeight = 90;
+        if (edge.Contains('W')) { width = Math.Max(minWidth, elementStartWidth - dx); x = elementStartX + elementStartWidth - width; }
+        if (edge.Contains('E')) width = Math.Max(minWidth, elementStartWidth + dx);
+        if (edge.Contains('N')) { height = Math.Max(minHeight, elementStartHeight - dy); y = elementStartY + elementStartHeight - height; }
+        if (edge.Contains('S')) height = Math.Max(minHeight, elementStartHeight + dy);
+        x = Math.Max(0, x); y = Math.Max(0, y);
+        Width = width; Height = height; Canvas.SetLeft(this, x); Canvas.SetTop(this, y); Config.X = x; Config.Y = y; Config.Width = width; Config.Height = height;
+    }
+    private void EndResize()
+    {
+        resizing = false; resizeEdge = ""; owner.PersistWidget(this);
     }
     private string KindLabel() => Config.Kind == "window" ? "APP" : Config.Kind == "web" ? "WEB" : Config.Kind == "stats" ? "STATS" : "TXT";
     private void BuildWindow()
@@ -82,24 +117,25 @@ public sealed class WidgetCard : Border
         stack.Children.Add(new TextBlock { Text = "TU APP. DENTRO DE TU ESPACIO.", FontSize = 14, FontWeight = FontWeights.Bold });
         stack.Children.Add(new TextBlock { Text = "Selecciona una ventana que ya tengas abierta.\nSu sesión permanecerá en la aplicación original.", FontSize = 11, Margin = new Thickness(0, 8, 0, 12) });
         var button = new Button { Content = "CONECTAR VENTANA", HorizontalAlignment = HorizontalAlignment.Left };
-        button.Click += (_, _) => { var candidate = Dialogs.PickWindow(owner); if (candidate is not null) Attach(candidate.Handle); };
+        button.Click += async (_, _) => { var candidate = Dialogs.PickWindow(owner); if (candidate is not null) await Attach(candidate.Handle); };
         stack.Children.Add(button); body.Children.Add(stack);
     }
-    public void Attach(nint hwnd)
+    public async Task Attach(nint hwnd)
     {
         try
         {
             if (host is not null) { host.Detach(); host.Dispose(); }
             body.Children.Clear();
             host = new ExternalWindowHost(); body.Children.Add(host); body.UpdateLayout();
-            host.Attach(hwnd, owner.Journal);
-            owner.Status("VENTANA CONECTADA · Arrastra el separador para cambiar su tamaño.");
+            owner.Status("CONECTANDO VENTANA · La interfaz sigue disponible mientras se prepara.");
+            await host.AttachAsync(hwnd, owner.Journal);
+            owner.Status("VENTANA CONECTADA · Usa la cabecera para moverla y cualquiera de sus bordes para cambiar su tamaño.");
         }
         catch (Exception ex)
         {
             host?.Dispose(); host = null; body.Children.Clear(); BuildWindow();
             owner.Status("No se pudo conectar: " + ex.Message);
-            Dialogs.Alert(owner, "COMPATIBILIDAD DE LA VENTANA", ex.Message);
+            Dialogs.Alert(owner, "NO SE PUDO INCRUSTAR", ex.Message);
         }
     }
     private async Task BuildWeb()
@@ -138,7 +174,7 @@ public sealed class WidgetCard : Border
         if (Config.Collapsed && !Config.KeepAlive && web?.CoreWebView2 is { } core) { try { await core.TrySuspendAsync(); } catch { } }
         else if (!Config.Collapsed) { if (web is null) await BuildWeb(); else web.CoreWebView2?.Resume(); }
     }
-    private void Options()
+    private async void Options()
     {
         var options = Config.Kind == "window" ? new[] { "Renombrar", "Recortar barras superior / inferior", "Liberar ventana", "Conectar otra ventana" }
             : Config.Kind == "web" ? ["Renombrar", "Cambiar URL", "Recargar", Config.KeepAlive ? "Permitir suspensión" : "Mantener activo (música / dashboard)"] : ["Renombrar"];
@@ -159,7 +195,7 @@ public sealed class WidgetCard : Border
                 host.Resize();
             }
             else if (choice == 2) { host?.Detach(); host?.Dispose(); host = null; body.Children.Clear(); BuildWindow(); }
-            else if (choice == 3) { var candidate = Dialogs.PickWindow(owner); if (candidate is not null) Attach(candidate.Handle); }
+            else if (choice == 3) { var candidate = Dialogs.PickWindow(owner); if (candidate is not null) await Attach(candidate.Handle); }
         }
         else if (Config.Kind == "web")
         {

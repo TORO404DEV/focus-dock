@@ -15,7 +15,7 @@
     <StackPanel VerticalAlignment="Center"><TextBlock Text="FOCUS / DOCK" FontSize="23" FontWeight="Black"/><TextBlock Text="HAZ ESPACIO PARA LO QUE IMPORTA." FontSize="9" Foreground="{DynamicResource Muted}" Margin="0,3,0,0"/></StackPanel>
     <WrapPanel Grid.Column="1" VerticalAlignment="Center"><Button Content="REPORT ↗" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="#171916"/><Button Content="☷" Click="TasksClick" ToolTip="Tareas y proyectos"/><Button Content="⚙" Click="SettingsClick" ToolTip="Ajustes"/><Button Content="⛶" Click="FullscreenClick" ToolTip="Pantalla completa · F11"/></WrapPanel>
    </Grid>
-   <Border Grid.Row="2" Margin="20,0,20,14" BorderThickness="2" BorderBrush="{DynamicResource Line}" Background="{DynamicResource Surface}">
+   <Border x:Name="TimerFrame" Grid.Row="2" Margin="20,0,20,14" BorderThickness="2" BorderBrush="{DynamicResource Line}" Background="{DynamicResource Surface}">
     <Grid x:Name="TimerSurface" Margin="16,14,16,15">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="104"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
      <UniformGrid Columns="3"><Button x:Name="FocusButton" Content="POMODORO" Tag="Focus" Click="PhaseClick" FontSize="11" Padding="6,9"/><Button x:Name="ShortButton" Content="SHORT BREAK" Tag="ShortBreak" Click="PhaseClick" FontSize="11" Padding="6,9"/><Button x:Name="LongButton" Content="LONG BREAK" Tag="LongBreak" Click="PhaseClick" FontSize="11" Padding="6,9" Margin="0"/></UniformGrid>
@@ -30,7 +30,7 @@
      <Button Grid.Row="4" x:Name="ContextButton" Content="○  ENFOQUE LIBRE   /   Elegir tarea" Click="TasksClick" BorderThickness="0" Background="Transparent" HorizontalAlignment="Left" Padding="0,12,0,0" FontSize="11"/>
     </Grid>
    </Border>
-   <Grid Grid.Row="3" Margin="20,0,20,10">
+   <Grid x:Name="Workspace" Grid.Row="3" Margin="20,0,20,10">
     <Grid.RowDefinitions><RowDefinition Height="38"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <TextBlock Text="TU ESPACIO" FontWeight="Black" FontSize="12" VerticalAlignment="Center"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="LAYOUTS" Click="LayoutsClick" FontSize="10" Padding="8,6"/><Button Content="+ WIDGET" Click="AddWidgetClick" FontSize="10" Padding="8,6" Margin="0"/></StackPanel>

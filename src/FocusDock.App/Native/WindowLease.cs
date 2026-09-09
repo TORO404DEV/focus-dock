@@ -55,8 +55,6 @@ public sealed class WindowLease : IDisposable
     {
         this.journal = journal;
         if (!Win32.IsWindow(window)) throw new InvalidOperationException("La ventana ya no existe.");
-        if (!Win32.AreDpiAwarenessContextsEqual(Win32.GetWindowDpiAwarenessContext(window), Win32.GetWindowDpiAwarenessContext(container)))
-            throw new InvalidOperationException("Esta ventana usa un modo de escalado incompatible. No se modificó; puedes mantenerla al lado de FOCUS DOCK.");
         Win32.GetWindowThreadProcessId(window, out uint pid);
         if (pid == Environment.ProcessId) throw new InvalidOperationException("Selecciona una ventana de otra aplicación.");
         using var process = Process.GetProcessById((int)pid);
@@ -68,13 +66,19 @@ public sealed class WindowLease : IDisposable
         if (!Win32.SetProp(window, Snapshot.Marker, 1)) throw new Win32Exception(Marshal.GetLastWin32Error(), "No se pudo acceder a esta ventana. Ejecuta ambas apps con los mismos permisos.");
         leased.Add(Snapshot);
         Persist(); // Store restoration information BEFORE changing the foreign window.
+        var previousHosting = -1;
+        nint previousDpi = 0;
         try
         {
             Win32.ShowWindow(window, 9);
-            long style = (Snapshot.Style | Win32.WS_CHILD) & ~(Win32.WS_POPUP | Win32.WS_CAPTION | Win32.WS_THICKFRAME);
+            previousHosting = Win32.TrySetThreadDpiHostingBehavior(1);
+            previousDpi = Win32.TrySetThreadDpiAwarenessContext(Win32.GetWindowDpiAwarenessContext(window));
+            long style = (Snapshot.Style | Win32.WS_CHILD) & ~(Win32.WS_POPUP | Win32.WS_CAPTION | Win32.WS_THICKFRAME | Win32.WS_SYSMENU | Win32.WS_MINIMIZEBOX | Win32.WS_MAXIMIZEBOX);
             Marshal.SetLastPInvokeError(0);
             Win32.SetWindowLongPtr(window, Win32.GWL_STYLE, (nint)style);
             int error = Marshal.GetLastPInvokeError(); if (error != 0) throw new Win32Exception(error);
+            var exStyle = (Snapshot.ExStyle | Win32.WS_EX_TOOLWINDOW) & ~Win32.WS_EX_APPWINDOW;
+            Win32.SetWindowLongPtr(window, Win32.GWL_EXSTYLE, (nint)exStyle);
             Marshal.SetLastPInvokeError(0);
             Win32.SetParent(window, container);
             error = Marshal.GetLastPInvokeError();
@@ -82,6 +86,7 @@ public sealed class WindowLease : IDisposable
             Win32.SetWindowPos(window, 0, 0, 0, 300, 300, Win32.SWP_FRAMECHANGED | Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
         }
         catch { Dispose(); throw; }
+        finally { Win32.TryRestoreThreadDpiAwarenessContext(previousDpi); Win32.TryRestoreThreadDpiHostingBehavior(previousHosting); }
     }
     private void Persist()
     {
@@ -141,13 +146,17 @@ public sealed class ExternalWindowHost : HwndHost
 {
     private nint container;
     private WindowLease? lease;
+    private bool disposed;
     public double CropTop { get; set; }
     public double CropBottom { get; set; }
     public nint ForeignHandle => lease?.Handle ?? 0;
     public bool Alive => lease?.IsAlive ?? false;
     protected override HandleRef BuildWindowCore(HandleRef parent)
     {
+        disposed = false;
+        var previousHosting = Win32.TrySetThreadDpiHostingBehavior(1);
         container = Win32.CreateWindowEx(0, "static", "FocusDockHost", unchecked((int)(Win32.WS_CHILD | Win32.WS_VISIBLE)), 0, 0, 10, 10, parent.Handle, 0, 0, 0);
+        Win32.TryRestoreThreadDpiHostingBehavior(previousHosting);
         if (container == 0) throw new Win32Exception(Marshal.GetLastWin32Error());
         return new(this, container);
     }
@@ -155,6 +164,14 @@ public sealed class ExternalWindowHost : HwndHost
     {
         if (container == 0) throw new InvalidOperationException("Espera a que el panel esté visible.");
         lease?.Dispose(); lease = new WindowLease(hwnd, container, journal); Resize();
+    }
+    public async Task AttachAsync(nint hwnd, string journal)
+    {
+        if (container == 0) throw new InvalidOperationException("Espera a que el panel esté visible.");
+        var next = await Task.Run(() => new WindowLease(hwnd, container, journal));
+        if (disposed) { next.Dispose(); return; }
+        lease = next;
+        await Dispatcher.InvokeAsync(Resize);
     }
     public void Detach() { lease?.Dispose(); lease = null; }
     public void Resize()
@@ -166,5 +183,5 @@ public sealed class ExternalWindowHost : HwndHost
         Win32.SetWindowPos(lease.Handle, 0, 0, -top, Math.Max(1, rect.Right), Math.Max(1, rect.Bottom + top + bottom), Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE);
     }
     protected override void OnWindowPositionChanged(Rect rect) { base.OnWindowPositionChanged(rect); Resize(); }
-    protected override void DestroyWindowCore(HandleRef hwnd) { Detach(); Win32.DestroyWindow(hwnd.Handle); }
+    protected override void DestroyWindowCore(HandleRef hwnd) { disposed = true; Detach(); Win32.DestroyWindow(hwnd.Handle); }
 }

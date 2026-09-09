@@ -6,7 +6,8 @@ namespace FocusDock.App.Native;
 internal static class Win32
 {
     internal const int GWL_STYLE = -16, GWL_EXSTYLE = -20, GWLP_HWNDPARENT = -8;
-    internal const long WS_CHILD = 0x40000000, WS_POPUP = 0x80000000, WS_CAPTION = 0x00C00000, WS_THICKFRAME = 0x40000, WS_VISIBLE = 0x10000000;
+    internal const long WS_CHILD = 0x40000000, WS_POPUP = 0x80000000, WS_CAPTION = 0x00C00000, WS_THICKFRAME = 0x40000, WS_VISIBLE = 0x10000000, WS_SYSMENU = 0x80000, WS_MINIMIZEBOX = 0x20000, WS_MAXIMIZEBOX = 0x10000;
+    internal const long WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000;
     internal const uint SWP_FRAMECHANGED = 0x20, SWP_NOACTIVATE = 0x10, SWP_NOZORDER = 4, SWP_SHOWWINDOW = 0x40;
     internal delegate bool EnumProc(nint hwnd, nint param);
     internal delegate void WinEventProc(nint hook, uint ev, nint hwnd, int obj, int child, uint thread, uint time);
@@ -35,6 +36,12 @@ internal static class Win32
     [DllImport("user32.dll")] internal static extern nint GetAncestor(nint hwnd, uint flags);
     [DllImport("user32.dll")] internal static extern nint GetWindowDpiAwarenessContext(nint hwnd);
     [DllImport("user32.dll")] internal static extern bool AreDpiAwarenessContextsEqual(nint a, nint b);
+    [DllImport("user32.dll", EntryPoint = "SetThreadDpiAwarenessContext", SetLastError = true)] private static extern nint SetThreadDpiAwarenessContext(nint context);
+    [DllImport("user32.dll", EntryPoint = "SetThreadDpiHostingBehavior", SetLastError = true)] private static extern int SetThreadDpiHostingBehavior(int behavior);
+    internal static nint TrySetThreadDpiAwarenessContext(nint context) { try { return SetThreadDpiAwarenessContext(context); } catch (EntryPointNotFoundException) { return 0; } }
+    internal static void TryRestoreThreadDpiAwarenessContext(nint previous) { if (previous == 0) return; try { SetThreadDpiAwarenessContext(previous); } catch (EntryPointNotFoundException) { } }
+    internal static int TrySetThreadDpiHostingBehavior(int behavior) { try { return SetThreadDpiHostingBehavior(behavior); } catch (EntryPointNotFoundException) { return -1; } }
+    internal static void TryRestoreThreadDpiHostingBehavior(int previous) { if (previous < 0) return; try { SetThreadDpiHostingBehavior(previous); } catch (EntryPointNotFoundException) { } }
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] internal static extern bool SetProp(nint hwnd, string name, nint value);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] internal static extern nint GetProp(nint hwnd, string name);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] internal static extern nint RemoveProp(nint hwnd, string name);

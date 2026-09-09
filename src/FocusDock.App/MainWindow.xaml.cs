@@ -42,7 +42,7 @@ public partial class MainWindow : Window
         Settings = Store.Read<Settings>("settings") ?? new(); Settings.Validate();
         Timer = new(Settings);
         Sounds = new(Settings);
-        InitializeComponent(); ApplyTheme();
+        InitializeComponent(); ApplyTimerPosition(); ApplyTheme();
         Width = Math.Max(MinWidth, Settings.WindowWidth); Height = Math.Max(MinHeight, Settings.WindowHeight);
         Left = Settings.WindowLeft; Top = Settings.WindowTop;
         Topmost = Settings.AlwaysOnTop;
@@ -116,6 +116,7 @@ public partial class MainWindow : Window
             AnimateTimer(); UpdateTimer(); SaveState();
         });
     }
+    private Brush PhaseBrush() => new SolidColorBrush(ParseColor(Timer.Phase == Phase.Focus ? Settings.FocusColor : Timer.Phase == Phase.ShortBreak ? Settings.ShortBreakColor : Settings.LongBreakColor, Colors.Transparent));
     private void UpdateTimer()
     {
         var remaining = TimeSpan.FromSeconds(Math.Ceiling(Timer.Remaining));
@@ -130,7 +131,7 @@ public partial class MainWindow : Window
             button.SetResourceReference(BackgroundProperty, active ? "Ink" : "Surface");
             button.SetResourceReference(ForegroundProperty, active ? "Paper" : "Ink");
         }
-        TimerSurface.Background = new SolidColorBrush(ParseColor(Timer.Phase == Phase.Focus ? Settings.FocusColor : Timer.Phase == Phase.ShortBreak ? Settings.ShortBreakColor : Settings.LongBreakColor, Colors.Transparent));
+        var phaseBrush = PhaseBrush(); TimerFrame.Background = phaseBrush; TimerSurface.Background = phaseBrush;
         ContextButton.Content = Timer.Active is { } s ? $"●  {s.Project} / {s.Task}" : selectedTask is null ? "○  ENFOQUE LIBRE   /   Elegir tarea" : $"○  {selectedTask.Project} / {selectedTask.Name}";
     }
     private void StartClick(object sender, RoutedEventArgs e) { Sounds.Button(Timer.Running ? "pause" : "start"); ToggleTimer(); }
@@ -166,7 +167,7 @@ public partial class MainWindow : Window
         UpdateTimer(); SaveState();
     }
     private void ReportClick(object sender, RoutedEventArgs e) { new ReportWindow(this).ShowDialog(); }
-    private void SettingsClick(object sender, RoutedEventArgs e) { new SettingsWindow(this).ShowDialog(); Settings.Validate(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); SaveState(); }
+    private void SettingsClick(object sender, RoutedEventArgs e) { new SettingsWindow(this).ShowDialog(); Settings.Validate(); ApplyTimerPosition(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); SaveState(); }
     private void LayoutsClick(object sender, RoutedEventArgs e) { new LayoutsWindow(this).ShowDialog(); }
     private static Color ParseColor(string value, Color fallback)
     {
@@ -178,7 +179,14 @@ public partial class MainWindow : Window
         string[] keys = ["Paper", "Ink", "Muted", "Surface", "Line", "Accent"];
         string[] colors = Settings.Dark ? ["#191B18", "#EEEEE5", "#AFB3A4", "#252822", "#C2C6B8", Settings.AccentColor] : ["#F1F0E9", "#171916", "#66695E", "#FAF9F3", "#171916", Settings.AccentColor];
         for (int i = 0; i < keys.Length; i++) resources[keys[i]] = new SolidColorBrush(ParseColor(colors[i], Colors.Transparent));
-        TimerSurface.Background = new SolidColorBrush(ParseColor(Settings.FocusColor, Colors.Transparent));
+        var phaseBrush = PhaseBrush(); TimerFrame.Background = phaseBrush; TimerSurface.Background = phaseBrush;
+    }
+    private void ApplyTimerPosition()
+    {
+        bool bottom = Settings.TimerAtBottom;
+        Grid.SetRow(Workspace, bottom ? 2 : 3); Grid.SetRow(TimerFrame, bottom ? 3 : 2);
+        Root.RowDefinitions[2].Height = bottom ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        Root.RowDefinitions[3].Height = bottom ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
     }
     private void AddWidgetClick(object sender, RoutedEventArgs e)
     {
@@ -198,7 +206,7 @@ public partial class MainWindow : Window
         var candidate = Dialogs.PickWindow(this);
         if (candidate is null) return;
         var card = AddCard(new() { Kind = "window", Title = candidate.Title, Value = candidate.ProcessName }, true);
-        Dispatcher.BeginInvoke(() => card.Attach(candidate.Handle), DispatcherPriority.Loaded);
+        Dispatcher.BeginInvoke(new Action(async () => await card.Attach(candidate.Handle)), DispatcherPriority.Loaded);
     }
     public WidgetCard AddCard(WidgetConfig config, bool save)
     {
