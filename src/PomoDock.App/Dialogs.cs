@@ -81,17 +81,19 @@ internal static class Dialogs
     }
     public static int ChooseWidget(Window owner)
     {
-        var window = Window(owner, "AÑADIR WIDGET", 700, 540); window.MinWidth = 600; window.MinHeight = 460;
+        var window = Window(owner, "AÑADIR WIDGET", 700, 660); window.MinWidth = 600; window.MinHeight = 600;
         var root = new Grid { Margin = new Thickness(28, 22, 28, 24) }; root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); window.Content = root;
         var intro = new StackPanel(); intro.Children.Add(Heading("AÑADIR WIDGET")); intro.Children.Add(new TextBlock { Text = "Elige qué quieres tener a la vista en tu monitor.", FontSize = 12, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, -8, 0, 20) }); Grid.SetRow(intro, 0); root.Children.Add(intro);
-        var guide = new TextBlock { Text = "LANZADOR DE ESPACIO   ·   4 OPCIONES", FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 8) }; Grid.SetRow(guide, 1); root.Children.Add(guide);
-        var launcher = new UniformGrid { Columns = 2, Rows = 2 };
+        var guide = new TextBlock { Text = "LANZADOR DE ESPACIO   ·   6 OPCIONES", FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 8) }; Grid.SetRow(guide, 1); root.Children.Add(guide);
+        var launcher = new UniformGrid { Columns = 2, Rows = 3 };
         var entries = new[]
         {
             ("▣", "VENTANA DE OTRA APP", "Telegram, Brave, Spotify y cualquier ventana abierta.", "1"),
             ("◎", "PÁGINA WEB / YOUTUBE", "Un panel web para música, dashboards o referencias.", "2"),
             ("✎", "NOTAS", "Ideas, checklist y texto rápido junto al temporizador.", "3"),
-            ("◒", "MÉTRICAS DE ENFOQUE", "Minutos, racha diaria, nivel y progreso semanal.", "4")
+            ("◒", "MÉTRICAS DE ENFOQUE", "Minutos, racha diaria, nivel y progreso semanal.", "4"),
+            ("☑", "TO DO", "Tareas accionables que puedes completar sin salir del canvas.", "5"),
+            ("↻", "HÁBITOS", "Seguimiento diario, rachas y constancia visible.", "6")
         };
         int selected = -1;
         for (int i = 0; i < entries.Length; i++)
@@ -101,11 +103,11 @@ internal static class Dialogs
             content.Children.Add(new TextBlock { Text = entry.Item1, FontFamily = new FontFamily("Segoe UI Symbol"), FontSize = 34, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 6) });
             content.Children.Add(new TextBlock { Text = entry.Item2, FontSize = 13, FontWeight = FontWeights.Black, TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = entry.Item3, FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 7, 0, 0), TextWrapping = TextWrapping.Wrap });
-            var launch = new Button { Content = content, Tag = entry.Item4, MinHeight = 142, Margin = new Thickness(0, 0, 10, 10), Padding = new Thickness(16), HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Top, Background = (Brush)Application.Current.Resources["Surface"] };
+            var launch = new Button { Content = content, Tag = entry.Item4, MinHeight = 124, Margin = new Thickness(0, 0, 10, 10), Padding = new Thickness(16), HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Top, Background = (Brush)Application.Current.Resources["Surface"] };
             launch.SetValue(AutomationProperties.NameProperty, entry.Item2); launch.Click += (_, _) => { selected = index; window.DialogResult = true; }; launcher.Children.Add(launch);
         }
         Grid.SetRow(launcher, 2); root.Children.Add(launcher);
-        window.PreviewKeyDown += (_, e) => { if (e.Key is >= Key.D1 and <= Key.D4) { selected = (int)e.Key - (int)Key.D1; window.DialogResult = true; e.Handled = true; } };
+        window.PreviewKeyDown += (_, e) => { if (e.Key is >= Key.D1 and <= Key.D6) { selected = (int)e.Key - (int)Key.D1; window.DialogResult = true; e.Handled = true; } };
         window.Loaded += (_, _) => { Modalize(window); Keyboard.Focus(launcher.Children[0]); }; window.ShowDialog(); return selected;
     }
     public static WindowCandidate? PickWindow(Window owner)

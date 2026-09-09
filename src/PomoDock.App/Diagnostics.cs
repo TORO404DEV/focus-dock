@@ -81,6 +81,8 @@ internal static class Diagnostics
             dualA.Detach(); dualB.Detach(); dualA.Dispose(); dualB.Dispose(); dualHarness.Close(); dualHarness = null;
             main.AddCard(new() { Kind = "notes", Title = "MI SIGUIENTE PASO", Value = "Una cosa a la vez.\n\n1. Elegir el siguiente resultado\n2. Iniciar una sesión\n3. Revisar lo aprendido" }, true);
             main.AddCard(new() { Kind = "stats", Title = "MI ENFOQUE" }, true);
+            main.AddCard(new() { Kind = "todo", Title = "TO DO" }, true);
+            main.AddCard(new() { Kind = "habits", Title = "HÁBITOS" }, true);
             await Task.Delay(100); Render(main, Path.Combine(directory, "widgets.png"));
             for (int d = 0; d < 14; d++)
             {
@@ -88,7 +90,7 @@ internal static class Diagnostics
                 main.Store.Save(new() { Started = end.AddMinutes(-25), Ended = end, PlannedSeconds = 1500, Outcome = Outcome.Completed, Project = d % 2 == 0 ? "Demo / producto" : "Demo / aprender", Task = "Sesión de demostración", Segments = [new(end.AddMinutes(-25), end)] });
             }
             var report = new ReportWindow(main); report.Show(); await Task.Delay(100); Render(report, Path.Combine(directory, "report.png")); report.Close();
-            main.SaveState(); Assert(main.Store.Read<Settings>("settings")!.Widgets.Count == 2, "widget layout persisted");
+            main.SaveState(); Assert(main.Store.Read<Settings>("settings")!.Widgets.Count == 4, "widget layout persisted");
             main.Close(); main = null;
             using var recovered = new Store(Path.Combine(directory, "data")); Assert(recovered.Read<Session>("checkpoint") is not null, "paused session survives normal close");
             File.WriteAllText(Path.Combine(directory, "results.json"), JsonSerializer.Serialize(new { success = true, tests = results }, new JsonSerializerOptions { WriteIndented = true }));

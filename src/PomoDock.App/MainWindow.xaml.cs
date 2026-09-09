@@ -216,7 +216,10 @@ public partial class MainWindow : Window
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https") { Status("Introduce una URL HTTPS válida."); return; }
             AddCard(new() { Kind = "web", Title = uri.Host, Value = uri.AbsoluteUri }, true);
         }
-        else if (choice >= 2) AddCard(new() { Kind = choice == 2 ? "notes" : "stats", Title = choice == 2 ? "NOTAS" : "MI ENFOQUE" }, true);
+        else if (choice == 2) AddCard(new() { Kind = "notes", Title = "NOTAS" }, true);
+        else if (choice == 3) AddCard(new() { Kind = "stats", Title = "MI ENFOQUE" }, true);
+        else if (choice == 4) AddCard(new() { Kind = "todo", Title = "TO DO" }, true);
+        else if (choice == 5) AddCard(new() { Kind = "habits", Title = "HÁBITOS" }, true);
     }
     private void AddWindowClick(object sender, RoutedEventArgs e)
     {
@@ -234,7 +237,13 @@ public partial class MainWindow : Window
             var twoColumnWidth = (canvasWidth - 40) / 2;
             config.Width = canvasWidth >= 560 ? Math.Max(240, twoColumnWidth) : Math.Max(280, canvasWidth - 24);
         }
-        if (config.Height <= 0) config.Height = config.Kind == "stats" ? 260 : 300;
+        if (config.Height <= 0) config.Height = config.Kind switch
+        {
+            "stats" => 260,
+            "todo" => 340,
+            "habits" => 390,
+            _ => 300
+        };
         if (newPlacement)
         {
             int index = cards.Count;

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -85,6 +86,8 @@ public sealed class WidgetCard : Border
             notes.TextChanged += (_, _) => config.Value = notes.Text;
             body.Children.Add(notes);
         }
+        else if (config.Kind == "todo") BuildTodo();
+        else if (config.Kind == "habits") BuildHabits();
         else Refresh();
     }
     internal bool IsExternalAttached => host?.Alive == true;
@@ -174,7 +177,107 @@ public sealed class WidgetCard : Border
     internal void BeginOverlayResize(string edge) => BeginResize(edge);
     internal void UpdateOverlayResize() => UpdateGesture();
     internal void EndOverlayResize() => EndResize();
-    private string KindLabel() => Config.Kind == "window" ? "APP" : Config.Kind == "web" ? "WEB" : Config.Kind == "stats" ? "STATS" : "TXT";
+    private string KindLabel() => Config.Kind == "window" ? "APP" : Config.Kind == "web" ? "WEB" : Config.Kind == "stats" ? "STATS" : Config.Kind == "todo" ? "TODO" : Config.Kind == "habits" ? "HÁBITOS" : "TXT";
+    private T ReadWidgetData<T>() where T : class, new()
+    {
+        if (string.IsNullOrWhiteSpace(Config.Value)) return new T();
+        try { return JsonSerializer.Deserialize<T>(Config.Value) ?? new T(); }
+        catch (JsonException) { return new T(); }
+    }
+    private void SaveWidgetData<T>(T data)
+    {
+        Config.Value = JsonSerializer.Serialize(data);
+        owner.SaveState();
+    }
+    private void BuildTodo()
+    {
+        var data = ReadWidgetData<TodoWidgetData>();
+        var stack = new StackPanel { Margin = new Thickness(12, 10, 12, 10) };
+        var done = data.Items.Count(item => item.Done);
+        var summary = new Grid(); summary.ColumnDefinitions.Add(new ColumnDefinition()); summary.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        summary.Children.Add(new TextBlock { Text = $"{done:00} / {data.Items.Count:00} COMPLETADAS", FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold });
+        var pending = new TextBlock { Text = $"{data.Items.Count - done:00} PENDIENTES", FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], VerticalAlignment = VerticalAlignment.Center }; Grid.SetColumn(pending, 1); summary.Children.Add(pending); stack.Children.Add(summary);
+
+        var addRow = new Grid { Margin = new Thickness(0, 10, 0, 6) }; addRow.ColumnDefinitions.Add(new ColumnDefinition()); addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var input = new TextBox { Margin = new Thickness(0, 0, 8, 0), Height = 34, ToolTip = "Escribe una tarea y presiona Enter" }; input.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, "Nueva tarea");
+        var add = new Button { Content = "+ AÑADIR", Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(0), Height = 34 };
+        void AddItem()
+        {
+            var text = input.Text.Trim(); if (text.Length == 0) return;
+            data.Items.Insert(0, new TodoItem { Title = text }); SaveWidgetData(data); BuildTodo();
+        }
+        add.Click += (_, _) => AddItem(); input.KeyDown += (_, e) => { if (e.Key == Key.Enter) { AddItem(); e.Handled = true; } };
+        Grid.SetColumn(input, 0); Grid.SetColumn(add, 1); addRow.Children.Add(input); addRow.Children.Add(add); stack.Children.Add(addRow);
+
+        var list = new StackPanel();
+        foreach (var item in data.Items.OrderBy(item => item.Done).ThenByDescending(item => item.CreatedUtc))
+        {
+            var row = new Border { BorderBrush = (Brush)Application.Current.Resources["Line"], BorderThickness = new Thickness(1), Padding = new Thickness(8, 5, 5, 5), Margin = new Thickness(0, 0, 0, 6), Background = (Brush)Application.Current.Resources["Surface"] };
+            var line = new Grid(); line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); line.ColumnDefinitions.Add(new ColumnDefinition()); line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var check = new CheckBox { IsChecked = item.Done, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0), ToolTip = item.Done ? "Marcar pendiente" : "Completar tarea" };
+            var label = new TextBlock { Text = item.Title, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = item.Done ? (Brush)Application.Current.Resources["Muted"] : (Brush)Application.Current.Resources["Ink"] };
+            if (item.Done) label.TextDecorations = TextDecorations.Strikethrough;
+            var remove = new Button { Content = "×", Padding = new Thickness(7, 1, 7, 1), Margin = new Thickness(6, 0, 0, 0), BorderThickness = new Thickness(0), FontSize = 14, ToolTip = "Eliminar tarea" };
+            check.Checked += (_, _) => { item.Done = true; SaveWidgetData(data); BuildTodo(); }; check.Unchecked += (_, _) => { item.Done = false; SaveWidgetData(data); BuildTodo(); };
+            remove.Click += (_, _) => { data.Items.Remove(item); SaveWidgetData(data); BuildTodo(); };
+            Grid.SetColumn(check, 0); Grid.SetColumn(label, 1); Grid.SetColumn(remove, 2); line.Children.Add(check); line.Children.Add(label); line.Children.Add(remove); row.Child = line; list.Children.Add(row);
+        }
+        if (data.Items.Count == 0) list.Children.Add(new TextBlock { Text = "SIN TAREAS · Añade la primera cosa que quieres sacar adelante.", FontSize = 11, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(2, 14, 2, 8) });
+        var scroller = new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }; stack.Children.Add(scroller); body.Children.Clear(); body.Children.Add(stack);
+    }
+    private void BuildHabits()
+    {
+        var data = ReadWidgetData<HabitWidgetData>();
+        var today = DateOnly.FromDateTime(DateTime.Now); var days = Enumerable.Range(0, 7).Select(i => today.AddDays(-6 + i)).ToArray();
+        var stack = new StackPanel { Margin = new Thickness(12, 10, 12, 10) };
+        var completedToday = data.Items.Count(item => item.IsCompleteOn(today));
+        var summary = new Grid(); summary.ColumnDefinitions.Add(new ColumnDefinition()); summary.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        summary.Children.Add(new TextBlock { Text = $"{completedToday:00} / {data.Items.Count:00} HOY", FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold });
+        var streak = new TextBlock { Text = data.Items.Count == 0 ? "SIN RACHA" : $"🔥 {data.Items.Max(item => item.CurrentStreak(today))} DÍAS", FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], VerticalAlignment = VerticalAlignment.Center }; Grid.SetColumn(streak, 1); summary.Children.Add(streak); stack.Children.Add(summary);
+        var progress = new ProgressBar { Minimum = 0, Maximum = Math.Max(1, data.Items.Count), Value = completedToday, Height = 7, Margin = new Thickness(0, 8, 0, 8) }; stack.Children.Add(progress);
+
+        var addRow = new Grid { Margin = new Thickness(0, 2, 0, 8) }; addRow.ColumnDefinitions.Add(new ColumnDefinition()); addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var input = new TextBox { Margin = new Thickness(0, 0, 8, 0), Height = 34, ToolTip = "Ejemplo: Leer 20 minutos" }; input.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, "Nuevo hábito");
+        var add = new Button { Content = "+ HÁBITO", Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(0), Height = 34 };
+        void AddHabit()
+        {
+            var text = input.Text.Trim(); if (text.Length == 0) return;
+            data.Items.Insert(0, new HabitItem { Name = text }); SaveWidgetData(data); BuildHabits();
+        }
+        add.Click += (_, _) => AddHabit(); input.KeyDown += (_, e) => { if (e.Key == Key.Enter) { AddHabit(); e.Handled = true; } };
+        Grid.SetColumn(input, 0); Grid.SetColumn(add, 1); addRow.Children.Add(input); addRow.Children.Add(add); stack.Children.Add(addRow);
+
+        var daysHeader = new Grid { Margin = new Thickness(0, 0, 0, 3) }; daysHeader.ColumnDefinitions.Add(new ColumnDefinition());
+        for (int i = 0; i < days.Length; i++) daysHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(25) });
+        daysHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); daysHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
+        var daysTitle = new TextBlock { Text = "HÁBITO", FontSize = 9, Foreground = (Brush)Application.Current.Resources["Muted"] }; daysHeader.Children.Add(daysTitle);
+        for (int i = 0; i < days.Length; i++) { var label = new TextBlock { Text = SpanishDay(days[i]), FontSize = 8, Foreground = (Brush)Application.Current.Resources["Muted"], HorizontalAlignment = HorizontalAlignment.Center }; Grid.SetColumn(label, i + 1); daysHeader.Children.Add(label); }
+        var streakTitle = new TextBlock { Text = "RACHA", FontSize = 8, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(5, 0, 5, 0) }; Grid.SetColumn(streakTitle, 8); daysHeader.Children.Add(streakTitle); stack.Children.Add(daysHeader);
+
+        var list = new StackPanel();
+        foreach (var item in data.Items)
+        {
+            var row = new Border { BorderBrush = (Brush)Application.Current.Resources["Line"], BorderThickness = new Thickness(1), Padding = new Thickness(7, 4, 4, 4), Margin = new Thickness(0, 0, 0, 5), Background = (Brush)Application.Current.Resources["Surface"] };
+            var line = new Grid(); line.ColumnDefinitions.Add(new ColumnDefinition());
+            for (int i = 0; i < days.Length; i++) line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(25) });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(24) });
+            var name = new TextBlock { Text = item.Name, FontSize = 11, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = item.Name }; Grid.SetColumn(name, 0); line.Children.Add(name);
+            for (int i = 0; i < days.Length; i++)
+            {
+                var day = days[i]; bool complete = item.IsCompleteOn(day);
+                var mark = new Button { Content = complete ? "●" : "○", Width = 22, Height = 24, Padding = new Thickness(0), Margin = new Thickness(1, 0, 1, 0), FontSize = 12, Background = complete ? (Brush)Application.Current.Resources["Ink"] : (Brush)Application.Current.Resources["Surface"], Foreground = complete ? (Brush)Application.Current.Resources["Paper"] : (Brush)Application.Current.Resources["Muted"], ToolTip = $"{item.Name} · {day:dd/MM}" };
+                mark.Click += (_, _) => { item.SetComplete(day, !complete); SaveWidgetData(data); BuildHabits(); }; Grid.SetColumn(mark, i + 1); line.Children.Add(mark);
+            }
+            var itemStreak = new TextBlock { Text = $"{item.CurrentStreak(today)}", FontFamily = new FontFamily("Consolas"), FontSize = 10, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(5, 0, 5, 0) }; Grid.SetColumn(itemStreak, 8); line.Children.Add(itemStreak);
+            var remove = new Button { Content = "×", Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(0), BorderThickness = new Thickness(0), FontSize = 14, ToolTip = "Eliminar hábito" }; remove.Click += (_, _) => { data.Items.Remove(item); SaveWidgetData(data); BuildHabits(); }; Grid.SetColumn(remove, 9); line.Children.Add(remove);
+            row.Child = line; list.Children.Add(row);
+        }
+        if (data.Items.Count == 0) list.Children.Add(new TextBlock { Text = "SIN HÁBITOS · Añade una práctica y marca cada día.", FontSize = 11, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(2, 14, 2, 8) });
+        var scroller = new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }; stack.Children.Add(scroller);
+        stack.Children.Add(new TextBlock { Text = "Pulsa un círculo para registrar el día. La racha tolera el día de hoy aún pendiente.", FontSize = 9, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(2, 8, 2, 0) });
+        body.Children.Clear(); body.Children.Add(stack);
+    }
+    private static string SpanishDay(DateOnly day) => day.DayOfWeek switch { DayOfWeek.Monday => "L", DayOfWeek.Tuesday => "M", DayOfWeek.Wednesday => "X", DayOfWeek.Thursday => "J", DayOfWeek.Friday => "V", DayOfWeek.Saturday => "S", _ => "D" };
     private void BuildWindow()
     {
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(20) };

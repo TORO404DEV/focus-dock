@@ -1,4 +1,5 @@
 using PomoDock.Core;
+using System.Text.Json;
 
 int passed = 0;
 void Test(string name, Action action) { action(); passed++; Console.WriteLine("PASS " + name); }
@@ -51,6 +52,13 @@ Test("timezone boundaries use the user's calendar", () => {
 });
 Test("streak tolerates a not-yet-started today", () => {
  var today = new DateOnly(2026, 9, 9); Equal(2, Reports.Streak(new() { [today.AddDays(-1)] = 10, [today.AddDays(-2)] = 2 }, today));
+});
+Test("todo and habit widgets preserve completion state", () => {
+ var today = new DateOnly(2026, 9, 9); var data = new TodoWidgetData { Items = [new() { Title = "Leer", Done = true }] };
+ var habit = new HabitItem { Name = "Caminar" }; habit.SetComplete(today.AddDays(-2), true); habit.SetComplete(today.AddDays(-1), true); var habits = new HabitWidgetData { Items = [habit] };
+ var copy = JsonSerializer.Deserialize<HabitWidgetData>(JsonSerializer.Serialize(habits))!;
+ Assert(copy.Items[0].IsCompleteOn(today.AddDays(-1))); Equal(2, copy.Items[0].CurrentStreak(today)); Assert(data.Items[0].Done);
+ copy.Items[0].SetComplete(today, true); Equal(3, copy.Items[0].CurrentStreak(today)); copy.Items[0].SetComplete(today, false); Equal(2, copy.Items[0].CurrentStreak(today));
 });
 var directory = Path.Combine(Path.GetTempPath(), "PomoDock-tests-" + Guid.NewGuid());
 Directory.CreateDirectory(directory);

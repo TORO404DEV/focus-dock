@@ -33,6 +33,43 @@ public sealed class WorkTask
     public bool Template { get; set; }
     public override string ToString() => $"{Project} / {Name}";
 }
+public sealed class TodoWidgetData
+{
+    public List<TodoItem> Items { get; set; } = [];
+}
+public sealed class TodoItem
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Title { get; set; } = "";
+    public bool Done { get; set; }
+    public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+}
+public sealed class HabitWidgetData
+{
+    public List<HabitItem> Items { get; set; } = [];
+}
+public sealed class HabitItem
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    // ISO dates keep the widget portable and avoid timezone ambiguity.
+    public List<string> CompletedDates { get; set; } = [];
+    public bool IsCompleteOn(DateOnly day) => CompletedDates.Contains(Key(day), StringComparer.Ordinal);
+    public void SetComplete(DateOnly day, bool complete)
+    {
+        var key = Key(day);
+        CompletedDates.RemoveAll(value => string.Equals(value, key, StringComparison.Ordinal));
+        if (complete) CompletedDates.Add(key);
+    }
+    public int CurrentStreak(DateOnly today)
+    {
+        var day = IsCompleteOn(today) ? today : today.AddDays(-1);
+        var streak = 0;
+        while (IsCompleteOn(day)) { streak++; day = day.AddDays(-1); }
+        return streak;
+    }
+    private static string Key(DateOnly day) => day.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+}
 public sealed class WidgetConfig
 {
     public Guid Id { get; set; } = Guid.NewGuid();

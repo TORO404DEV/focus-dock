@@ -14,7 +14,7 @@ The main shell is native WPF. External windows are hosted as real Win32 HWNDs, s
 - F11 or the fullscreen button fills the current monitor; Escape exits fullscreen.
 - A canvas-style widget grid with free drag-and-drop placement and per-widget resizing from all four sides and corners. The Pomodoro surface stays fixed; every other widget can be moved, resized, collapsed, or removed.
 - The Pomodoro surface can stay above the workspace or move below it from Settings; its full frame follows the active phase color.
-- Widget layouts with notes, gamified focus stats, HTTPS web panels, and external app windows.
+- Widget layouts with notes, native To Do lists, daily habit tracking with streaks, gamified focus stats, HTTPS web panels, and external app windows. To Do and habit data live inside each widget and persist in the local PomoDock store.
 - External window widgets can be resized, collapsed, released, and cropped at the top or bottom while preserving the source app session. Cross-DPI Windows content, including Telegram Mini App windows, uses mixed hosting when the OS permits it, and connection work runs off the UI thread.
 - Generated button sounds, optional filtered white noise during focus, and configurable completion alarms. Sound is self-contained and requires no bundled audio files.
 - Brutalist light/dark themes with editable focus, short-break, long-break, and accent colors. Settings, reports, task editing, and confirmations use borderless in-app modal surfaces.
