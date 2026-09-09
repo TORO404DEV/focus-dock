@@ -53,6 +53,12 @@ Test("timezone boundaries use the user's calendar", () => {
 Test("streak tolerates a not-yet-started today", () => {
  var today = new DateOnly(2026, 9, 9); Equal(2, Reports.Streak(new() { [today.AddDays(-1)] = 10, [today.AddDays(-2)] = 2 }, today));
 });
+Test("report access days include zero-duration Pomofocus records", () => {
+ var first = new Session { Started = utc, Phase = Phase.Focus };
+ var second = new Session { Started = utc.AddDays(1), Phase = Phase.Focus };
+ var ignored = new Session { Started = utc.AddDays(2), Phase = Phase.ShortBreak };
+ Equal(2, Reports.AccessDays([first, second, ignored], TimeZoneInfo.Utc));
+});
 Test("todo and habit widgets preserve completion state", () => {
  var today = new DateOnly(2026, 9, 9); var data = new TodoWidgetData { Items = [new() { Title = "Leer", Done = true }] };
  var habit = new HabitItem { Name = "Caminar" }; habit.SetComplete(today.AddDays(-2), true); habit.SetComplete(today.AddDays(-1), true); var habits = new HabitWidgetData { Items = [habit] };

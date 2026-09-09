@@ -1,181 +1,605 @@
 using System.Globalization;
 using System.IO;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
-using PomoDock.Core;
 using Microsoft.Win32;
+using PomoDock.Core;
 
 namespace PomoDock.App;
 
 public sealed class ReportWindow : Window
 {
+    private enum ReportTab { Summary, Detail }
+    private enum PeriodMode { Week, Month, Year }
+
+    private static readonly string[] MonthLabels = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+    private static readonly string[] DayLabels = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
+    private static readonly Color[] SeriesPalette =
+    [
+        Color.FromRgb(232, 93, 93), Color.FromRgb(242, 184, 75), Color.FromRgb(101, 196, 102),
+        Color.FromRgb(78, 134, 217), Color.FromRgb(168, 107, 221), Color.FromRgb(224, 122, 56)
+    ];
+
     private readonly MainWindow owner;
     private readonly StackPanel content = new();
-    private readonly DatePicker from = new() { SelectedDate = DateTime.Today.AddDays(-6), Width = 130 };
-    private readonly DatePicker to = new() { SelectedDate = DateTime.Today, Width = 130 };
-    private readonly ComboBox project = new() { MinWidth = 145 };
-    private List<Session> filtered = [];
+    private readonly Button summaryTab;
+    private readonly Button detailTab;
+    private readonly Button weekTab;
+    private readonly Button monthTab;
+    private readonly Button yearTab;
+    private List<Session> sessions = [];
+    private List<Session> exportSessions = [];
+    private ReportTab tab = ReportTab.Summary;
+    private PeriodMode period = PeriodMode.Year;
+    private DateOnly anchor = DateOnly.FromDateTime(DateTime.Today);
+
     public ReportWindow(MainWindow owner)
     {
-        this.owner = owner; Owner = owner; Title = "POMODOCK / Report"; Width = 790; Height = 850; MinWidth = 470; MinHeight = 500; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
-        var shell = new DockPanel { Margin = new Thickness(24) }; Content = shell;
-        var top = new StackPanel(); DockPanel.SetDock(top, Dock.Top); shell.Children.Add(top);
-        top.Children.Add(Dialogs.Heading("LO QUE MIDES,\nLO PUEDES MEJORAR."));
-        var filters = new WrapPanel { Margin = new Thickness(0, 0, 0, 12) }; top.Children.Add(filters);
-        var range = new ComboBox { Width = 125, ItemsSource = new[] { "Hoy", "7 días", "Este mes", "Este año", "Todo" }, SelectedIndex = 1, Margin = new Thickness(0, 0, 8, 0) };
-        filters.Children.Add(range); filters.Children.Add(from); filters.Children.Add(new TextBlock { Text = " → ", VerticalAlignment = VerticalAlignment.Center }); filters.Children.Add(to);
-        project.ItemsSource = new[] { "Todos los proyectos" }.Concat(owner.Store.Sessions().Select(s => s.Project).Distinct().Order()); project.SelectedIndex = 0; project.Margin = new Thickness(8, 0, 0, 0); filters.Children.Add(project);
-        var export = new WrapPanel { Margin = new Thickness(0, 0, 0, 14) }; top.Children.Add(export);
-        export.Children.Add(Dialogs.Button("CSV", ExportCsv)); export.Children.Add(Dialogs.Button("BACKUP JSON", ExportJson)); export.Children.Add(Dialogs.Button("IMPORTAR CSV / JSON", Import));
-        var scroller = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }; shell.Children.Add(scroller);
-        range.SelectionChanged += (_, _) =>
+        this.owner = owner;
+        Owner = owner;
+        Title = "POMODOCK / REPORTE";
+        Width = 820;
+        Height = 880;
+        MinWidth = 610;
+        MinHeight = 540;
+        MaxWidth = Math.Max(610, SystemParameters.WorkArea.Width - 24);
+        MaxHeight = Math.Max(540, SystemParameters.WorkArea.Height - 24);
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        WindowStyle = WindowStyle.None;
+        AllowsTransparency = true;
+        Background = Brushes.Transparent;
+        ResizeMode = ResizeMode.CanResizeWithGrip;
+        ShowInTaskbar = false;
+        Topmost = true;
+
+        var shell = new DockPanel { Margin = new Thickness(18) };
+        Content = shell;
+
+        var top = new StackPanel();
+        DockPanel.SetDock(top, Dock.Top);
+        shell.Children.Add(top);
+
+        var titleRow = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition());
+        titleRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var title = new StackPanel();
+        title.Children.Add(new TextBlock { Text = "REPORTE DE ENFOQUE", FontSize = 23, FontWeight = FontWeights.Black });
+        title.Children.Add(new TextBlock { Text = "LO QUE MIDES, LO PUEDES MEJORAR.", FontFamily = Mono(), FontSize = 9, Foreground = Resource("Muted") });
+        titleRow.Children.Add(title);
+        var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        actions.Children.Add(ActionButton("⇩ IMPORTAR", Import, "Importar historial de Pomofocus o PomoDock"));
+        actions.Children.Add(ActionButton("⇧ CSV", ExportCsv, "Exportar el periodo visible"));
+        actions.Children.Add(ActionButton("□ BACKUP", ExportJson, "Crear respaldo completo"));
+        Grid.SetColumn(actions, 1);
+        titleRow.Children.Add(actions);
+        top.Children.Add(titleRow);
+
+        var navigation = new Grid { Margin = new Thickness(0, 0, 0, 16) };
+        navigation.ColumnDefinitions.Add(new ColumnDefinition());
+        navigation.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var tabs = new UniformGrid { Columns = 2, Width = 300, HorizontalAlignment = HorizontalAlignment.Left };
+        summaryTab = NavButton("▥  RESUMEN", () => { tab = ReportTab.Summary; Render(); });
+        detailTab = NavButton("☷  DETALLE", () => { tab = ReportTab.Detail; Render(); });
+        tabs.Children.Add(summaryTab);
+        tabs.Children.Add(detailTab);
+        navigation.Children.Add(tabs);
+        var periods = new UniformGrid { Columns = 3, Width = 240 };
+        weekTab = NavButton("SEMANA", () => ChangePeriod(PeriodMode.Week));
+        monthTab = NavButton("MES", () => ChangePeriod(PeriodMode.Month));
+        yearTab = NavButton("AÑO", () => ChangePeriod(PeriodMode.Year));
+        periods.Children.Add(weekTab);
+        periods.Children.Add(monthTab);
+        periods.Children.Add(yearTab);
+        Grid.SetColumn(periods, 1);
+        navigation.Children.Add(periods);
+        top.Children.Add(navigation);
+
+        var scroller = new ScrollViewer
         {
-            var today = DateTime.Today;
-            from.SelectedDate = range.SelectedIndex switch { 0 => today, 1 => today.AddDays(-6), 2 => new(today.Year, today.Month, 1), 3 => new(today.Year, 1, 1), _ => owner.Store.Sessions().Select(s => s.Started.LocalDateTime.Date).DefaultIfEmpty(today).Min() };
-            to.SelectedDate = today; Refresh();
+            Content = content,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
         };
-        from.SelectedDateChanged += (_, _) => Refresh(); to.SelectedDateChanged += (_, _) => Refresh(); project.SelectionChanged += (_, _) => Refresh();
-        Refresh(); Dialogs.Modalize(this);
+        content.SetBinding(WidthProperty, new Binding(nameof(ScrollViewer.ViewportWidth)) { Source = scroller });
+        shell.Children.Add(scroller);
+
+        ReloadData();
+        Dialogs.Modalize(this);
     }
-    private void Refresh()
+
+    private void ReloadData()
+    {
+        sessions = owner.Store.Sessions().Where(s => s.Phase == Phase.Focus).OrderByDescending(s => s.Started).ToList();
+        Render();
+    }
+
+    private void ChangePeriod(PeriodMode mode)
+    {
+        period = mode;
+        anchor = DateOnly.FromDateTime(DateTime.Today);
+        Render();
+    }
+
+    private void Render()
     {
         content.Children.Clear();
-        if (from.SelectedDate is null || to.SelectedDate is null || from.SelectedDate > to.SelectedDate)
-        { content.Children.Add(new TextBlock { Text = "Selecciona un intervalo válido." }); return; }
-        var start = DateOnly.FromDateTime(from.SelectedDate.Value); var end = DateOnly.FromDateTime(to.SelectedDate.Value);
-        var sessions = owner.Store.Sessions().Where(s => s.Phase == Phase.Focus && (project.SelectedIndex <= 0 || s.Project == project.SelectedItem?.ToString())).ToList();
-        filtered = sessions.Where(s => Reports.MinutesIn(s, start, end, TimeZoneInfo.Local) > 0).ToList();
+        SetActive(summaryTab, tab == ReportTab.Summary);
+        SetActive(detailTab, tab == ReportTab.Detail);
+        SetActive(weekTab, period == PeriodMode.Week);
+        SetActive(monthTab, period == PeriodMode.Month);
+        SetActive(yearTab, period == PeriodMode.Year);
+        if (tab == ReportTab.Summary) RenderSummary(); else RenderDetail();
+    }
+
+    private void RenderSummary()
+    {
         var daily = Reports.Daily(sessions, TimeZoneInfo.Local);
-        double total = daily.Where(p => p.Key >= start && p.Key <= end).Sum(p => p.Value);
-        int span = end.DayNumber - start.DayNumber + 1;
-        double previous = daily.Where(p => p.Key >= start.AddDays(-span) && p.Key < start).Sum(p => p.Value);
-        int complete = filtered.Count(s => s.Outcome == Outcome.Completed && DateOnly.FromDateTime(s.Ended.LocalDateTime) >= start && DateOnly.FromDateTime(s.Ended.LocalDateTime) <= end);
-        var stats = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3, Margin = new Thickness(0, 0, 0, 18) };
-        stats.Children.Add(Stat($"{(int)total / 60:00}:{(int)total % 60:00}", "HORAS : MINUTOS"));
-        stats.Children.Add(Stat(complete.ToString(), "SESIONES COMPLETAS"));
-        stats.Children.Add(Stat(daily.Count(p => p.Key >= start && p.Key <= end && p.Value > 0).ToString(), "DÍAS CON ENFOQUE"));
-        content.Children.Add(stats);
-        string comparison = previous > 0 ? $"{(total - previous) / previous * 100:+0;-0;0}% frente a los {span} días anteriores ({previous:0} min)." : "Sin actividad en el periodo anterior para comparar.";
-        content.Children.Add(new TextBlock { Text = comparison, FontSize = 12, Margin = new Thickness(0, 0, 0, 20) });
-        content.Children.Add(Section("01 / ENFOQUE EN EL TIEMPO"));
-        var bins = new List<(string Label, double Minutes)>();
-        // Bound visual work for long histories while preserving all minutes.
-        if (span <= 31) for (var d = start; d <= end; d = d.AddDays(1)) bins.Add((d.ToString("dd/MM"), daily.GetValueOrDefault(d)));
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var totalMinutes = daily.Sum(pair => pair.Value);
+        var accessDays = Reports.AccessDays(sessions, TimeZoneInfo.Local);
+        var summary = new UniformGrid { Columns = 3, Margin = new Thickness(0, 0, 0, 20) };
+        summary.Children.Add(Stat("◷", FormatHoursCompact(totalMinutes), "HORAS ENFOCADO"));
+        summary.Children.Add(Stat("▦", accessDays.ToString("N0"), "DÍAS REGISTRADOS"));
+        summary.Children.Add(Stat("♨", Reports.Streak(daily, today).ToString("N0"), "RACHA ACTUAL"));
+        content.Children.Add(summary);
+
+        content.Children.Add(Section("HORAS DE ENFOQUE", "TIEMPO REAL CONFIRMADO · SIN DESCANSOS"));
+        var range = Range();
+        content.Children.Add(PeriodNavigator(range));
+
+        var data = BuildChart(range.Start, range.End);
+        exportSessions = data.Sessions;
+        var chartFrame = new Border { BorderBrush = Resource("Line"), BorderThickness = new Thickness(1.5), Padding = new Thickness(12), Margin = new Thickness(0, 12, 0, 12) };
+        if (data.TotalMinutes <= 0)
+        {
+            chartFrame.Child = new TextBlock
+            {
+                Text = "SIN SESIONES EN ESTE PERIODO\nUsa las flechas para explorar tu historial.",
+                FontFamily = Mono(), FontSize = 14, FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+                TextAlignment = TextAlignment.Center
+            };
+            chartFrame.Height = 300;
+        }
         else
         {
-            int binDays = (int)Math.Ceiling(span / 24d);
-            for (var d = start; d <= end; d = d.AddDays(binDays)) { var last = d.AddDays(binDays - 1); if (last > end) last = end; bins.Add(($"{d:dd/MM}–{last:dd/MM}", daily.Where(p => p.Key >= d && p.Key <= last).Sum(p => p.Value))); }
+            chartFrame.Child = new StackedBarChart(data.Buckets, data.Colors) { Height = 300 };
         }
-        content.Children.Add(new BarChart(bins) { Height = 200, Margin = new Thickness(0, 8, 0, 16) });
-        content.Children.Add(Section("02 / A DÓNDE FUE TU TIEMPO"));
-        var breakdown = filtered.GroupBy(s => s.Project).Select(g => (Name: g.Key, Minutes: g.Sum(s => Reports.MinutesIn(s, start, end, TimeZoneInfo.Local)))).OrderByDescending(g => g.Minutes).ToList();
-        foreach (var item in breakdown)
+        content.Children.Add(chartFrame);
+
+        var rangeStats = new Grid { Margin = new Thickness(0, 0, 0, 16) };
+        rangeStats.ColumnDefinitions.Add(new ColumnDefinition());
+        rangeStats.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        rangeStats.Children.Add(new TextBlock { Text = $"{FormatDuration(data.TotalMinutes)}  EN ESTE PERIODO", FontFamily = Mono(), FontWeight = FontWeights.Bold, FontSize = 18 });
+        var sessionCount = new TextBlock { Text = $"{data.Sessions.Count:N0} SESIONES", FontFamily = Mono(), FontSize = 11, Foreground = Resource("Muted"), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(sessionCount, 1);
+        rangeStats.Children.Add(sessionCount);
+        content.Children.Add(rangeStats);
+
+        content.Children.Add(Section("PROYECTOS", "DISTRIBUCIÓN DEL PERIODO"));
+        if (data.ProjectTotals.Count == 0)
         {
-            var line = new Grid { Margin = new Thickness(0, 6, 0, 6) }; line.ColumnDefinitions.Add(new()); line.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-            line.Children.Add(new TextBlock { Text = item.Name, FontWeight = FontWeights.SemiBold });
-            var number = new TextBlock { Text = $"{item.Minutes:0} min · {(total > 0 ? item.Minutes / total * 100 : 0):0}%", FontFamily = new FontFamily("Consolas") }; Grid.SetColumn(number, 1); line.Children.Add(number); content.Children.Add(line);
+            content.Children.Add(new TextBlock { Text = "Tu actividad aparecerá aquí cuando completes una sesión." });
+            return;
         }
-        if (breakdown.Count == 0) content.Children.Add(new TextBlock { Text = "Tu primera sesión aparecerá aquí.", Margin = new Thickness(0, 12, 0, 12) });
-        content.Children.Add(Section("03 / CONSTANCIA Y PLANIFICACIÓN"));
-        var ended = filtered.Where(s => DateOnly.FromDateTime(s.Ended.LocalDateTime) >= start && DateOnly.FromDateTime(s.Ended.LocalDateTime) <= end).ToList();
-        content.Children.Add(new TextBlock { Text = $"{ended.Count(s => s.Outcome != Outcome.Completed)} sesiones parciales · {ended.Sum(s => s.Pauses)} pausas registradas\nRacha actual: {Reports.Streak(daily, DateOnly.FromDateTime(DateTime.Now))} días.\nLas pausas se cuentan en la sesión que termina dentro del periodo.", FontSize = 12, Margin = new Thickness(0, 8, 0, 14) });
-        foreach (var task in owner.Settings.Tasks.Where(t => !t.Template && filtered.Any(s => s.TaskId == t.Id)))
-        {
-            var actual = sessions.Where(s => s.TaskId == task.Id).Sum(s => s.Seconds) / 60;
-            content.Children.Add(new TextBlock { Text = $"{task.Name}: {actual:0} min acumulados / {task.Estimate * owner.Settings.FocusMinutes} min estimados al ritmo actual", FontSize = 12, Margin = new Thickness(0, 3, 0, 6) });
-        }
-        content.Children.Add(Section("04 / TUS SESIONES"));
-        content.Children.Add(new TextBlock { Text = "Tiempo real confirmado, sin descansos ni pausas. El historial muestra las sesiones con enfoque dentro del intervalo.", FontSize = 11, Margin = new Thickness(0, 4, 0, 12) });
-        foreach (var session in filtered.Take(200))
-        {
-            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
-            var edit = Dialogs.Button("EDITAR", () => Edit(session)); DockPanel.SetDock(edit, Dock.Right); row.Children.Add(edit);
-            row.Children.Add(new TextBlock { Text = $"{session.Started.LocalDateTime:dd MMM HH:mm}  ·  {Reports.MinutesIn(session, start, end, TimeZoneInfo.Local):0.#} min  ·  {(session.Outcome == Outcome.Completed ? "completa" : "parcial")}\n{session.Project} / {session.Task}{(session.OriginalSeconds.HasValue ? "  [corregida]" : "")}", FontSize = 12 });
-            content.Children.Add(row);
-        }
-        if (filtered.Count > 200) content.Children.Add(new TextBlock { Text = "Se muestran las 200 sesiones más recientes. Reduce el intervalo o exporta el historial completo." });
+        foreach (var item in data.ProjectTotals)
+            content.Children.Add(ProjectRow(item.Name, item.Minutes, data.TotalMinutes, data.Colors.GetValueOrDefault(item.SeriesName, Resource("Muted"))));
     }
-    private static FrameworkElement Stat(string value, string label)
+
+    private void RenderDetail()
     {
-        var stack = new StackPanel { Margin = new Thickness(12) }; stack.Children.Add(new TextBlock { Text = value, FontFamily = new FontFamily("Consolas"), FontSize = 32, FontWeight = FontWeights.Bold }); stack.Children.Add(new TextBlock { Text = label, FontSize = 9 });
-        var border = new Border { BorderThickness = new Thickness(1), Margin = new Thickness(0, 0, 8, 0), Child = stack }; border.SetResourceReference(BorderBrushProperty, "Line"); return border;
+        var range = Range();
+        content.Children.Add(Section("DETALLE DE SESIONES", "BUSCA, REVISA Y CORRIGE TU HISTORIAL"));
+        content.Children.Add(PeriodNavigator(range));
+
+        var candidates = sessions.Where(s => Reports.MinutesIn(s, range.Start, range.End, TimeZoneInfo.Local) > 0).ToList();
+        exportSessions = candidates;
+        var filters = new Grid { Margin = new Thickness(0, 12, 0, 10) };
+        filters.ColumnDefinitions.Add(new ColumnDefinition());
+        filters.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+        var search = new TextBox { ToolTip = "Buscar proyecto, tarea o nota", Margin = new Thickness(0, 0, 8, 0), MinHeight = 38 };
+        search.SetValue(AutomationProperties.NameProperty, "Buscar sesiones");
+        var projects = new ComboBox
+        {
+            ItemsSource = new[] { "TODOS LOS PROYECTOS" }.Concat(candidates.Select(ProjectName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(value => value)).ToList(),
+            SelectedIndex = 0,
+            Margin = new Thickness(0),
+            MinHeight = 38
+        };
+        filters.Children.Add(search);
+        Grid.SetColumn(projects, 1);
+        filters.Children.Add(projects);
+        content.Children.Add(filters);
+
+        var metadata = new TextBlock { FontFamily = Mono(), FontSize = 10, Foreground = Resource("Muted"), Margin = new Thickness(0, 0, 0, 10) };
+        content.Children.Add(metadata);
+        var list = new StackPanel();
+        content.Children.Add(list);
+
+        void RefreshList()
+        {
+            list.Children.Clear();
+            var query = search.Text.Trim();
+            var selectedProject = projects.SelectedItem?.ToString() ?? "TODOS LOS PROYECTOS";
+            var visible = candidates.Where(s =>
+                (selectedProject == "TODOS LOS PROYECTOS" || string.Equals(ProjectName(s), selectedProject, StringComparison.OrdinalIgnoreCase)) &&
+                (string.IsNullOrWhiteSpace(query) || $"{s.Project} {s.Task} {s.Note}".Contains(query, StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(s => s.Started).ToList();
+            exportSessions = visible;
+            var minutes = visible.Sum(s => Reports.MinutesIn(s, range.Start, range.End, TimeZoneInfo.Local));
+            metadata.Text = $"{visible.Count:N0} SESIONES   ·   {FormatDuration(minutes)}   ·   {PeriodLabel(range)}";
+            if (visible.Count == 0)
+            {
+                list.Children.Add(new TextBlock { Text = "No hay sesiones que coincidan con estos filtros.", Margin = new Thickness(0, 18, 0, 18) });
+                return;
+            }
+            DateOnly? previousDay = null;
+            foreach (var session in visible.Take(500))
+            {
+                var day = LocalDate(session.Started);
+                if (day != previousDay)
+                {
+                    list.Children.Add(new TextBlock { Text = $"{DayLabels[(int)day.DayOfWeek]}  {day:dd/MM/yyyy}", FontFamily = Mono(), FontWeight = FontWeights.Bold, FontSize = 11, Margin = new Thickness(0, previousDay is null ? 4 : 16, 0, 6) });
+                    previousDay = day;
+                }
+                list.Children.Add(SessionRow(session, range.Start, range.End));
+            }
+            if (visible.Count > 500)
+                list.Children.Add(new TextBlock { Text = "Se muestran las 500 sesiones más recientes de este filtro. Exporta CSV para obtenerlas todas.", FontSize = 11, Foreground = Resource("Muted"), Margin = new Thickness(0, 10, 0, 10) });
+        }
+        search.TextChanged += (_, _) => RefreshList();
+        projects.SelectionChanged += (_, _) => RefreshList();
+        RefreshList();
     }
-    private static TextBlock Section(string text) => new() { Text = text, FontWeight = FontWeights.Black, FontSize = 13, Margin = new Thickness(0, 18, 0, 8) };
+
+    private FrameworkElement PeriodNavigator((DateOnly Start, DateOnly End) range)
+    {
+        var row = new Grid { Margin = new Thickness(0, 4, 0, 2) };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var previous = NavButton("←", () => { anchor = period switch { PeriodMode.Week => anchor.AddDays(-7), PeriodMode.Month => anchor.AddMonths(-1), _ => anchor.AddYears(-1) }; Render(); });
+        previous.Width = 52;
+        row.Children.Add(previous);
+        var label = new TextBlock { Text = PeriodLabel(range), FontFamily = Mono(), FontSize = 14, FontWeight = FontWeights.Bold, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
+        Grid.SetColumn(label, 1);
+        row.Children.Add(label);
+        var next = NavButton("→", () => { anchor = period switch { PeriodMode.Week => anchor.AddDays(7), PeriodMode.Month => anchor.AddMonths(1), _ => anchor.AddYears(1) }; Render(); });
+        next.Width = 52;
+        next.IsEnabled = NextRangeStart() <= DateOnly.FromDateTime(DateTime.Today);
+        Grid.SetColumn(next, 2);
+        row.Children.Add(next);
+        return row;
+    }
+
+    private ChartData BuildChart(DateOnly start, DateOnly end)
+    {
+        var selectedSessions = sessions.Where(s => Reports.MinutesIn(s, start, end, TimeZoneInfo.Local) > 0).ToList();
+        var dailyByProject = sessions.GroupBy(ProjectName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => Reports.Daily(group, TimeZoneInfo.Local), StringComparer.OrdinalIgnoreCase);
+        var totals = dailyByProject.Select(pair => new ProjectTotal(pair.Key, Sum(pair.Value, start, end), pair.Key))
+            .Where(item => item.Minutes > .001).OrderByDescending(item => item.Minutes).ToList();
+        var primary = totals.Take(SeriesPalette.Length).Select(item => item.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var colors = new Dictionary<string, Brush>(StringComparer.OrdinalIgnoreCase);
+        int colorIndex = 0;
+        foreach (var name in totals.Select(item => item.Name).Where(primary.Contains)) colors[name] = new SolidColorBrush(SeriesPalette[colorIndex++]);
+        if (totals.Any(item => !primary.Contains(item.Name))) colors["OTROS"] = new SolidColorBrush(Color.FromRgb(115, 118, 108));
+
+        var projectTotals = totals.Select(item => primary.Contains(item.Name) ? item : item with { SeriesName = "OTROS" }).ToList();
+        var buckets = new List<ReportBucket>();
+        if (period == PeriodMode.Week)
+        {
+            for (var day = start; day <= end; day = day.AddDays(1)) buckets.Add(Bucket($"{DayLabels[(int)day.DayOfWeek]}\n{day:dd}", day, day));
+        }
+        else if (period == PeriodMode.Month)
+        {
+            for (var day = start; day <= end; day = day.AddDays(1)) buckets.Add(Bucket(day.Day.ToString(CultureInfo.InvariantCulture), day, day));
+        }
+        else
+        {
+            for (int month = 1; month <= 12; month++)
+            {
+                var first = new DateOnly(anchor.Year, month, 1);
+                buckets.Add(Bucket(MonthLabels[month - 1], first, new DateOnly(anchor.Year, month, DateTime.DaysInMonth(anchor.Year, month))));
+            }
+        }
+        return new ChartData(buckets, colors, projectTotals, selectedSessions, projectTotals.Sum(item => item.Minutes));
+
+        ReportBucket Bucket(string label, DateOnly from, DateOnly to)
+        {
+            var values = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in dailyByProject)
+            {
+                var minutes = Sum(pair.Value, from, to);
+                if (minutes <= .001) continue;
+                var key = primary.Contains(pair.Key) ? pair.Key : "OTROS";
+                values[key] = values.GetValueOrDefault(key) + minutes;
+            }
+            return new ReportBucket(label, values);
+        }
+    }
+
+    private static double Sum(Dictionary<DateOnly, double> daily, DateOnly start, DateOnly end) => daily.Where(pair => pair.Key >= start && pair.Key <= end).Sum(pair => pair.Value);
+
+    private (DateOnly Start, DateOnly End) Range()
+    {
+        if (period == PeriodMode.Month)
+        {
+            var start = new DateOnly(anchor.Year, anchor.Month, 1);
+            return (start, new DateOnly(anchor.Year, anchor.Month, DateTime.DaysInMonth(anchor.Year, anchor.Month)));
+        }
+        if (period == PeriodMode.Year) return (new DateOnly(anchor.Year, 1, 1), new DateOnly(anchor.Year, 12, 31));
+        int offset = ((int)anchor.DayOfWeek + 6) % 7;
+        var monday = anchor.AddDays(-offset);
+        return (monday, monday.AddDays(6));
+    }
+
+    private DateOnly NextRangeStart()
+    {
+        var range = Range();
+        return period switch { PeriodMode.Week => range.Start.AddDays(7), PeriodMode.Month => range.Start.AddMonths(1), _ => range.Start.AddYears(1) };
+    }
+
+    private string PeriodLabel((DateOnly Start, DateOnly End) range) => period switch
+    {
+        PeriodMode.Week when range.Start.Month == range.End.Month => $"{range.Start:dd}–{range.End:dd} {MonthLabels[range.Start.Month - 1]} {range.End:yyyy}",
+        PeriodMode.Week => $"{range.Start:dd} {MonthLabels[range.Start.Month - 1]} – {range.End:dd} {MonthLabels[range.End.Month - 1]} {range.End:yyyy}",
+        PeriodMode.Month => $"{MonthLabels[range.Start.Month - 1]} {range.Start:yyyy}",
+        _ => range.Start.Year.ToString(CultureInfo.InvariantCulture)
+    };
+
+    private FrameworkElement ProjectRow(string name, double minutes, double total, Brush color)
+    {
+        var row = new Grid { Margin = new Thickness(0, 0, 0, 1), Background = Resource("Surface"), MinHeight = 48 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var swatch = new Border { Width = 11, Height = 11, Background = color, BorderBrush = Resource("Line"), BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(swatch);
+        var label = new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
+        Grid.SetColumn(label, 1);
+        row.Children.Add(label);
+        var value = new TextBlock { Text = $"{FormatDuration(minutes)}   {(total > 0 ? minutes / total * 100 : 0):0}%", FontFamily = Mono(), FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
+        Grid.SetColumn(value, 2);
+        row.Children.Add(value);
+        return row;
+    }
+
+    private FrameworkElement SessionRow(Session session, DateOnly start, DateOnly end)
+    {
+        var row = new Grid { Margin = new Thickness(0, 0, 0, 5), Background = Resource("Surface"), MinHeight = 62 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(58) });
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var time = new TextBlock { Text = session.Started.LocalDateTime.ToString("HH:mm"), FontFamily = Mono(), FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
+        row.Children.Add(time);
+        var copy = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 7, 8, 7) };
+        copy.Children.Add(new TextBlock { Text = session.Task, FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap });
+        copy.Children.Add(new TextBlock { Text = ProjectName(session), FontSize = 10, Foreground = Resource("Muted"), TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap });
+        Grid.SetColumn(copy, 1);
+        row.Children.Add(copy);
+        var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        right.Children.Add(new TextBlock { Text = FormatDuration(Reports.MinutesIn(session, start, end, TimeZoneInfo.Local)), FontFamily = Mono(), FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) });
+        var edit = ActionButton("EDITAR", () => Edit(session), "Editar esta sesión");
+        edit.Padding = new Thickness(8, 5, 8, 5);
+        right.Children.Add(edit);
+        Grid.SetColumn(right, 2);
+        row.Children.Add(right);
+        return row;
+    }
+
+    private static FrameworkElement Stat(string icon, string value, string label)
+    {
+        var stack = new StackPanel { Margin = new Thickness(14, 12, 14, 12) };
+        var line = new StackPanel { Orientation = Orientation.Horizontal };
+        line.Children.Add(new TextBlock { Text = icon, FontFamily = new FontFamily("Segoe UI Symbol"), FontSize = 21, Margin = new Thickness(0, 4, 10, 0), Foreground = Resource("Muted") });
+        line.Children.Add(new TextBlock { Text = value, FontFamily = Mono(), FontSize = 29, FontWeight = FontWeights.Black });
+        stack.Children.Add(line);
+        stack.Children.Add(new TextBlock { Text = label, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Resource("Muted"), Margin = new Thickness(0, 4, 0, 0) });
+        return new Border { BorderBrush = Resource("Line"), BorderThickness = new Thickness(1.5), Background = Resource("Surface"), Margin = new Thickness(0, 0, 8, 0), Child = stack };
+    }
+
+    private static FrameworkElement Section(string title, string subtitle)
+    {
+        var row = new Grid { Margin = new Thickness(0, 10, 0, 8) };
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(new TextBlock { Text = title, FontSize = 15, FontWeight = FontWeights.Black });
+        var detail = new TextBlock { Text = subtitle, FontFamily = Mono(), FontSize = 9, Foreground = Resource("Muted"), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(detail, 1);
+        row.Children.Add(detail);
+        return row;
+    }
+
+    private static Button NavButton(string text, Action action)
+    {
+        var button = new Button { Content = text, Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 0, 5, 0), FontSize = 10 };
+        button.Click += (_, _) => action();
+        return button;
+    }
+
+    private static Button ActionButton(string text, Action action, string tooltip)
+    {
+        var button = Dialogs.Button(text, action);
+        button.ToolTip = tooltip;
+        button.Padding = new Thickness(10, 7, 10, 7);
+        button.FontSize = 10;
+        return button;
+    }
+
+    private static void SetActive(Button button, bool active)
+    {
+        button.Background = active ? Resource("Ink") : Resource("Surface");
+        button.Foreground = active ? Resource("Paper") : Resource("Ink");
+    }
+
+    private static string ProjectName(Session session) => string.IsNullOrWhiteSpace(session.Project) ? "Sin proyecto" : session.Project.Trim();
+    private static DateOnly LocalDate(DateTimeOffset value) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(value, TimeZoneInfo.Local).DateTime);
+    private static string FormatHoursCompact(double minutes) => Math.Floor(minutes / 60).ToString("N0", CultureInfo.CurrentCulture);
+    private static string FormatDuration(double minutes)
+    {
+        int total = Math.Max(0, (int)Math.Round(minutes));
+        return $"{total / 60:00}:{total % 60:00}";
+    }
+    private static FontFamily Mono() => new("Consolas");
+    private static Brush Resource(string key) => (Brush)Application.Current.Resources[key];
+
     private void Edit(Session session)
     {
-        var projectName = Dialogs.Prompt(this, "CLASIFICAR SESIÓN", "Proyecto", session.Project); if (projectName is null) return;
-        var taskName = Dialogs.Prompt(this, "CLASIFICAR SESIÓN", "Tarea", session.Task); if (taskName is null) return;
-        var minutes = Dialogs.Prompt(this, "CORREGIR DURACIÓN", "Minutos reales (la corrección queda identificada)", (session.Seconds / 60).ToString("0.###", CultureInfo.CurrentCulture)); if (minutes is null) return;
-        if (!double.TryParse(minutes, out var value) || !double.IsFinite(value) || value <= 0 || value > 1440) { Dialogs.Alert(this, "DURACIÓN INVÁLIDA", "La duración debe estar entre 0 y 1440 minutos."); return; }
-        session.Project = string.IsNullOrWhiteSpace(projectName) ? "Sin proyecto" : projectName; session.Task = string.IsNullOrWhiteSpace(taskName) ? "Enfoque libre" : taskName;
-        if (Math.Abs(value * 60 - session.Seconds) > 0.1)
+        var projectName = Dialogs.Prompt(this, "CLASIFICAR SESIÓN", "Proyecto", session.Project);
+        if (projectName is null) return;
+        var taskName = Dialogs.Prompt(this, "CLASIFICAR SESIÓN", "Tarea", session.Task);
+        if (taskName is null) return;
+        var minutes = Dialogs.Prompt(this, "CORREGIR DURACIÓN", "Minutos reales (la corrección queda identificada)", (session.Seconds / 60).ToString("0.###", CultureInfo.CurrentCulture));
+        if (minutes is null) return;
+        if (!double.TryParse(minutes, NumberStyles.Float, CultureInfo.CurrentCulture, out var value) || !double.IsFinite(value) || value <= 0 || value > 1440)
+        {
+            Dialogs.Alert(this, "DURACIÓN INVÁLIDA", "La duración debe estar entre 0 y 1440 minutos.");
+            return;
+        }
+        session.Project = string.IsNullOrWhiteSpace(projectName) ? "Sin proyecto" : projectName;
+        session.Task = string.IsNullOrWhiteSpace(taskName) ? "Enfoque libre" : taskName;
+        if (Math.Abs(value * 60 - session.Seconds) > .1)
         {
             session.OriginalSeconds ??= session.Seconds;
-            session.Segments = [new(session.Ended.AddMinutes(-value), session.Ended)]; session.Started = session.Segments[0].Start;
+            session.Segments = [new(session.Ended.AddMinutes(-value), session.Ended)];
+            session.Started = session.Segments[0].Start;
             session.Note = "Duración corregida manualmente. Se asigna un intervalo continuo anterior a la hora de fin.";
         }
-        // Reclassification must not keep attributing time to the old task ID.
-        session.TaskId = owner.Settings.Tasks.FirstOrDefault(t => t.Name == session.Task && t.Project == session.Project && !t.Template)?.Id;
-        owner.Store.Save(session); Refresh();
+        session.TaskId = owner.Settings.Tasks.FirstOrDefault(task => task.Name == session.Task && task.Project == session.Project && !task.Template)?.Id;
+        owner.Store.Save(session);
+        ReloadData();
     }
+
     private void ExportCsv()
     {
-        var dialog = new SaveFileDialog { Filter = "CSV|*.csv", FileName = "pomo-dock-report.csv" };
-        if (dialog.ShowDialog(this) == true) { Store.ExportCsv(dialog.FileName, filtered); owner.Status("CSV EXPORTADO · Incluye la duración completa de las sesiones seleccionadas."); }
+        var dialog = new SaveFileDialog { Filter = "CSV|*.csv", FileName = $"pomodock-{DateTime.Today:yyyy-MM-dd}.csv" };
+        if (dialog.ShowDialog(this) != true) return;
+        Store.ExportCsv(dialog.FileName, exportSessions);
+        owner.Status($"CSV EXPORTADO · {exportSessions.Count:N0} sesiones del periodo visible.");
     }
+
     private void ExportJson()
     {
-        var dialog = new SaveFileDialog { Filter = "JSON|*.json", FileName = "pomo-dock-backup.json" };
-        if (dialog.ShowDialog(this) == true) { owner.SaveState(); owner.Store.ExportJson(dialog.FileName); owner.Status("BACKUP EXPORTADO · Historial y configuración."); }
+        var dialog = new SaveFileDialog { Filter = "JSON|*.json", FileName = $"pomodock-backup-{DateTime.Today:yyyy-MM-dd}.json" };
+        if (dialog.ShowDialog(this) != true) return;
+        owner.SaveState();
+        owner.Store.ExportJson(dialog.FileName);
+        owner.Status("BACKUP EXPORTADO · Historial y configuración.");
     }
+
     private void Import()
     {
         var dialog = new OpenFileDialog { Filter = "Pomofocus / PomoDock|*.csv;*.tsv;*.json|CSV de Pomofocus|*.csv;*.tsv|PomoDock JSON|*.json|Todos los archivos|*.*", Multiselect = false };
-        if (dialog.ShowDialog(this) == true)
+        if (dialog.ShowDialog(this) != true) return;
+        try
         {
-            try
+            var backupDirectory = Path.Combine(owner.Store.DirectoryPath, "backups");
+            Directory.CreateDirectory(backupDirectory);
+            owner.Store.Backup(Path.Combine(backupDirectory, $"antes-de-importar-{DateTime.Now:yyyyMMdd-HHmmss}.db"));
+            if (string.Equals(Path.GetExtension(dialog.FileName), ".json", StringComparison.OrdinalIgnoreCase))
             {
-                if (string.Equals(Path.GetExtension(dialog.FileName), ".json", StringComparison.OrdinalIgnoreCase))
-                {
-                    int count = owner.Store.ImportJson(dialog.FileName);
-                    owner.Status($"IMPORTADAS {count} SESIONES · Se conservaron las existentes.");
-                }
-                else
-                {
-                    var result = PomofocusCsv.Import(owner.Store, owner.Settings, dialog.FileName);
-                    owner.Status($"POMOfocus · {result.Imported} SESIONES IMPORTADAS · {result.Skipped} YA EXISTÍAN · {result.Invalid} FILAS OMITIDAS.");
-                }
-                Refresh();
+                int count = owner.Store.ImportJson(dialog.FileName);
+                owner.Status($"IMPORTADAS {count:N0} SESIONES · Se conservaron las existentes.");
             }
-            catch (Exception ex) { Dialogs.Alert(this, "IMPORTACIÓN FALLIDA", "No se pudo importar: " + ex.Message); }
+            else
+            {
+                var result = PomofocusCsv.Import(owner.Store, owner.Settings, dialog.FileName);
+                owner.Status($"POMOFOCUS · {result.Imported:N0} IMPORTADAS · {result.Skipped:N0} EXISTENTES · {result.Invalid:N0} OMITIDAS.");
+            }
+            ReloadData();
         }
-    }
-}
-
-internal sealed class BarChart(List<(string Label, double Minutes)> bins) : FrameworkElement
-{
-    protected override void OnRender(DrawingContext dc)
-    {
-        base.OnRender(dc);
-        var ink = (Brush)FindResource("Ink"); var muted = (Brush)FindResource("Muted");
-        double left = 44, bottom = ActualHeight - 30, width = Math.Max(1, ActualWidth - left - 4), height = bottom - 24;
-        double max = Math.Max(1, Math.Ceiling(bins.Select(b => b.Minutes).DefaultIfEmpty(0).Max() / 10) * 10);
-        void Text(string value, double x, double y, Brush brush) => dc.DrawText(new FormattedText(value, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface("Consolas"), 10, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip), new Point(x, y));
-        Text("MIN", 0, 0, muted);
-        for (int i = 0; i <= 2; i++) { double y = bottom - height * i / 2; dc.DrawLine(new Pen(muted, 0.4), new(left, y), new(ActualWidth, y)); Text((max * i / 2).ToString("0"), 0, y - 6, muted); }
-        int count = Math.Max(1, bins.Count); double cell = width / count;
-        for (int i = 0; i < bins.Count; i++)
+        catch (Exception ex)
         {
-            double h = height * bins[i].Minutes / max;
-            dc.DrawRectangle(ink, null, new Rect(left + i * cell + 2, bottom - h, Math.Max(1, cell - 4), h));
-            int every = Math.Max(1, (int)Math.Ceiling(62 / cell));
-            if (i % every == 0) Text(bins[i].Label.Split('–')[0], left + i * cell, bottom + 8, muted);
+            Dialogs.Alert(this, "IMPORTACIÓN FALLIDA", "No se pudo importar: " + ex.Message);
         }
     }
-    protected override void OnMouseMove(System.Windows.Input.MouseEventArgs e)
+
+    internal int VisibleSessionCount => exportSessions.Count;
+    internal void ShowDetailForDiagnostics()
     {
-        base.OnMouseMove(e); var pos = e.GetPosition(this); int index = (int)((pos.X - 44) / Math.Max(1, ActualWidth - 48) * bins.Count);
-        ToolTip = index >= 0 && index < bins.Count ? $"{bins[index].Label}: {bins[index].Minutes:0.#} minutos de enfoque" : null;
+        tab = ReportTab.Detail;
+        Render();
+    }
+
+    private sealed record ReportBucket(string Label, Dictionary<string, double> Values);
+    private sealed record ProjectTotal(string Name, double Minutes, string SeriesName);
+    private sealed record ChartData(List<ReportBucket> Buckets, Dictionary<string, Brush> Colors, List<ProjectTotal> ProjectTotals, List<Session> Sessions, double TotalMinutes);
+
+    private sealed class StackedBarChart(List<ReportBucket> buckets, Dictionary<string, Brush> colors) : FrameworkElement
+    {
+        private const double Left = 54;
+        private const double Bottom = 34;
+
+        protected override void OnRender(DrawingContext dc)
+        {
+            base.OnRender(dc);
+            var ink = Resource("Ink");
+            var muted = Resource("Muted");
+            var grid = new Pen(new SolidColorBrush(Color.FromArgb(70, 102, 105, 94)), .7);
+            double bottom = Math.Max(40, ActualHeight - Bottom);
+            double width = Math.Max(1, ActualWidth - Left - 5);
+            double height = Math.Max(1, bottom - 22);
+            double rawMax = buckets.Select(bucket => bucket.Values.Values.Sum()).DefaultIfEmpty(0).Max() / 60;
+            double maxHours = NiceMaximum(rawMax);
+            DrawText(dc, "H", 2, 0, muted, 9, FontWeights.Bold);
+            for (int line = 0; line <= 4; line++)
+            {
+                double value = maxHours * line / 4;
+                double y = bottom - height * line / 4;
+                dc.DrawLine(grid, new Point(Left, y), new Point(ActualWidth, y));
+                DrawText(dc, value.ToString(value < 10 ? "0.#" : "0", CultureInfo.CurrentCulture), 2, y - 7, muted, 9, FontWeights.Normal);
+            }
+            int count = Math.Max(1, buckets.Count);
+            double cell = width / count;
+            double barWidth = Math.Clamp(cell * .62, 2, 46);
+            for (int index = 0; index < buckets.Count; index++)
+            {
+                double x = Left + index * cell + (cell - barWidth) / 2;
+                double used = 0;
+                foreach (var entry in buckets[index].Values.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+                {
+                    if (!colors.TryGetValue(entry.Key, out var brush)) continue;
+                    double segment = height * (entry.Value / 60) / maxHours;
+                    dc.DrawRectangle(brush, new Pen(ink, .45), new Rect(x, bottom - used - segment, barWidth, segment));
+                    used += segment;
+                }
+                int every = LabelFrequency(count, cell);
+                if (index % every == 0 || index == buckets.Count - 1)
+                    DrawText(dc, buckets[index].Label.Replace('\n', ' '), Left + index * cell, bottom + 8, muted, 8, FontWeights.Normal);
+            }
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            var position = e.GetPosition(this);
+            int index = (int)((position.X - Left) / Math.Max(1, ActualWidth - Left - 5) * buckets.Count);
+            if (index < 0 || index >= buckets.Count) { ToolTip = null; return; }
+            var bucket = buckets[index];
+            var lines = bucket.Values.OrderByDescending(pair => pair.Value).Select(pair => $"{pair.Key}: {FormatDuration(pair.Value)}");
+            ToolTip = $"{bucket.Label.Replace('\n', ' ')} · {FormatDuration(bucket.Values.Values.Sum())}\n{string.Join("\n", lines)}";
+        }
+
+        private static int LabelFrequency(int count, double cell) => count <= 12 ? 1 : Math.Max(1, (int)Math.Ceiling(28 / Math.Max(1, cell)));
+        private static double NiceMaximum(double value)
+        {
+            if (value <= 0) return 1;
+            double exponent = Math.Pow(10, Math.Floor(Math.Log10(value)));
+            double fraction = value / exponent;
+            double nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+            return nice * exponent;
+        }
+        private void DrawText(DrawingContext dc, string value, double x, double y, Brush brush, double size, FontWeight weight)
+        {
+            var text = new FormattedText(value, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(Mono(), FontStyles.Normal, weight, FontStretches.Normal), size, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            dc.DrawText(text, new Point(x, y));
+        }
     }
 }

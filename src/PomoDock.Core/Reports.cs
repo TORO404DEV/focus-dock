@@ -2,6 +2,12 @@ namespace PomoDock.Core;
 
 public static class Reports
 {
+    public static int AccessDays(IEnumerable<Session> sessions, TimeZoneInfo zone) => sessions
+        .Where(session => session.Phase == Phase.Focus)
+        .Select(session => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(session.Started, zone).DateTime))
+        .Distinct()
+        .Count();
+
     public static Dictionary<DateOnly, double> Daily(IEnumerable<Session> sessions, TimeZoneInfo zone)
     {
         var result = new Dictionary<DateOnly, double>();

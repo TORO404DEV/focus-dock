@@ -35,6 +35,7 @@ internal static class Diagnostics
             Assert(main.IsLoaded, "native shell loads");
             Render(main, Path.Combine(directory, "main-light.png"));
             main.ToggleTimer(); await Task.Delay(1200); main.ToggleTimer(); Assert(main.Timer.Active!.Seconds >= 1, "UI start and pause record monotonic work");
+            if (main.Settings.Fullscreen) main.ToggleFullscreen();
             main.ToggleFullscreen(); await Task.Delay(150);
             var hwnd = new WindowInteropHelper(main).Handle; Win32.GetWindowRect(hwnd, out var fullRect); var monitor = System.Windows.Forms.Screen.FromHandle(hwnd).Bounds;
             Assert(Math.Abs(fullRect.Right - fullRect.Left - monitor.Width) < 3 && Math.Abs(fullRect.Bottom - fullRect.Top - monitor.Height) < 3, "fullscreen fills current monitor");
@@ -94,8 +95,15 @@ internal static class Diagnostics
                 var end = DateTimeOffset.Now.AddDays(-d).AddHours(-1);
                 main.Store.Save(new() { Started = end.AddMinutes(-25), Ended = end, PlannedSeconds = 1500, Outcome = Outcome.Completed, Project = d % 2 == 0 ? "Demo / producto" : "Demo / aprender", Task = "Sesión de demostración", Segments = [new(end.AddMinutes(-25), end)] });
             }
-            var report = new ReportWindow(main); report.Show(); await Task.Delay(100); Render(report, Path.Combine(directory, "report.png")); report.Close();
-            main.SaveState(); Assert(main.Store.Read<Settings>("settings")!.Widgets.Count == 4, "widget layout persisted");
+            var report = new ReportWindow(main); report.Show(); await Task.Delay(100);
+            Assert(report.VisibleSessionCount >= 14, "report summary loads persisted focus history");
+            Render(report, Path.Combine(directory, "report.png"));
+            report.ShowDetailForDiagnostics(); await Task.Delay(100);
+            Assert(report.VisibleSessionCount >= 14, "report detail keeps the selected period data");
+            Render(report, Path.Combine(directory, "report-detail.png")); report.Close();
+            main.SaveState();
+            var persistedWidgets = main.Store.Read<Settings>("settings")!.Widgets;
+            Assert(new[] { "notes", "stats", "todo", "habits" }.All(kind => persistedWidgets.Any(widget => widget.Kind == kind)), "widget layout persisted");
             var savedTimer = main.Store.Read<Settings>("settings")!.TimerWidget;
             Assert(savedTimer.Kind == "timer" && savedTimer.Width >= 360 && savedTimer.Height >= 300, "permanent timer widget layout persisted");
             main.Close(); main = null;
@@ -118,7 +126,12 @@ internal static class Diagnostics
     internal static void Render(Window window, string file)
     {
         window.UpdateLayout();
-        var bitmap = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(window);
+        var dpi = VisualTreeHelper.GetDpi(window);
+        var bitmap = new RenderTargetBitmap(
+            Math.Max(1, (int)Math.Ceiling(window.ActualWidth * dpi.DpiScaleX)),
+            Math.Max(1, (int)Math.Ceiling(window.ActualHeight * dpi.DpiScaleY)),
+            dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+        bitmap.Render(window);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap)); using var output = File.Create(file); encoder.Save(output);
     }
 }
