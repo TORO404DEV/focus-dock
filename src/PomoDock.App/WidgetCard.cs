@@ -198,8 +198,11 @@ public sealed class WidgetCard : Border
         summary.Children.Add(new TextBlock { Text = $"{done:00} / {data.Items.Count:00} COMPLETADAS", FontFamily = new FontFamily("Consolas"), FontSize = 13, FontWeight = FontWeights.Bold });
         var pending = new TextBlock { Text = $"{data.Items.Count - done:00} PENDIENTES", FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], VerticalAlignment = VerticalAlignment.Center }; Grid.SetColumn(pending, 1); summary.Children.Add(pending); stack.Children.Add(summary);
 
-        var addRow = new Grid { Margin = new Thickness(0, 10, 0, 6) }; addRow.ColumnDefinitions.Add(new ColumnDefinition()); addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var input = new TextBox { Margin = new Thickness(0, 0, 8, 0), Height = 34, ToolTip = "Escribe una tarea y presiona Enter" }; input.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, "Nueva tarea");
+        var addRow = new Grid { Margin = new Thickness(0, 10, 0, 6) };
+        addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 0 });
+        addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var input = CreateEntryBox("Escribe una tarea y presiona Enter");
+        input.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, "Nueva tarea");
         var add = new Button { Content = "+ AÑADIR", Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(0), Height = 34 };
         void AddItem()
         {
@@ -236,8 +239,11 @@ public sealed class WidgetCard : Border
         var streak = new TextBlock { Text = data.Items.Count == 0 ? "SIN RACHA" : $"🔥 {data.Items.Max(item => item.CurrentStreak(today))} DÍAS", FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], VerticalAlignment = VerticalAlignment.Center }; Grid.SetColumn(streak, 1); summary.Children.Add(streak); stack.Children.Add(summary);
         var progress = new ProgressBar { Minimum = 0, Maximum = Math.Max(1, data.Items.Count), Value = completedToday, Height = 7, Margin = new Thickness(0, 8, 0, 8) }; stack.Children.Add(progress);
 
-        var addRow = new Grid { Margin = new Thickness(0, 2, 0, 8) }; addRow.ColumnDefinitions.Add(new ColumnDefinition()); addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var input = new TextBox { Margin = new Thickness(0, 0, 8, 0), Height = 34, ToolTip = "Ejemplo: Leer 20 minutos" }; input.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, "Nuevo hábito");
+        var addRow = new Grid { Margin = new Thickness(0, 2, 0, 8) };
+        addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 0 });
+        addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var input = CreateEntryBox("Ejemplo: Leer 20 minutos");
+        input.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, "Nuevo hábito");
         var add = new Button { Content = "+ HÁBITO", Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(0), Height = 34 };
         void AddHabit()
         {
@@ -276,6 +282,25 @@ public sealed class WidgetCard : Border
         var scroller = new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }; stack.Children.Add(scroller);
         stack.Children.Add(new TextBlock { Text = "Pulsa un círculo para registrar el día. La racha tolera el día de hoy aún pendiente.", FontSize = 9, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(2, 8, 2, 0) });
         body.Children.Clear(); body.Children.Add(stack);
+    }
+    private static TextBox CreateEntryBox(string tooltip)
+    {
+        var input = new TextBox
+        {
+            Height = 34,
+            Margin = new Thickness(0, 0, 8, 0),
+            Padding = new Thickness(10, 0, 10, 0),
+            MinWidth = 0,
+            TextWrapping = TextWrapping.NoWrap,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            ToolTip = tooltip
+        };
+        // Keep the caret and the first typed character inside the visible box.
+        // The default TextBox template can scroll horizontally while it is being
+        // measured in a narrow, resizable widget, making the left edge look clipped.
+        ScrollViewer.SetHorizontalScrollBarVisibility(input, ScrollBarVisibility.Hidden);
+        return input;
     }
     private static string SpanishDay(DateOnly day) => day.DayOfWeek switch { DayOfWeek.Monday => "L", DayOfWeek.Tuesday => "M", DayOfWeek.Wednesday => "X", DayOfWeek.Thursday => "J", DayOfWeek.Friday => "V", DayOfWeek.Saturday => "S", _ => "D" };
     private void BuildWindow()
