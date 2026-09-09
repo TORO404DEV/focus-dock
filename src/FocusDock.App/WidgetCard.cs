@@ -124,13 +124,22 @@ public sealed class WidgetCard : Border
     private void BeginResize(string edge)
     {
         resizing = true; resizeEdge = edge; elementStartX = Canvas.GetLeft(this); elementStartY = Canvas.GetTop(this); elementStartWidth = ActualWidth; elementStartHeight = ActualHeight;
-        pointerStart = Mouse.GetPosition(owner.WidgetCanvas);
+        pointerStart = CurrentCanvasPointer();
         owner.BringCardToFront(this);
+    }
+    private Point CurrentCanvasPointer()
+    {
+        if (Win32.GetCursorPos(out var screen))
+        {
+            try { return owner.WidgetCanvas.PointFromScreen(new Point(screen.X, screen.Y)); }
+            catch (InvalidOperationException) { }
+        }
+        return Mouse.GetPosition(owner.WidgetCanvas);
     }
     private void UpdateGesture()
     {
         if (!resizing) return;
-        var pointer = Mouse.GetPosition(owner.WidgetCanvas);
+        var pointer = CurrentCanvasPointer();
         double dx = pointer.X - pointerStart.X, dy = pointer.Y - pointerStart.Y;
         var edge = resizeEdge;
         double x = elementStartX, y = elementStartY, width = elementStartWidth, height = elementStartHeight;

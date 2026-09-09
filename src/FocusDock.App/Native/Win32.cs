@@ -27,6 +27,7 @@ internal static class Win32
     [DllImport("user32.dll")] internal static extern nint GetWindow(nint hwnd, uint cmd);
     [DllImport("user32.dll")] internal static extern bool GetWindowRect(nint hwnd, out Rect rect);
     [DllImport("user32.dll")] internal static extern bool GetClientRect(nint hwnd, out Rect rect);
+    [DllImport("user32.dll")] internal static extern bool GetCursorPos(out Point point);
     [DllImport("user32.dll")] internal static extern bool GetWindowPlacement(nint hwnd, ref Placement placement);
     [DllImport("user32.dll")] internal static extern bool SetWindowPlacement(nint hwnd, ref Placement placement);
     [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int w, int h, uint flags);
