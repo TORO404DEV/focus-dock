@@ -1,0 +1,54 @@
+<Window x:Class="FocusDock.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+ Title="FOCUS DOCK" Width="620" Height="940" MinWidth="460" MinHeight="700" WindowStyle="None" ResizeMode="CanResize" Background="{DynamicResource Paper}">
+ <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/></shell:WindowChrome.WindowChrome>
+ <Border BorderBrush="{DynamicResource Line}" BorderThickness="2">
+  <Grid x:Name="Root">
+   <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions>
+   <Grid x:Name="TitleBar" Background="{DynamicResource Ink}" MouseLeftButtonDown="DragTitle">
+    <TextBlock Text="FOCUS DOCK     /     DESKTOP EDITION" Foreground="{DynamicResource Paper}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,110,0"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+     <Button Content="—" Click="MinimizeClick" ToolTip="Minimizar" Padding="10,2" Margin="0"/><Button Content="□" Click="MaximizeClick" ToolTip="Maximizar" Padding="10,2" Margin="0"/><Button Content="×" Click="CloseClick" ToolTip="Cerrar y liberar ventanas" Padding="10,2" Margin="0"/>
+    </StackPanel>
+   </Grid>
+   <Grid Grid.Row="1" Margin="20,18,14,12">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <StackPanel VerticalAlignment="Center"><TextBlock Text="FOCUS / DOCK" FontSize="23" FontWeight="Black"/><TextBlock Text="HAZ ESPACIO PARA LO QUE IMPORTA." FontSize="9" Foreground="{DynamicResource Muted}" Margin="0,3,0,0"/></StackPanel>
+    <WrapPanel Grid.Column="1" VerticalAlignment="Center"><Button Content="REPORT ↗" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="#171916"/><Button Content="☷" Click="TasksClick" ToolTip="Tareas y proyectos"/><Button Content="⚙" Click="SettingsClick" ToolTip="Ajustes"/><Button Content="⛶" Click="FullscreenClick" ToolTip="Pantalla completa · F11"/></WrapPanel>
+   </Grid>
+   <Border Grid.Row="2" Margin="20,0,20,14" BorderThickness="2" BorderBrush="{DynamicResource Line}" Background="{DynamicResource Surface}">
+    <Grid x:Name="TimerSurface" Margin="16,14,16,15">
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="104"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <UniformGrid Columns="3"><Button x:Name="FocusButton" Content="POMODORO" Tag="Focus" Click="PhaseClick" FontSize="11" Padding="6,9"/><Button x:Name="ShortButton" Content="SHORT BREAK" Tag="ShortBreak" Click="PhaseClick" FontSize="11" Padding="6,9"/><Button x:Name="LongButton" Content="LONG BREAK" Tag="LongBreak" Click="PhaseClick" FontSize="11" Padding="6,9" Margin="0"/></UniformGrid>
+     <Viewbox Grid.Row="1" Stretch="Uniform" Margin="0,4"><TextBlock x:Name="ClockText" Text="25:00" FontFamily="Consolas" FontSize="94" FontWeight="Bold"/></Viewbox>
+     <Grid Grid.Row="2" Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock x:Name="PhaseLabel" Text="01 / TIEMPO DE ENFOQUE" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/><TextBlock Grid.Column="1" x:Name="CycleText" Text="CICLO 1 / 4" FontSize="10" Foreground="{DynamicResource Muted}"/>
+     </Grid>
+     <Grid Grid.Row="3"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <Button x:Name="StartButton" Content="START →" Click="StartClick" Background="{DynamicResource Ink}" Foreground="{DynamicResource Paper}" FontSize="19" Padding="12,12"/>
+      <Button Grid.Column="1" Content="↺" Click="ResetClick" FontSize="20" ToolTip="Guardar parcial y reiniciar"/><Button Grid.Column="2" Content="↠" Click="SkipClick" FontSize="20" Margin="0" ToolTip="Guardar parcial y saltar fase"/>
+     </Grid>
+     <Button Grid.Row="4" x:Name="ContextButton" Content="○  ENFOQUE LIBRE   /   Elegir tarea" Click="TasksClick" BorderThickness="0" Background="Transparent" HorizontalAlignment="Left" Padding="0,12,0,0" FontSize="11"/>
+    </Grid>
+   </Border>
+   <Grid Grid.Row="3" Margin="20,0,20,10">
+    <Grid.RowDefinitions><RowDefinition Height="38"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <TextBlock Text="TU ESPACIO" FontWeight="Black" FontSize="12" VerticalAlignment="Center"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="LAYOUTS" Click="LayoutsClick" FontSize="10" Padding="8,6"/><Button Content="+ WIDGET" Click="AddWidgetClick" FontSize="10" Padding="8,6" Margin="0"/></StackPanel>
+    <Grid Grid.Row="1" x:Name="WidgetArea">
+     <Border x:Name="Welcome" BorderBrush="{DynamicResource Muted}" BorderThickness="1" Background="{DynamicResource Surface}">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="26">
+       <TextBlock Text="UN MONITOR.&#10;TU UNIVERSO." FontSize="32" FontWeight="Black" LineHeight="34"/>
+       <TextBlock Text="Tu música, tu mini app, tus herramientas.&#10;Dales un lugar junto a tu enfoque." FontSize="13" Foreground="{DynamicResource Muted}" Margin="0,18,0,22"/>
+       <Button Content="+ INCRUSTAR UNA VENTANA" Click="AddWindowClick" Background="{DynamicResource Accent}" Foreground="#171916" HorizontalAlignment="Left"/>
+       <TextBlock Text="También puedes añadir una web, notas o métricas." FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,12,0,0"/>
+      </StackPanel>
+     </Border>
+    </Grid>
+   </Grid>
+   <Grid Grid.Row="4" Background="{DynamicResource Ink}"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <TextBlock x:Name="StatusText" Foreground="{DynamicResource Paper}" Text="LISTO PARA ENFOCARTE" FontFamily="Consolas" FontSize="10" Margin="12,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+    <TextBlock Grid.Column="1" Text="F11 FULLSCREEN" Foreground="{DynamicResource Paper}" FontSize="9" Margin="8,0,12,0" VerticalAlignment="Center"/>
+   </Grid>
+  </Grid>
+ </Border>
+</Window>
