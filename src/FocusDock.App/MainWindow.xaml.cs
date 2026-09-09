@@ -195,7 +195,7 @@ public partial class MainWindow : Window
     }
     private void AddWidgetClick(object sender, RoutedEventArgs e)
     {
-        var choice = Dialogs.Choose(this, "AÑADIR WIDGET", ["Ventana de otra app", "Página web / YouTube", "Notas", "Métricas de enfoque"]);
+        var choice = Dialogs.ChooseWidget(this);
         if (choice == 0) AddWindowClick(sender, e);
         else if (choice == 1)
         {
