@@ -1,7 +1,11 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Data;
+using System.Windows.Media.Imaging;
+using System.Windows.Controls.Primitives;
 using FocusDock.App.Native;
 
 namespace FocusDock.App;
@@ -54,22 +58,81 @@ internal static class Dialogs
     }
     public static WindowCandidate? PickWindow(Window owner)
     {
-        var window = Window(owner, "INCRUSTAR VENTANA", 620, 520);
-        var grid = new Grid { Margin = new Thickness(22) }; window.Content = grid;
-        foreach (var h in new[] { GridLength.Auto, GridLength.Auto, new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto }) grid.RowDefinitions.Add(new() { Height = h });
-        grid.Children.Add(Heading("ELIGE UNA VENTANA"));
-        var filter = new TextBox { ToolTip = "Filtrar por nombre de ventana o aplicación" }; Grid.SetRow(filter, 1); grid.Children.Add(filter);
-        var list = new ListBox(); Grid.SetRow(list, 2); grid.Children.Add(list);
-        var candidates = WindowLease.Candidates();
-        void Refresh() { list.ItemsSource = candidates.Where(w => w.ToString().Contains(filter.Text, StringComparison.OrdinalIgnoreCase)).ToList(); }
-        filter.TextChanged += (_, _) => Refresh(); Refresh();
-        var hint = new TextBlock { Text = "La ventana seguirá perteneciendo a su app. Al liberarla volverá al escritorio. Compatibilidad según aplicación y escalado.", FontSize = 11, Margin = new Thickness(0, 12, 0, 12) }; Grid.SetRow(hint, 3); grid.Children.Add(hint);
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+        var window = Window(owner, "INCRUSTAR VENTANA", 760, 640);
+        window.MinWidth = 600; window.MinHeight = 500;
+        TextBox filter = null!; ComboBox category = null!; Button refreshButton = null!; TextBlock summary = null!; ListBox list = null!; Button embed = null!;
+        var candidates = new List<WindowCandidate>();
+        var grid = new Grid { Margin = new Thickness(24, 20, 24, 20) }; window.Content = grid;
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var intro = new StackPanel();
+        intro.Children.Add(Heading("ELIGE UNA VENTANA"));
+        intro.Children.Add(new TextBlock { Text = "Convierte cualquier app abierta en un widget de tu espacio.", Foreground = (Brush)Application.Current.Resources["Muted"], FontSize = 12, Margin = new Thickness(0, -8, 0, 14) });
+        Grid.SetRow(intro, 0); grid.Children.Add(intro);
+
+        var toolbar = new Grid(); toolbar.ColumnDefinitions.Add(new ColumnDefinition()); toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        filter = new TextBox { Text = "", ToolTip = "Buscar por título, aplicación o proceso", Margin = new Thickness(0, 0, 8, 8), MinHeight = 38 };
+        filter.SetValue(AutomationProperties.NameProperty, "Buscar ventanas");
+        filter.TextChanged += (_, _) => Refresh(); Grid.SetColumn(filter, 0); toolbar.Children.Add(filter);
+        category = new ComboBox { ItemsSource = new[] { "Todas las apps", "Navegadores", "Mensajería", "Desarrollo", "Otras" }, SelectedIndex = 0, Width = 145, Margin = new Thickness(0, 4, 8, 10) };
+        category.SelectionChanged += (_, _) => Refresh(); Grid.SetColumn(category, 1); toolbar.Children.Add(category);
+        refreshButton = Button("↻ ACTUALIZAR", () => _ = LoadCandidates()); refreshButton.Padding = new Thickness(10, 8, 10, 8); Grid.SetColumn(refreshButton, 2); toolbar.Children.Add(refreshButton);
+        Grid.SetRow(toolbar, 1); grid.Children.Add(toolbar);
+
+        summary = new TextBlock { FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 7) }; Grid.SetRow(summary, 2); grid.Children.Add(summary);
+        list = new ListBox { BorderThickness = new Thickness(1), Padding = new Thickness(6), SelectionMode = SelectionMode.Single, ItemTemplate = CandidateTemplate() };
+        var selectedStyle = new Style(typeof(ListBoxItem)); selectedStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0))); selectedStyle.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0, 0, 0, 6))); selectedStyle.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
+        var selectedTrigger = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true }; selectedTrigger.Setters.Add(new Setter(Control.BorderBrushProperty, (Brush)Application.Current.Resources["Ink"])); selectedTrigger.Setters.Add(new Setter(Control.BackgroundProperty, (Brush)Application.Current.Resources["Accent"])); selectedStyle.Triggers.Add(selectedTrigger); list.ItemContainerStyle = selectedStyle;
+        Grid.SetRow(list, 3); grid.Children.Add(list);
+
+        var hint = new TextBlock { Text = "La ventana seguirá perteneciendo a su aplicación. Al liberarla volverá al escritorio. Para mejores resultados, usa apps con permisos de administrador iguales a Focus Dock.", FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 12, 0, 12), TextWrapping = TextWrapping.Wrap }; Grid.SetRow(hint, 4); grid.Children.Add(hint);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         WindowCandidate? selected = null;
-        buttons.Children.Add(Button("INCRUSTAR", () => { if (list.SelectedItem is WindowCandidate c) { selected = c; window.DialogResult = true; } }));
-        buttons.Children.Add(Button("ACTUALIZAR", () => { candidates = WindowLease.Candidates(); Refresh(); }));
-        buttons.Children.Add(Button("CANCELAR", () => window.Close())); Grid.SetRow(buttons, 4); grid.Children.Add(buttons);
-        window.Loaded += (_, _) => Modalize(window); window.ShowDialog(); return selected;
+        embed = Button("INCRUSTAR VENTANA", () => { if (list.SelectedItem is WindowCandidate c) { selected = c; window.DialogResult = true; } }); embed.IsDefault = true; embed.Padding = new Thickness(14, 9, 14, 9); buttons.Children.Add(embed);
+        var cancel = Button("CANCELAR", () => window.Close()); cancel.IsCancel = true; buttons.Children.Add(cancel); Grid.SetRow(buttons, 5); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.Children.Add(buttons);
+
+        static bool IsCategory(WindowCandidate candidate, string value)
+        {
+            var process = candidate.ProcessName.ToLowerInvariant();
+            return value switch
+            {
+                "Navegadores" => process is "brave" or "chrome" or "msedge" or "firefox" or "opera",
+                "Mensajería" => process.Contains("telegram") || process.Contains("whatsapp") || process.Contains("discord") || process.Contains("slack"),
+                "Desarrollo" => process is "code" or "devenv" or "githubdesktop" or "notepad++" || process.Contains("studio"),
+                "Otras" => !(process is "brave" or "chrome" or "msedge" or "firefox" or "opera") && !process.Contains("telegram") && !process.Contains("whatsapp") && !process.Contains("discord") && !process.Contains("slack") && process is not ("code" or "devenv" or "githubdesktop"),
+                _ => true
+            };
+        }
+        void Refresh()
+        {
+            var query = filter.Text.Trim(); var group = category.SelectedItem?.ToString() ?? "Todas las apps";
+            var visible = candidates.Where(w => (string.IsNullOrWhiteSpace(query) || w.ToString().Contains(query, StringComparison.OrdinalIgnoreCase)) && IsCategory(w, group)).ToList();
+            list.ItemsSource = visible; summary.Text = $"{visible.Count:00} VENTANAS DISPONIBLES   ·   Selecciona una tarjeta para continuar"; embed.IsEnabled = visible.Count > 0;
+        }
+        async Task LoadCandidates()
+        {
+            refreshButton.IsEnabled = false; summary.Text = "BUSCANDO VENTANAS ABIERTAS…";
+            try { candidates = await Task.Run(WindowLease.Candidates); Refresh(); }
+            finally { refreshButton.IsEnabled = true; }
+        }
+        filter.PreviewKeyDown += (_, e) => { if (e.Key == Key.Enter && list.Items.Count > 0) { list.SelectedIndex = 0; list.Focus(); e.Handled = true; } };
+        Refresh(); window.Loaded += (_, _) => { Modalize(window); filter.Focus(); _ = LoadCandidates(); }; window.ShowDialog(); return selected;
+    }
+    private static DataTemplate CandidateTemplate()
+    {
+        var template = new DataTemplate(typeof(WindowCandidate));
+        var card = new FrameworkElementFactory(typeof(Border)); card.SetValue(Border.BorderBrushProperty, (Brush)Application.Current.Resources["Line"]); card.SetValue(Border.BorderThicknessProperty, new Thickness(1)); card.SetValue(Border.BackgroundProperty, (Brush)Application.Current.Resources["Surface"]); card.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8));
+        var row = new FrameworkElementFactory(typeof(StackPanel)); row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal); row.SetValue(StackPanel.MinHeightProperty, 52d);
+        var icon = new FrameworkElementFactory(typeof(Border)); icon.SetValue(Border.WidthProperty, 36d); icon.SetValue(Border.HeightProperty, 36d); icon.SetValue(Border.BackgroundProperty, (Brush)Application.Current.Resources["Accent"]); icon.SetValue(Border.HorizontalAlignmentProperty, HorizontalAlignment.Left); icon.SetValue(Border.VerticalAlignmentProperty, VerticalAlignment.Center);
+        var image = new FrameworkElementFactory(typeof(Image)); image.SetValue(Image.WidthProperty, 26d); image.SetValue(Image.HeightProperty, 26d); image.SetValue(Image.StretchProperty, Stretch.Uniform); image.SetBinding(Image.SourceProperty, new Binding(nameof(WindowCandidate.Icon))); icon.AppendChild(image); row.AppendChild(icon);
+        var text = new FrameworkElementFactory(typeof(StackPanel)); text.SetValue(StackPanel.MarginProperty, new Thickness(10, 0, 0, 0)); text.SetValue(FrameworkElement.WidthProperty, 590d);
+        var title = new FrameworkElementFactory(typeof(TextBlock)); title.SetBinding(TextBlock.TextProperty, new Binding(nameof(WindowCandidate.Title))); title.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold); title.SetValue(TextBlock.FontSizeProperty, 13d); title.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis); text.AppendChild(title);
+        var process = new FrameworkElementFactory(typeof(TextBlock)); process.SetBinding(TextBlock.TextProperty, new Binding(nameof(WindowCandidate.ProcessLabel))); process.SetValue(TextBlock.FontFamilyProperty, new FontFamily("Consolas")); process.SetValue(TextBlock.FontSizeProperty, 10d); process.SetValue(TextBlock.ForegroundProperty, (Brush)Application.Current.Resources["Muted"]); text.AppendChild(process);
+        row.AppendChild(text); card.AppendChild(row); template.VisualTree = card; return template;
     }
     private sealed class ModalSurface : Border { }
 }

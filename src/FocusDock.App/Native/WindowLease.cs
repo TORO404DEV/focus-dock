@@ -6,11 +6,15 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace FocusDock.App.Native;
 
 public record WindowCandidate(nint Handle, string Title, string ProcessName, uint ProcessId)
 {
+    public ImageSource? Icon { get; init; }
+    public string AppLabel => string.IsNullOrWhiteSpace(ProcessName) ? "Aplicación" : ProcessName;
+    public string ProcessLabel => $"{ProcessName}.exe  ·  PID {ProcessId}";
     public override string ToString() => $"{Title}   [{ProcessName}]";
 }
 public sealed class WindowSnapshot
@@ -47,7 +51,28 @@ public sealed class WindowLease : IDisposable
             if (pid == Environment.ProcessId) return true;
             var text = new StringBuilder(1024); Win32.GetWindowText(h, text, text.Capacity);
             if (text.Length == 0 || (Win32.GetWindowLongPtr(h, Win32.GWL_STYLE).ToInt64() & Win32.WS_CHILD) != 0) return true;
-            try { using var p = Process.GetProcessById((int)pid); if (p.ProcessName is "explorer" or "dwm" or "ShellExperienceHost") return true; windows.Add(new(h, text.ToString(), p.ProcessName, pid)); } catch { }
+            try
+            {
+                using var p = Process.GetProcessById((int)pid);
+                if (p.ProcessName is "explorer" or "dwm" or "ShellExperienceHost") return true;
+                var candidate = new WindowCandidate(h, text.ToString(), p.ProcessName, pid);
+                try
+                {
+                    var path = p.MainModule?.FileName;
+                    if (!string.IsNullOrWhiteSpace(path))
+                    {
+                        using var icon = System.Drawing.Icon.ExtractAssociatedIcon(path);
+                        if (icon is not null)
+                        {
+                            var source = Imaging.CreateBitmapSourceFromHIcon(icon.Handle, Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromWidthAndHeight(32, 32));
+                            source.Freeze(); candidate = candidate with { Icon = source };
+                        }
+                    }
+                }
+                catch { /* Algunas apps protegidas no exponen su icono. */ }
+                windows.Add(candidate);
+            }
+            catch { }
             return true;
         }, 0);
         return windows.OrderBy(w => w.Title).ToList();
