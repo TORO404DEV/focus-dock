@@ -304,7 +304,10 @@ public partial class MainWindow : Window
     {
         if (overlayCards.TryGetValue(card, out var existing))
         {
-            existing.IsOpen = false; existing.IsOpen = true; UpdateOverlayPosition(card); return;
+            // Re-opening the popup recreates its native surface after an
+            // embedded HWND may have changed the desktop z-order. Bring the
+            // complete PomoDock card back above that native child as one unit.
+            existing.IsOpen = false; existing.IsOpen = true; UpdateOverlayPosition(card); BringPopupToFront(existing); return;
         }
         if (card.Parent == WidgetArea) WidgetArea.Children.Remove(card);
         var popup = new Popup
@@ -312,8 +315,13 @@ public partial class MainWindow : Window
             Child = card, AllowsTransparency = true, StaysOpen = true, Placement = PlacementMode.Absolute,
             PopupAnimation = PopupAnimation.None, Focusable = false, IsOpen = true
         };
+        popup.Opened += (_, _) => BringPopupToFront(popup);
         overlayCards[card] = popup;
         UpdateOverlayPosition(card);
+        // Popup is a separate WPF HWND. It must be explicitly lifted above
+        // hosted application windows; WPF Panel.ZIndex alone cannot cross the
+        // native HWND boundary.
+        BringPopupToFront(popup);
     }
     private void HideOverlay(WidgetCard card)
     {
