@@ -10,23 +10,21 @@
      <Button Content="—" Click="MinimizeClick" ToolTip="Minimizar" Padding="10,2" Margin="0"/><Button Content="□" Click="MaximizeClick" ToolTip="Maximizar" Padding="10,2" Margin="0"/><Button Content="×" Click="CloseClick" ToolTip="Cerrar y liberar ventanas" Padding="10,2" Margin="0"/>
     </StackPanel>
    </Grid>
-   <Grid Grid.Row="1" Margin="20,14,20,10">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="120"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-    <StackPanel VerticalAlignment="Center">
-     <TextBlock Text="POMODOCK" FontSize="20" FontWeight="Black" TextWrapping="NoWrap"/>
-     <TextBlock Text="HAZ ESPACIO PARA LO QUE IMPORTA" FontSize="8" Foreground="{DynamicResource Muted}" Margin="0,3,0,0" TextWrapping="NoWrap"/>
-    </StackPanel>
-    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-     <Button Content="REPORT" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="#171916" FontSize="10" Padding="12,8" ToolTip="Abrir reportes"/>
-     <Button Content="TAREAS" Click="TasksClick" FontSize="10" Padding="10,8" ToolTip="Tareas y proyectos"/>
-     <Button Content="AJUSTES" Click="SettingsClick" FontSize="10" Padding="10,8" ToolTip="Ajustes"/>
-     <Button Content="F11" Click="FullscreenClick" FontSize="10" Padding="10,8" Margin="0" ToolTip="Pantalla completa"/>
+   <Grid Grid.Row="1" Margin="16,8,16,8">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+    <TextBlock Text="POMODOCK" FontSize="18" FontWeight="Black" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+    <TextBlock Grid.Column="1" Text="TU ESPACIO" FontSize="10" FontWeight="Black" Foreground="{DynamicResource Muted}" Margin="12,1,0,0" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+     <Button Content="▥" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="#171916" FontSize="16" Padding="6,3" ToolTip="REPORT · Abrir reportes"/>
+     <Button Content="☷" Click="TasksClick" FontSize="15" Padding="6,3" ToolTip="Tareas y proyectos"/>
+     <Button Content="⚙" Click="SettingsClick" FontSize="15" Padding="6,3" ToolTip="Ajustes"/>
+     <Button Content="⛶" Click="FullscreenClick" FontSize="15" Padding="6,3" ToolTip="Pantalla completa · F11"/>
+     <Button Content="LAYOUTS" Click="LayoutsClick" FontSize="9" Padding="7,6" ToolTip="Distribuciones guardadas"/>
+     <Button Content="+ WIDGET" Click="AddWidgetClick" FontSize="9" Padding="7,6" Margin="0" ToolTip="Añadir widget"/>
     </StackPanel>
    </Grid>
    <Grid x:Name="Workspace" Grid.Row="3" Margin="20,0,20,10">
-    <Grid.RowDefinitions><RowDefinition Height="38"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-    <TextBlock Text="TU ESPACIO" FontWeight="Black" FontSize="12" VerticalAlignment="Center"/>
-    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="LAYOUTS" Click="LayoutsClick" FontSize="10" Padding="8,6"/><Button Content="+ WIDGET" Click="AddWidgetClick" FontSize="10" Padding="8,6" Margin="0"/></StackPanel>
+    <Grid.RowDefinitions><RowDefinition Height="0"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <Canvas Grid.Row="1" x:Name="WidgetArea" Background="Transparent" ClipToBounds="True" SizeChanged="WidgetAreaSizeChanged">
      <Border x:Name="Welcome" BorderBrush="{DynamicResource Muted}" BorderThickness="1" Background="{DynamicResource Surface}" Canvas.Left="0" Canvas.Top="0">
       <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="26">
