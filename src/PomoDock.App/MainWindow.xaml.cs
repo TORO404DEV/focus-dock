@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     private double timerStartX, timerStartY, timerStartWidth, timerStartHeight;
     private bool appliedTimerAtBottom;
     private Popup? timerOverlay;
+    private bool timerPointerPressed, timerWantsFront;
     public bool DiagnosticMode { get; }
     public static double Monotonic => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
     private static string ResolveDataPath()
@@ -70,6 +71,7 @@ public partial class MainWindow : Window
         TimerMoveHeader.PreviewMouseMove += TimerMoveHeaderMove;
         TimerMoveHeader.PreviewMouseLeftButtonUp += TimerMoveHeaderUp;
         TimerFrame.PreviewMouseDown += TimerFrameMouseDown;
+        TimerFrame.AddHandler(Mouse.PreviewMouseUpEvent, new MouseButtonEventHandler(TimerFrameMouseUp), true);
         Deactivated += (_, _) => CancelTimerGesture();
         ApplyTimerPosition(); ApplyTheme();
         Width = Math.Max(MinWidth, Settings.WindowWidth); Height = Math.Max(MinHeight, Settings.WindowHeight);
@@ -272,13 +274,26 @@ public partial class MainWindow : Window
 
     private void TimerFrameMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (!IsTimerGestureSource(e.OriginalSource))
+        timerPointerPressed = true;
+        BringTimerToFront();
+    }
+
+    private void TimerFrameMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        timerPointerPressed = false;
+        QueueTimerPromotion();
+    }
+
+    private void QueueTimerPromotion()
+    {
+        // A dispatcher callback queued on mouse-down is NOT after the click:
+        // it runs while the button/Thumb still owns capture. Wait for mouse-up
+        // and the Click/DragCompleted handlers (which may open a modal).
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
-            // Defer reparenting into the top-level popup until the current
-            // click has completed. This keeps timer buttons and text inputs
-            // reliable even when the timer crosses a native hosted window.
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(BringTimerToFront));
-        }
+            if (!exiting && IsEnabled && timerWantsFront && !timerPointerPressed && !timerResizing)
+                BringTimerToFront();
+        }));
     }
 
     private void TimerMoveHeaderDown(object sender, MouseButtonEventArgs e)
@@ -299,18 +314,11 @@ public partial class MainWindow : Window
         TimerMoveHeader.ReleaseMouseCapture(); EndTimerGesture(); e.Handled = true;
     }
 
-    private static bool IsTimerGestureSource(object source)
-    {
-        for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
-            if (current is Thumb) return true;
-        return false;
-    }
-
     private void CancelTimerGesture()
     {
         if (TimerMoveHeader.IsMouseCaptured) TimerMoveHeader.ReleaseMouseCapture();
         foreach (var handle in timerGestureHandles) if (handle.IsDragging) handle.CancelDrag();
-        timerResizing = false; timerResizeEdge = "";
+        timerResizing = false; timerResizeEdge = ""; timerPointerPressed = false;
     }
 
     private Point CurrentTimerPointer()
@@ -336,7 +344,12 @@ public partial class MainWindow : Window
     private void UpdateTimerGesture()
     {
         if (!timerResizing) return;
-        var pointer = CurrentTimerPointer();
+        UpdateTimerGesture(CurrentTimerPointer());
+    }
+
+    private void UpdateTimerGesture(Point pointer)
+    {
+        if (!timerResizing) return;
         double dx = pointer.X - timerPointerStart.X, dy = pointer.Y - timerPointerStart.Y;
         double x = timerStartX, y = timerStartY, width = timerStartWidth, height = timerStartHeight;
         const double minWidth = 360, minHeight = 300;
@@ -369,6 +382,7 @@ public partial class MainWindow : Window
     {
         if (!timerResizing) return;
         timerResizing = false; timerResizeEdge = ""; Settings.TimerPositionCustomized = true; SaveState();
+        QueueTimerPromotion();
     }
 
     private void ArrangeTimerWidget()
@@ -491,6 +505,7 @@ public partial class MainWindow : Window
     }
     internal void BringCardToFront(WidgetCard card)
     {
+        timerWantsFront = false;
         HideTimerOverlay();
         Panel.SetZIndex(TimerFrame, 0);
         foreach (var other in cards) Panel.SetZIndex(other, 0);
@@ -514,6 +529,8 @@ public partial class MainWindow : Window
 
     private void BringTimerToFront()
     {
+        if (exiting || !IsEnabled) return;
+        timerWantsFront = true;
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         foreach (var other in cards) Panel.SetZIndex(other, 0);
@@ -525,17 +542,21 @@ public partial class MainWindow : Window
     {
         if (timerOverlay is not null)
         {
-            timerOverlay.IsOpen = false; timerOverlay.IsOpen = true;
+            // Keep the same native surface and mouse capture throughout a
+            // press/drag. Changing IsOpen loses Button and Thumb input state.
             UpdateTimerOverlayPosition(); BringPopupToFront(timerOverlay); return;
         }
+        if (timerPointerPressed || timerResizing || TimerFrame.IsMouseCaptureWithin) return;
         if (TimerFrame.Parent == WidgetArea) WidgetArea.Children.Remove(TimerFrame);
-        timerOverlay = new Popup
+        var popup = new Popup
         {
             Child = TimerFrame, AllowsTransparency = true, StaysOpen = true,
-            Placement = PlacementMode.Absolute, PopupAnimation = PopupAnimation.None,
-            Focusable = false, IsOpen = true
+            Placement = PlacementMode.Absolute, PlacementTarget = WidgetArea, PopupAnimation = PopupAnimation.None,
+            Focusable = false
         };
-        timerOverlay.Opened += (_, _) => BringPopupToFront(timerOverlay);
+        timerOverlay = popup;
+        popup.Opened += (_, _) => BringPopupToFront(popup);
+        popup.IsOpen = true;
         UpdateTimerOverlayPosition(); BringPopupToFront(timerOverlay);
     }
 

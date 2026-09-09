@@ -79,6 +79,11 @@ internal static class Diagnostics
             dualA.BringToFront(); await Task.Delay(50);
             Assert(Win32.GetWindow(dualB.Handle, 3) == dualA.Handle, "first hosted widget can move back above the second");
             dualA.Detach(); dualB.Detach(); dualA.Dispose(); dualB.Dispose(); dualHarness.Close(); dualHarness = null;
+            var embeddedCard = main.AddCard(new() { Kind = "window", Title = "Timer input fixture", X = 180, Y = 160, Width = 280, Height = 330 }, false);
+            await embeddedCard.Attach(foreign);
+            Assert(embeddedCard.IsExternalAttached, "timer regression uses a real embedded process on the main canvas");
+            await main.VerifyTimerInputAsync(embeddedCard, Assert);
+            main.RemoveCard(embeddedCard);
             main.AddCard(new() { Kind = "notes", Title = "MI SIGUIENTE PASO", Value = "Una cosa a la vez.\n\n1. Elegir el siguiente resultado\n2. Iniciar una sesión\n3. Revisar lo aprendido" }, true);
             main.AddCard(new() { Kind = "stats", Title = "MI ENFOQUE" }, true);
             main.AddCard(new() { Kind = "todo", Title = "TO DO" }, true);
