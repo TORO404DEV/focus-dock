@@ -36,7 +36,13 @@ dotnet build FocusDock.sln -c Release
 dotnet run --project tests/FocusDock.Tests -c Release
 ```
 
-Run the desktop app from `src/FocusDock.App/bin/Release/net8.0-windows/win-x64/FocusDock.exe`.
+Run the desktop app from `src/FocusDock.App/bin/Release/net8.0-windows/win-x64/FocusDock.exe`. To add it to the current user's Windows Start menu, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-start-menu.ps1
+```
+
+The shortcut points to the local Release build and does not install a service or run anything in the background.
 
 The app stores its data under `%LOCALAPPDATA%\FocusDock`. Export a JSON backup before moving machines or testing development builds.
 
