@@ -70,6 +70,7 @@ HabitTests.Run(Test, Equal, Assert);
 AgendaQuickAddTests.Run(Test, Equal, Assert);
 TodoSyncTests.Run(Test, Equal, Assert);
 TodoTests.Run(Test, Equal, Assert);
+NoteArchiveTests.Run(Test, Equal, Assert);
 Test("rich note metadata preserves color, document, and checklists", () => {
  var note = new NotesWidgetData { Color = "mint", DocumentXaml = "<Section><Paragraph>Idea</Paragraph></Section>", Checklists = [new() { ParagraphIndex = 0, IsChecked = true }], UpdatedUtc = utc.UtcDateTime };
  var copy = JsonSerializer.Deserialize<NotesWidgetData>(JsonSerializer.Serialize(note))!;
@@ -232,9 +233,13 @@ try
   var habit = new Habit { Name = "Meditar" }; habit.Log[Habit.Key(new DateOnly(2026, 9, 9))] = 1;
   store.Write(Store.HabitsKey, new HabitBook { Habits = [habit] });
   store.Write(Store.AgendaKey, new AgendaBook { Events = [new() { Title = "Entrega", AllDay = true, Start = new DateTime(2026, 9, 11) }] });
+  var notes = new NoteArchive(); var closedNote = Guid.NewGuid();
+  notes.Track(closedNote, "Idea cerrada", "mint", "{}", new DateTime(2026, 9, 10)); notes.Close(closedNote, new DateTime(2026, 9, 10, 1, 0, 0));
+  store.Write(Store.NotesKey, notes);
   string path = Path.Combine(directory, "full-backup.json"); store.ExportJson(path);
   var backup = Store.ReadBackup(path);
   Assert(backup.Habits!.Habits.Single().Name == "Meditar" && backup.Agenda!.Events.Single().Title == "Entrega", "habits and events are in the file");
+  Assert(backup.Notes!.Find(closedNote) is { IsOpen: false, Text: "Idea cerrada" }, "closed notes travel in the backup too");
   string legacy = Path.Combine(directory, "legacy-backup.json");
   File.WriteAllText(legacy, "{\"Version\":1,\"Settings\":{},\"Sessions\":[]}");
   var old = Store.ReadBackup(legacy);

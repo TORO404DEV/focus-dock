@@ -38,7 +38,7 @@ public sealed class WidgetCard : Border
         var header = new DockPanel { LastChildFill = true, Margin = new Thickness(9, 0, 2, 0), Cursor = Cursors.SizeAll };
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         foreach (var (label, tip, action) in new (string, string, Action)[] {
-            ("⋯", "Opciones del widget", Options),
+            ("⋯", config.Kind == "notes" ? "Historial de notas" : "Opciones del widget", Options),
             ("−", "Contraer / expandir", ToggleCollapsed),
             ("×", "Quitar widget y liberar ventana", () => owner.RemoveCard(this)) })
         {
@@ -303,6 +303,8 @@ public sealed class WidgetCard : Border
     }
     private async void Options()
     {
+        // A note has nothing to configure; its ⋯ opens every note ever written, closed ones included.
+        if (Config.Kind == "notes") { NotesHistory.Show(owner, Config.Id); return; }
         var options = Config.Kind == "window" ? new[] { "Renombrar", "Recortar barras superior / inferior", "Liberar ventana", "Conectar otra ventana" }
             : Config.Kind == "web" ? ["Renombrar", "Cambiar URL", "Recargar", Config.KeepAlive ? "Permitir suspensión" : "Mantener activo (música / dashboard)"]
             : Config.Kind == "stats" ? ["Renombrar", $"Meta diaria · {owner.Settings.DailyGoalMinutes} min"] : ["Renombrar"];

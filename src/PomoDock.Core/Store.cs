@@ -80,11 +80,44 @@ public sealed class Store : IDisposable
         using var copy = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = destination }.ToString());
         copy.Open(); db.BackupDatabase(copy);
     }
-    public void ExportJson(string path) => File.WriteAllText(path, JsonSerializer.Serialize(new BackupData { Settings = Read<Settings>("settings") ?? new(), Sessions = Sessions() }, JsonOptions));
-    public int ImportJson(string path)
+    /// <summary>State rows shared with the app layer, which keeps a live copy of each book.</summary>
+    public const string HabitsKey = "habits";
+    public const string AgendaKey = "agenda";
+    public const string NotesKey = "notes-archive";
+
+    /// <summary>Everything a person would miss: settings, focus history, habits and calendar.</summary>
+    public void ExportJson(string path) => File.WriteAllText(path, JsonSerializer.Serialize(new BackupData
+    {
+        Settings = Read<Settings>("settings") ?? new(),
+        Sessions = Sessions(),
+        Habits = TryRead<HabitBook>(HabitsKey),
+        Agenda = TryRead<AgendaBook>(AgendaKey),
+        Notes = TryRead<NoteArchive>(NotesKey)
+    }, JsonOptions));
+
+    /// <summary>A damaged row must not stop the rest of the backup from being written.</summary>
+    private T? TryRead<T>(string key) where T : class
+    {
+        try { return Read<T>(key); }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// Reads and validates a backup. Files written before habits and events were exported
+    /// still load; they simply carry no habits or calendar.
+    /// </summary>
+    public static BackupData ReadBackup(string path)
     {
         var data = JsonSerializer.Deserialize<BackupData>(File.ReadAllText(path)) ?? throw new InvalidDataException("Archivo inválido");
+        data.Sessions ??= [];
         if (data.Version != 1 || data.Sessions.Any(s => s.PlannedSeconds <= 0 || s.Segments.Any(x => x.End < x.Start))) throw new InvalidDataException("Datos de sesión inválidos");
+        return data;
+    }
+
+    public int ImportJson(string path) => ImportSessions(ReadBackup(path));
+
+    public int ImportSessions(BackupData data)
+    {
         // Merge by stable ID; never replace the user's settings or overwrite existing corrections.
         var known = Sessions().Select(s => s.Id).ToHashSet();
         int count = 0;
@@ -110,4 +143,10 @@ public sealed class BackupData
     public int Version { get; set; } = 1;
     public Settings Settings { get; set; } = new();
     public List<Session> Sessions { get; set; } = [];
+    /// <summary>Absent in backups written before habits were exported.</summary>
+    public HabitBook? Habits { get; set; }
+    /// <summary>Absent in backups written before calendar events were exported.</summary>
+    public AgendaBook? Agenda { get; set; }
+    /// <summary>Absent in backups written before the note history existed.</summary>
+    public NoteArchive? Notes { get; set; }
 }

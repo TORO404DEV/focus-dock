@@ -7,3 +7,5 @@ artifacts/
 *.log
 TestResults/
 local-data/
+# Written by external preview harnesses that were relaunched as the guardian process.
+/--guardian/

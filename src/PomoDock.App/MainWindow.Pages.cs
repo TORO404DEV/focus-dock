@@ -35,7 +35,17 @@ public partial class MainWindow
     private WorkspacePage CurrentPage => Settings.WorkspacePages[currentPageIndex];
     private WidgetConfig? CurrentTimerWidget => CurrentPage.TimerWidget;
     internal bool CanAddTimerWidget => CurrentTimerWidget is null;
-    private bool CanCreateWorkspacePage => Settings.WorkspacePages.All(page => page.HasContent);
+    /// <summary>
+    /// A new page can open past either end of the carousel as long as the page already sitting
+    /// at that end has something on it. That allows one blank canvas on each side, and never two
+    /// blank pages in a row: a blank page on the left no longer blocks creating one on the right.
+    /// </summary>
+    private bool CanCreateWorkspacePage(int direction)
+    {
+        var pages = Settings.WorkspacePages;
+        if (pages.Count == 0) return true;
+        return (direction < 0 ? pages[0] : pages[^1]).HasContent;
+    }
 
     private void InitializeWorkspacePages()
     {
@@ -81,7 +91,7 @@ public partial class MainWindow
     {
         int target = currentPageIndex + direction;
         if (target >= 0 && target < Settings.WorkspacePages.Count) SwitchWorkspacePage(target);
-        else if (CanCreateWorkspacePage) BeginCarouselTransition(direction, null, true, 0);
+        else if (CanCreateWorkspacePage(direction)) BeginCarouselTransition(direction, null, true, 0);
         else Pulse(PageDockSurface);
     }
 
@@ -89,9 +99,9 @@ public partial class MainWindow
     {
         if (pageTransitioning) return false;
         SaveState();
-        if (!CanCreateWorkspacePage)
+        if (!CanCreateWorkspacePage(1))
         {
-            Status("AÑADE UN WIDGET A LA PÁGINA VACÍA PARA DESBLOQUEAR OTRA.");
+            Status("LA ÚLTIMA PÁGINA YA ESTÁ VACÍA · AÑÁDELE UN WIDGET PARA CREAR OTRA.");
             Pulse(PageDockSurface);
             return false;
         }
@@ -472,7 +482,7 @@ public partial class MainWindow
     {
         int target = currentPageIndex + direction;
         int? targetIndex = target >= 0 && target < Settings.WorkspacePages.Count ? target : null;
-        bool create = targetIndex is null && CanCreateWorkspacePage;
+        bool create = targetIndex is null && CanCreateWorkspacePage(direction);
         if (!pageTransitioning) PrepareCarousel(direction, targetIndex, create);
         else
         {
@@ -587,13 +597,14 @@ public partial class MainWindow
             button.Click += (_, _) => SwitchWorkspacePage(index);
             PageButtonStrip.Children.Add(button);
         }
-        bool unlocked = CanCreateWorkspacePage;
-        PreviousPageButton.IsEnabled = currentPageIndex > 0 || unlocked;
-        NextPageButton.IsEnabled = currentPageIndex < Settings.WorkspacePages.Count - 1 || unlocked;
-        AddPageButton.IsEnabled = unlocked;
-        PreviousPageButton.ToolTip = currentPageIndex > 0 ? "Página anterior · desliza hacia la derecha" : unlocked ? "Crear página a la izquierda" : "Completa esta página para crear otra";
-        NextPageButton.ToolTip = currentPageIndex < Settings.WorkspacePages.Count - 1 ? "Página siguiente · desliza hacia la izquierda" : unlocked ? "Crear página a la derecha" : "Completa esta página para crear otra";
-        AddPageButton.ToolTip = unlocked ? "Añadir una página vacía a la derecha" : "Añade al menos un widget a cada página para desbloquear otra";
+        bool leftOpen = CanCreateWorkspacePage(-1), rightOpen = CanCreateWorkspacePage(1);
+        bool hasPrevious = currentPageIndex > 0, hasNext = currentPageIndex < Settings.WorkspacePages.Count - 1;
+        PreviousPageButton.IsEnabled = hasPrevious || leftOpen;
+        NextPageButton.IsEnabled = hasNext || rightOpen;
+        AddPageButton.IsEnabled = rightOpen;
+        PreviousPageButton.ToolTip = hasPrevious ? "Página anterior · desliza hacia la derecha" : leftOpen ? "Crear página a la izquierda" : "Añade un widget a esta página para crear otra a la izquierda";
+        NextPageButton.ToolTip = hasNext ? "Página siguiente · desliza hacia la izquierda" : rightOpen ? "Crear página a la derecha" : "Añade un widget a esta página para crear otra a la derecha";
+        AddPageButton.ToolTip = rightOpen ? "Añadir una página vacía a la derecha" : "La última página ya está vacía · úsala o añádele un widget";
         ToolTipService.SetShowOnDisabled(AddPageButton, true);
         ToolTipService.SetShowOnDisabled(PreviousPageButton, true);
         ToolTipService.SetShowOnDisabled(NextPageButton, true);
@@ -612,6 +623,7 @@ public partial class MainWindow
     internal int WorkspacePageCount => Settings.WorkspacePages.Count;
     internal WorkspacePage CurrentWorkspacePageForDiagnostics => CurrentPage;
     internal bool CurrentWorkspacePageIsBlank => !CurrentPage.HasContent;
+    internal bool FirstWorkspacePageIsBlank => !Settings.WorkspacePages[0].HasContent;
     internal bool CurrentWorkspacePageHasTimer => CurrentTimerWidget is not null;
     internal bool EmptyPageIsFrameless => Welcome.BorderThickness == new Thickness(0);
     internal bool AddPageForDiagnostics() => AddBlankWorkspacePage();

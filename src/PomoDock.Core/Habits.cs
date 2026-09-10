@@ -56,6 +56,37 @@ public sealed class HabitBook
     public static DateOnly WeekStart(DateOnly day) => day.AddDays(-(((int)day.DayOfWeek + 6) % 7));
 
     /// <summary>
+    /// Folds a backup in without losing anything on either side: habits that are not here yet
+    /// are added, and a habit present in both keeps every day either copy recorded.
+    /// </summary>
+    public int MergeFrom(HabitBook? other)
+    {
+        if (other is null) return 0;
+        other.Normalize();
+        int added = 0;
+        foreach (var incoming in other.Habits)
+        {
+            var existing = Habits.FirstOrDefault(habit => habit.Id == incoming.Id);
+            if (existing is null)
+            {
+                incoming.Order = Habits.Count == 0 ? 0 : Habits.Max(habit => habit.Order) + 1;
+                Habits.Add(incoming);
+                added++;
+                continue;
+            }
+            foreach (var (day, count) in incoming.Log)
+            {
+                int kept = existing.Log.TryGetValue(day, out int value) ? value : 0;
+                existing.Log[day] = Math.Max(kept, Math.Min(existing.Target, count));
+            }
+        }
+        foreach (var award in other.Awards)
+            if (!Awards.Contains(award)) Awards.Add(award);
+        Normalize();
+        return added;
+    }
+
+    /// <summary>
     /// Folds a pre-database widget payload in. Habits already tracked keep their settings and
     /// only gain the missing days, so importing the same widget twice changes nothing.
     /// </summary>

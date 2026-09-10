@@ -121,7 +121,11 @@ public partial class MainWindow : Window
         // Calendar reminders ring on their own clock: they never depend on a widget being visible.
         AgendaReminders.For(Store).Attach(this);
         if (Settings.Fullscreen) ToggleFullscreen();
-        if (!DiagnosticMode)
+        // The guardian is this same program started again. A host that merely embeds the window
+        // (a preview harness, a test runner) would be relaunched with arguments it does not know,
+        // and could not recover anyone's windows anyway.
+        bool runningAsPomoDock = string.Equals(Path.GetFileNameWithoutExtension(Environment.ProcessPath), "PomoDock", StringComparison.OrdinalIgnoreCase);
+        if (!DiagnosticMode && runningAsPomoDock)
         {
             try
             {
@@ -621,6 +625,8 @@ public partial class MainWindow : Window
     }
     public void RemoveCard(WidgetCard card)
     {
+        // Closing a note keeps its words in the note history instead of throwing them away.
+        if (card.Config.Kind == "notes") NoteArchiveStore.For(Store).Close(card.Config);
         HideInteractionOverlay(card); HideOverlay(card);
         card.Release(); WidgetArea.Children.Remove(card); cards.Remove(card); ArrangeCards(); SaveState(); UpdatePageNavigation();
     }

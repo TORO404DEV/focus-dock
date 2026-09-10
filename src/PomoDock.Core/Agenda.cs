@@ -325,6 +325,28 @@ public sealed class AgendaBook
 
     public AgendaEvent? Find(Guid id) => Events.FirstOrDefault(item => item.Id == id);
 
+    /// <summary>
+    /// Folds a backup in: events that are not here yet are added, events already here stay
+    /// exactly as they are. Delivered reminders travel too, so a restore never rings old cues.
+    /// </summary>
+    public int MergeFrom(AgendaBook? other)
+    {
+        if (other is null) return 0;
+        other.Normalize();
+        var known = Events.Select(item => item.Id).ToHashSet();
+        int added = 0;
+        foreach (var item in other.Events)
+        {
+            if (!known.Add(item.Id)) continue;
+            Events.Add(item);
+            added++;
+        }
+        foreach (var key in other.Delivered)
+            if (!Delivered.Contains(key, StringComparer.Ordinal)) Delivered.Add(key);
+        Normalize();
+        return added;
+    }
+
     /// <summary>Rebuilds a cue from its stored key, used to ring a postponed reminder again.</summary>
     public ReminderCue? CueFor(string key)
     {

@@ -10,7 +10,7 @@ namespace PomoDock.App;
 /// </summary>
 internal sealed class HabitStore
 {
-    private const string StateKey = "habits";
+    private const string StateKey = Store.HabitsKey;
     private static readonly ConditionalWeakTable<Store, HabitStore> shared = new();
     private readonly Store store;
     public HabitBook Book { get; }
@@ -49,6 +49,15 @@ internal sealed class HabitStore
         Book.UpdatedUtc = DateTime.UtcNow;
         store.Write(StateKey, Book);
         Changed?.Invoke();
+    }
+
+    /// <summary>Folds a backup into the live book, so every open habit widget sees it at once.</summary>
+    public int Merge(HabitBook? incoming)
+    {
+        if (incoming is null) return 0;
+        int added = Book.MergeFrom(incoming);
+        Save();
+        return added;
     }
 
     public Habit Add(string name)

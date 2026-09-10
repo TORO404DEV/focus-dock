@@ -25,7 +25,7 @@ internal static class Diagnostics
         Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         Directory.CreateDirectory(directory);
         var results = new List<string>();
-        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null; SettingsWindow? settingsPanel = null;
+        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null; Window? notesHarness = null; SettingsWindow? settingsPanel = null;
         void Assert(bool condition, string label) { if (!condition) throw new Exception(label); results.Add("PASS " + label); }
         try
         {
@@ -94,6 +94,37 @@ internal static class Diagnostics
             main.AddCard(new() { Kind = "calendar", Title = "AGENDA" }, true);
             await Task.Delay(100); Render(main, Path.Combine(directory, "widgets.png"));
 
+            // Notes: a strike line that really draws, a checklist that takes clicks, a history that outlives the card.
+            var noteCard = main.AddCard(new() { Kind = "notes", Title = "NOTAS", Value = "Comprar pan y leche" }, true);
+            await Task.Delay(150);
+            var noteEditor = Descendant<NotesEditor>(noteCard)!;
+            noteEditor.SelectAllForDiagnostics(); noteEditor.ToggleStrikeForDiagnostics();
+            Assert(noteEditor.SelectionIsStruckForDiagnostics, "the strike button crosses out plain text");
+            noteEditor.ToggleStrikeForDiagnostics();
+            Assert(!noteEditor.SelectionIsStruckForDiagnostics, "a second press removes the strike line");
+            noteEditor.AddChecklistToFirstLineForDiagnostics(); await Task.Delay(100);
+            var box = noteEditor.FirstChecklistBoxForDiagnostics!;
+            Assert(box.IsEnabled, "checklist boxes inside a note are enabled, not greyed out");
+            box.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            noteEditor.FlushForDiagnostics();
+            Assert(noteCard.Config.Value.Contains("\"IsChecked\":true"), "ticking a checklist box is saved with the note");
+            notesHarness = new Window { Title = "PomoDock notes integration test", Content = new NotesEditor(main, new WidgetConfig { Kind = "notes", Value = noteCard.Config.Value }), Width = 420, Height = 300, ShowInTaskbar = false };
+            notesHarness.Show(); await Task.Delay(200);
+            Render(notesHarness, Path.Combine(directory, "notes-checklist.png"));
+            notesHarness.Close(); notesHarness = null;
+            var noteId = noteCard.Config.Id;
+            main.RemoveCard(noteCard);
+            var remembered = NoteArchiveStore.For(main.Store).Archive.Find(noteId);
+            Assert(remembered is { IsOpen: false } && remembered.Text.Contains("Comprar pan"), "a closed note stays in the history with its text");
+            var reopened = NotesHistory.Reopen(main, remembered!);
+            Assert(reopened is not null && reopened.Config.Id == noteId && NoteArchiveStore.For(main.Store).Archive.Find(noteId)!.IsOpen,
+                "a closed note reopens from the history as the same note");
+            notesHarness = NotesHistory.Build(main, noteId);
+            notesHarness.Show(); await Task.Delay(250);
+            Render(notesHarness, Path.Combine(directory, "notes-history.png"));
+            notesHarness.Close(); notesHarness = null;
+            main.RemoveCard(reopened!);
+
             var todo = Descendant<TodoBoard>(todoCard);
             Assert(todo is not null && todo.RowCount == 5, "the To Do card rebuilds a stored list into rows");
             // A card sits at its canvas offset, so it is photographed in a harness of its own size.
@@ -124,9 +155,13 @@ internal static class Diagnostics
             Render(calendarHarness, Path.Combine(directory, "calendar-large-week.png"));
             calendarHarness.Close(); calendarHarness = null;
 
+            var reminders = AgendaReminders.For(main.Store);
+            // Dated To Do tasks live in the calendar too, and one due today rings at 09:00. Whatever
+            // is already due rings and is dismissed first, so the checks below count only their own.
+            reminders.Pulse(); await Task.Delay(100);
+            AgendaToast.CloseAll(); await Task.Delay(100);
             var soon = new AgendaEvent { Title = "Llamada de prueba", Start = DateTime.Now.AddMinutes(2), Minutes = 30, Color = "violet", Reminders = [10] };
             agenda.Book.Events.Add(soon); agenda.Save();
-            var reminders = AgendaReminders.For(main.Store);
             reminders.Pulse(); await Task.Delay(200);
             Assert(AgendaToast.OpenCount == 1, "a reminder that came due raises a notification card");
             Render(AgendaToast.Newest!, Path.Combine(directory, "calendar-reminder.png"));
@@ -162,7 +197,7 @@ internal static class Diagnostics
             var standing = FocusProfile.Of(main.Store.Sessions());
             Assert(standing.Hours > 5 && standing.Level >= 3 && standing.ToNext > 0, "the control panel reads a rank from real focus history");
             // The timer regression silenced the app; the panel is worth seeing with sound on.
-            main.Settings.Sound = true;
+            main.Settings.Sound = true; main.Settings.WhiteNoise = true;
             settingsPanel = new SettingsWindow(main);
             settingsPanel.Show(); await Task.Delay(250);
             foreach (var room in new[] { "rhythm", "sound", "look", "space" })
@@ -189,7 +224,7 @@ internal static class Diagnostics
                 "new workspace pages start completely blank");
             Assert(main.EmptyPageIsFrameless, "empty workspace page has no surrounding placeholder border");
             Render(main, Path.Combine(directory, "page-blank.png"));
-            Assert(!main.AddPageForDiagnostics(), "a blank workspace prevents adding another page");
+            Assert(!main.AddPageForDiagnostics(), "a blank last page prevents adding another one after it");
             main.AddTimerForDiagnostics();
             Assert(main.CurrentWorkspacePageHasTimer && !main.CurrentWorkspacePageIsBlank, "timer can be added as the first widget on a blank page");
             main.RemoveTimerForDiagnostics();
@@ -212,6 +247,17 @@ internal static class Diagnostics
             await Task.Delay(320);
             Assert(main.WorkspacePageCount == pagesBeforeEdgeGesture + 1 && main.CurrentWorkspacePageIsBlank,
                 "navigating beyond a populated edge creates a blank canvas in that direction");
+            // A blank page on the left must not block a new one on the right: one blank canvas per side.
+            int pagesWithLeftBlank = main.WorkspacePageCount;
+            main.SwitchPageForDiagnostics(pagesWithLeftBlank - 1);
+            await Task.Delay(320);
+            main.NavigatePageForDiagnostics(1);
+            await Task.Delay(320);
+            Assert(main.WorkspacePageCount == pagesWithLeftBlank + 1 && main.CurrentWorkspacePageIsBlank && main.FirstWorkspacePageIsBlank,
+                "a blank page on the left still lets the right edge open its own blank page");
+            main.NavigatePageForDiagnostics(1);
+            await Task.Delay(320);
+            Assert(main.WorkspacePageCount == pagesWithLeftBlank + 1, "two blank pages never sit side by side at the same edge");
             main.SwitchPageForDiagnostics(1);
             await Task.Delay(320);
             main.RemoveCard(retainedWindow);
@@ -232,7 +278,7 @@ internal static class Diagnostics
         finally
         {
             AgendaToast.CloseAll();
-            settingsPanel?.Close(); todoHarness?.Close(); calendarHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
+            settingsPanel?.Close(); notesHarness?.Close(); todoHarness?.Close(); calendarHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
             if (fixture is not null) { if (!fixture.HasExited) fixture.CloseMainWindow(); fixture.Dispose(); }
             if (fixture2 is not null) { if (!fixture2.HasExited) fixture2.CloseMainWindow(); fixture2.Dispose(); }
             Application.Current.Shutdown(Environment.ExitCode);

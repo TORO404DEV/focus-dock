@@ -73,7 +73,7 @@ public sealed class ReportWindow : Window
         var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         actions.Children.Add(ActionButton("⇩ IMPORTAR", Import, "Importar historial de Pomofocus o PomoDock"));
         actions.Children.Add(ActionButton("⇧ CSV", ExportCsv, "Exportar el periodo visible"));
-        actions.Children.Add(ActionButton("□ BACKUP", ExportJson, "Crear respaldo completo"));
+        actions.Children.Add(ActionButton("□ BACKUP", ExportJson, "Crear respaldo: ajustes, sesiones, hábitos, agenda e historial de notas"));
         Grid.SetColumn(actions, 1);
         titleRow.Children.Add(actions);
         top.Children.Add(titleRow);
@@ -545,8 +545,14 @@ public sealed class ReportWindow : Window
             owner.Store.Backup(Path.Combine(backupDirectory, $"antes-de-importar-{DateTime.Now:yyyyMMdd-HHmmss}.db"));
             if (string.Equals(Path.GetExtension(dialog.FileName), ".json", StringComparison.OrdinalIgnoreCase))
             {
-                int count = owner.Store.ImportJson(dialog.FileName);
-                owner.Status($"IMPORTADAS {count:N0} SESIONES · Se conservaron las existentes.");
+                // Habits and events go through their live stores: writing the rows directly would
+                // be overwritten by the copy every open widget keeps in memory.
+                var backup = Store.ReadBackup(dialog.FileName);
+                int count = owner.Store.ImportSessions(backup);
+                int habits = HabitStore.For(owner.Store).Merge(backup.Habits);
+                int events = AgendaStore.For(owner.Store).Merge(backup.Agenda);
+                int notes = NoteArchiveStore.For(owner.Store).Merge(backup.Notes);
+                owner.Status($"IMPORTADAS {count:N0} SESIONES · {habits:N0} HÁBITOS · {events:N0} EVENTOS · {notes:N0} NOTAS · Se conservaron los existentes.");
             }
             else
             {

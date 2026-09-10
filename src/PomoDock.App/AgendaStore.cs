@@ -11,7 +11,7 @@ namespace PomoDock.App;
 /// </summary>
 internal sealed class AgendaStore
 {
-    private const string StateKey = "agenda";
+    private const string StateKey = Store.AgendaKey;
     private static readonly ConditionalWeakTable<Store, AgendaStore> shared = new();
     private readonly Store store;
     public AgendaBook Book { get; }
@@ -47,6 +47,15 @@ internal sealed class AgendaStore
     {
         Book.UpdatedUtc = DateTime.UtcNow;
         store.Write(StateKey, Book);
+    }
+
+    /// <summary>Folds a backup into the live book, so every open calendar sees it at once.</summary>
+    public int Merge(AgendaBook? incoming)
+    {
+        if (incoming is null) return 0;
+        int added = Book.MergeFrom(incoming);
+        Save();
+        return added;
     }
 
     public void Add(AgendaEvent item)
