@@ -1,0 +1,15 @@
+EXCEPTION System.Reflection.TargetInvocationException: Exception has been thrown by the target of an invocation.
+ ---> System.InvalidOperationException: ExecuteNonQuery can only be called when the connection is open.
+   at Microsoft.Data.Sqlite.SqliteCommand.ExecuteNonQuery()
+   at PomoDock.Core.Store.Write[T](String key, T value) in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.Core\Store.cs:line 64
+   at PomoDock.App.MainWindow.SaveState() in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\MainWindow.xaml.cs:line 144
+   at PomoDock.App.MainWindow.AddBlankWorkspacePage() in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\MainWindow.Pages.cs:line 91
+   at PomoDock.App.MainWindow.AddPageForDiagnostics() in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\MainWindow.Pages.cs:line 617
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+   --- End of inner exception stack trace ---
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+   at System.Reflection.MethodBase.Invoke(Object obj, Object[] parameters)
+   at NotesPreview.Program.Call(Object target, String name, Object[] args) in C:\Users\crstp\AppData\Local\Temp\claude\c--Users-crstp-Documents-GitHub-focus-dock\bfcaeed7-4295-43b8-bc1e-7f161aa995cf\scratchpad\notes\Program.cs:line 108
+   at NotesPreview.Program.Capture() in C:\Users\crstp\AppData\Local\Temp\claude\c--Users-crstp-Documents-GitHub-focus-dock\bfcaeed7-4295-43b8-bc1e-7f161aa995cf\scratchpad\notes\Program.cs:line 58
+   at NotesPreview.Program.<>c__DisplayClass2_0.<<Main>b__0>d.MoveNext() in C:\Users\crstp\AppData\Local\Temp\claude\c--Users-crstp-Documents-GitHub-focus-dock\bfcaeed7-4295-43b8-bc1e-7f161aa995cf\scratchpad\notes\Program.cs:line 33

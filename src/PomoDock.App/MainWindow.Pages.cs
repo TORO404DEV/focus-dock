@@ -251,8 +251,13 @@ public partial class MainWindow
             PagePreviewArea.Children.Add(card);
         }
         ArrangePreviewCards();
-        // The timer is a single live surface: it cannot be in two places, so it is drawn.
-        if (page.TimerWidget is { } timer) AddPreviewCard(timer, true);
+        // The Pomodoro is one live surface. When the page being left does not hold it, it is
+        // free to ride the page coming in; only when both pages carry one is it drawn.
+        if (page.TimerWidget is { } timer)
+        {
+            if (CurrentTimerWidget is null) LendTimerToPreview(timer, page.TimerPositionCustomized);
+            else AddPreviewCard(timer, true);
+        }
         if (page.Widgets.Count == 0 && page.TimerWidget is null) AddPreviewPlaceholder("PÁGINA VACÍA");
     }
 
@@ -278,9 +283,40 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>
+    /// Moves the live Pomodoro onto the incoming page for the length of the slide, laid out
+    /// where that page keeps it. Sliding the real clock is what removes the flash at the end.
+    /// </summary>
+    private void LendTimerToPreview(WidgetConfig timer, bool customized)
+    {
+        // Same rules as ArrangeTimerWidget, so the clock lands exactly where it slid to.
+        double width = Math.Max(1, PagePreviewArea.Width);
+        double height = Math.Max(1, PagePreviewArea.Height);
+        double frameWidth = Math.Clamp(timer.Width > 0 ? timer.Width : Math.Min(560, width), 360, Math.Max(360, width));
+        double frameHeight = Math.Clamp(timer.Height > 0 ? timer.Height : Math.Min(360, height), 300, Math.Max(300, height));
+        double x = customized ? timer.X : 12;
+        double y = customized ? timer.Y : Settings.TimerAtBottom ? Math.Max(12, height - frameHeight - 12) : 12;
+        if (WidgetArea.Children.Contains(TimerFrame)) WidgetArea.Children.Remove(TimerFrame);
+        if (!PagePreviewArea.Children.Contains(TimerFrame)) PagePreviewArea.Children.Add(TimerFrame);
+        TimerFrame.Visibility = Visibility.Visible;
+        TimerFrame.Width = frameWidth;
+        TimerFrame.Height = frameHeight;
+        Canvas.SetLeft(TimerFrame, Math.Clamp(x, 0, Math.Max(0, width - frameWidth)));
+        Canvas.SetTop(TimerFrame, Math.Clamp(y, 0, Math.Max(0, height - frameHeight)));
+    }
+
+    /// <summary>Puts the Pomodoro back on the workspace canvas, wherever the slide ended.</summary>
+    private void ReclaimTimer()
+    {
+        if (!PagePreviewArea.Children.Contains(TimerFrame)) return;
+        PagePreviewArea.Children.Remove(TimerFrame);
+        if (!WidgetArea.Children.Contains(TimerFrame)) WidgetArea.Children.Add(TimerFrame);
+    }
+
     /// <summary>Takes the previewed widgets off the preview canvas without discarding them.</summary>
     private void DetachPreviewCards()
     {
+        ReclaimTimer();
         foreach (var card in PagePreviewArea.Children.OfType<WidgetCard>().ToArray()) PagePreviewArea.Children.Remove(card);
         PagePreviewArea.Children.Clear();
     }
