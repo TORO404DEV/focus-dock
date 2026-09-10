@@ -19,8 +19,10 @@ public sealed class SoundEngine : IDisposable
     private readonly string cache = Path.Combine(Path.GetTempPath(), "PomoDock", "sounds");
     private readonly Dictionary<string, (string File, double Seconds)> prepared = [];
     private readonly List<MediaPlayer> players = [];
+    private readonly HashSet<MediaPlayer> alarmPlayers = [];
     private readonly List<DispatcherTimer> timers = [];
     private readonly List<(SoundPlayer Player, MemoryStream Stream)> fallbacks = [];
+    private readonly List<(SoundPlayer Player, MemoryStream Stream)> alarmFallbacks = [];
     private readonly object ambienceLock = new();
     private (string Id, SoundClip Clip)? ambience;
     private SoundPlayer? loop;
@@ -31,6 +33,7 @@ public sealed class SoundEngine : IDisposable
     private bool session;
     private DispatcherTimer? preview;
     private bool mediaBroken;
+    private int alarmGeneration;
 
     public SoundEngine(Settings settings) => this.settings = settings;
 
@@ -43,13 +46,34 @@ public sealed class SoundEngine : IDisposable
 
     public void Completed(Phase phase)
     {
+        StopAlarm();
         if (!settings.Sound || !settings.AlarmEnabled) return;
         var id = phase == Phase.Focus ? settings.FocusEndSound : settings.BreakEndSound;
         if (Prepare(id, null) is not { } sound) return;
+        int generation = alarmGeneration;
         // Long sounds are struck again before they fade, the way a real bell is rung.
         var gap = TimeSpan.FromSeconds(Math.Min(sound.Seconds, 2.4) + 0.15);
-        PlayOnce(id, null, settings.AlarmVolume);
-        for (int i = 1; i < Math.Clamp(settings.AlarmRepeats, 1, 8); i++) After(gap * i, () => PlayOnce(id, null, settings.AlarmVolume));
+        PlayOnce(id, null, settings.AlarmVolume, true);
+        for (int i = 1; i < Math.Clamp(settings.AlarmRepeats, 1, 8); i++)
+            After(gap * i, () => { if (generation == alarmGeneration) PlayOnce(id, null, settings.AlarmVolume, true); });
+    }
+
+    /// <summary>
+    /// Acknowledges a completed timer alarm. It silences the voice that is playing and invalidates
+    /// every repeat that has not fired yet, while leaving clicks, reminders and ambience alone.
+    /// </summary>
+    public void StopAlarm()
+    {
+        alarmGeneration++;
+        foreach (var player in alarmPlayers.ToArray()) Release(player);
+        foreach (var entry in alarmFallbacks.ToArray())
+        {
+            alarmFallbacks.Remove(entry);
+            fallbacks.Remove(entry);
+            entry.Player.Stop();
+            entry.Player.Dispose();
+            entry.Stream.Dispose();
+        }
     }
 
     public void Reminder()
@@ -118,19 +142,21 @@ public sealed class SoundEngine : IDisposable
 
     // ------------------------------------------------------------------ one-shots
 
-    private void PlayOnce(string id, string? action, int volume)
+    private void PlayOnce(string id, string? action, int volume, bool alarm = false)
     {
         if (volume <= 0 || Prepare(id, action) is not { } sound) return;
-        if (mediaBroken) { PlayFallback(id, action, volume, sound.Seconds); return; }
+        if (mediaBroken) { PlayFallback(id, action, volume, sound.Seconds, alarm); return; }
         var player = new MediaPlayer { Volume = Math.Clamp(volume / 100d, 0, 1) };
         players.Add(player);
+        if (alarm) alarmPlayers.Add(player);
         player.MediaEnded += (_, _) => Release(player);
         player.MediaFailed += (_, _) =>
         {
+            if (!players.Contains(player)) return;
             // Windows editions without media components still get their sounds, one at a time.
             mediaBroken = true;
             Release(player);
-            PlayFallback(id, action, volume, sound.Seconds);
+            PlayFallback(id, action, volume, sound.Seconds, alarm);
         };
         player.Open(new Uri(sound.File));
         player.Play();
@@ -141,10 +167,11 @@ public sealed class SoundEngine : IDisposable
     private void Release(MediaPlayer player)
     {
         if (!players.Remove(player)) return;
+        alarmPlayers.Remove(player);
         player.Close();
     }
 
-    private void PlayFallback(string id, string? action, int volume, double seconds)
+    private void PlayFallback(string id, string? action, int volume, double seconds, bool alarm)
     {
         try
         {
@@ -152,8 +179,14 @@ public sealed class SoundEngine : IDisposable
             var player = new SoundPlayer(stream);
             var entry = (player, stream);
             fallbacks.Add(entry);
+            if (alarm) alarmFallbacks.Add(entry);
             player.Play();
-            After(TimeSpan.FromSeconds(seconds + 2), () => { fallbacks.Remove(entry); player.Dispose(); stream.Dispose(); });
+            After(TimeSpan.FromSeconds(seconds + 2), () =>
+            {
+                alarmFallbacks.Remove(entry);
+                if (!fallbacks.Remove(entry)) return;
+                player.Dispose(); stream.Dispose();
+            });
         }
         catch (Exception ex) when (ex is InvalidOperationException or IOException) { }
     }
@@ -242,6 +275,7 @@ public sealed class SoundEngine : IDisposable
 
     public void Dispose()
     {
+        StopAlarm();
         StopNoise();
         foreach (var timer in timers.ToArray()) timer.Stop();
         timers.Clear();
@@ -249,4 +283,6 @@ public sealed class SoundEngine : IDisposable
         foreach (var (player, stream) in fallbacks) { player.Dispose(); stream.Dispose(); }
         fallbacks.Clear();
     }
+
+    internal int ActiveAlarmVoicesForDiagnostics => alarmPlayers.Count + alarmFallbacks.Count;
 }

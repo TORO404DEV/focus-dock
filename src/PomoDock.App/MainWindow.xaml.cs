@@ -198,7 +198,15 @@ public partial class MainWindow : Window
     internal void ToggleTimer()
     {
         if (Timer.Running) { Timer.Pause(DateTimeOffset.UtcNow, Monotonic); Sounds.StopNoise(); Status("PAUSADO · Tu progreso está guardado."); }
-        else { Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask); if (Timer.Phase == Phase.Focus) Sounds.StartNoise(); Status("EN CURSO · Una cosa a la vez."); }
+        else
+        {
+            // Starting the next phase acknowledges the alarm that announced the previous one.
+            // Alarm voices are tracked separately, so the start click and ambience remain intact.
+            Sounds.StopAlarm();
+            Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask);
+            if (Timer.Phase == Phase.Focus) Sounds.StartNoise();
+            Status("EN CURSO · Una cosa a la vez.");
+        }
         UpdateTimer(); SaveState();
     }
     private void PhaseClick(object sender, RoutedEventArgs e)

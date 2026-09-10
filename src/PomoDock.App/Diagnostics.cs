@@ -36,6 +36,11 @@ internal static class Diagnostics
             Assert(!main.HeaderClockText.Contains("POMODOCK", StringComparison.OrdinalIgnoreCase) && main.HeaderClockText.Contains(DateTime.Now.Year.ToString()), "workspace header shows the live date and time");
             Render(main, Path.Combine(directory, "main-light.png"));
             main.ToggleTimer(); await Task.Delay(1200); main.ToggleTimer(); Assert(main.Timer.Active!.Seconds >= 1, "UI start and pause record monotonic work");
+            main.Sounds.Completed(Phase.ShortBreak); await Task.Delay(80);
+            Assert(main.Sounds.ActiveAlarmVoicesForDiagnostics > 0, "a completed break starts its timer alarm");
+            main.ToggleTimer();
+            Assert(main.Sounds.ActiveAlarmVoicesForDiagnostics == 0, "starting pomodoro silences the alarm and cancels its pending repeats");
+            main.ToggleTimer();
             if (main.Settings.Fullscreen) main.ToggleFullscreen();
             main.ToggleFullscreen(); await Task.Delay(150);
             var hwnd = new WindowInteropHelper(main).Handle; Win32.GetWindowRect(hwnd, out var fullRect); var monitor = System.Windows.Forms.Screen.FromHandle(hwnd).Bounds;
