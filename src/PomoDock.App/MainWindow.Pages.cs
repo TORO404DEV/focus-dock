@@ -304,6 +304,17 @@ public partial class MainWindow
         return point.X >= 0 && point.Y >= 0 && point.X <= CarouselViewport.ActualWidth && point.Y <= CarouselViewport.ActualHeight;
     }
 
+    /// <summary>
+    /// Dragging the workspace is not typing. Clearing the keyboard alone leaves the caret in
+    /// the field, so the focus scope has to be emptied before the focus is dropped.
+    /// </summary>
+    private void ReleaseTypingFocus()
+    {
+        if (Keyboard.FocusedElement is not (TextBoxBase or PasswordBox) || Keyboard.FocusedElement is not DependencyObject field) return;
+        FocusManager.SetFocusedElement(FocusManager.GetFocusScope(field), null);
+        Keyboard.ClearFocus();
+    }
+
     private bool CanBeginSwipe(Point point)
     {
         if (pageTransitioning || IsReportModalOpen || timerResizing || cards.Any(card => card.IsGestureActive)) return false;
@@ -329,6 +340,7 @@ public partial class MainWindow
             if (Math.Abs(dy) > 22 && Math.Abs(dy) > Math.Abs(dx)) { swipeCandidate = false; return; }
             if (Math.Abs(dx) < 12 || Math.Abs(dx) < Math.Abs(dy) * 1.15) return;
             swipeActive = true;
+            ReleaseTypingFocus();
             ConfigurePointerSwipe(dx < 0 ? 1 : -1);
         }
         int newDirection = dx < 0 ? 1 : -1;

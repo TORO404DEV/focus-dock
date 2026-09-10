@@ -1,0 +1,8 @@
+EXCEPTION System.NullReferenceException: Object reference not set to an instance of an object.
+   at PomoDock.App.NotesEditor..ctor(MainWindow owner, WidgetConfig config) in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\NotesEditor.cs:line 61
+   at PomoDock.App.WidgetCard.BuildNotes() in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\WidgetCard.cs:line 196
+   at PomoDock.App.WidgetCard..ctor(MainWindow owner, WidgetConfig config) in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\WidgetCard.cs:line 82
+   at PomoDock.App.MainWindow.AddCard(WidgetConfig config, Boolean save) in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\MainWindow.xaml.cs:line 609
+   at SwipeProbe.Program.Probe(String output) in C:\Users\crstp\AppData\Local\Temp\claude\c--Users-crstp-Documents-GitHub-focus-dock\bfcaeed7-4295-43b8-bc1e-7f161aa995cf\scratchpad\swipe\Program.cs:line 70
+   at SwipeProbe.Program.<>c__DisplayClass2_0.<<Main>b__0>d.MoveNext() in C:\Users\crstp\AppData\Local\Temp\claude\c--Users-crstp-Documents-GitHub-focus-dock\bfcaeed7-4295-43b8-bc1e-7f161aa995cf\scratchpad\swipe\Program.cs:line 32
+1 FALLOS

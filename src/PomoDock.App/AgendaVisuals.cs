@@ -62,12 +62,13 @@ internal static class AgendaVisuals
         {
             Text = hint,
             Foreground = Resource("Muted"),
-            FontSize = Math.Max(9, box.FontSize - 1),
             IsHitTestVisible = false,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(box.Padding.Left + 3, 0, 8, 0),
             TextTrimming = TextTrimming.CharacterEllipsis
         };
+        // The hint tracks the box, so a card that scales its type never leaves the placeholder behind.
+        label.SetBinding(TextBlock.FontSizeProperty, new System.Windows.Data.Binding(nameof(TextBox.FontSize)) { Source = box });
         void Sync() => label.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         box.TextChanged += (_, _) => Sync();
         Sync();

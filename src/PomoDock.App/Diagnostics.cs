@@ -114,6 +114,14 @@ internal static class Diagnostics
             Render(calendarHarness, Path.Combine(directory, "calendar-week.png"));
             calendar.ShowView("agenda"); await Task.Delay(250);
             Render(calendarHarness, Path.Combine(directory, "calendar-agenda.png"));
+            // Dragged out to fill a vertical monitor, the card has to grow its type, not just its boxes.
+            double compact = calendar.Scale;
+            calendar.ShowView("month");
+            calendarHarness.Width = 900; calendarHarness.Height = 1380; await Task.Delay(400);
+            Assert(calendar.Scale > compact * 1.5, "the calendar scales its type with the room it is given");
+            Render(calendarHarness, Path.Combine(directory, "calendar-large.png"));
+            calendar.ShowView("week"); await Task.Delay(300);
+            Render(calendarHarness, Path.Combine(directory, "calendar-large-week.png"));
             calendarHarness.Close(); calendarHarness = null;
 
             var soon = new AgendaEvent { Title = "Llamada de prueba", Start = DateTime.Now.AddMinutes(2), Minutes = 30, Color = "violet", Reminders = [10] };

@@ -54,6 +54,8 @@ Add it with `+ WIDGET` → `CALENDARIO / AGENDA`. Events live in the PomoDock da
 
 Type an entry in plain language and press Enter: `Dentista mañana a las 17:30 durante 45m`, `Gimnasio todos los martes a las 7`, `Pagar alquiler el 1 de octubre`. Whatever the reader cannot interpret stays in the title, and `⋯` opens the full form with repetition, end date, reminders, color, place, and notes. An entry without a time becomes an all-day event.
 
+The card scales with the room it is given: type, rows, hour grid and day panel all grow when the widget is dragged out to fill a monitor, and the month cells switch between coloured dots, one chip, or several as the height allows. The toolbar grows more slowly than the content, so the month name keeps its place.
+
 Reminders run on their own clock while POMODOCK is open, so they ring when the calendar is on another workspace page or the window is minimized. Each one raises a card in the corner of the screen with a chime, `+5 MIN`, `+15 MIN`, and `✓ LISTO`. A reminder is never delivered twice, and one that came due while the app was closed only appears if its event has not already passed.
 
 For a web panel, use `+ WIDGET` and an HTTPS URL. Web panels are isolated from the native host and can be suspended when collapsed. Use “Mantener activo” for music or a dashboard that must continue running while collapsed.

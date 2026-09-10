@@ -767,7 +767,10 @@ public partial class MainWindow : Window
     {
         if (interactionOverlays.TryGetValue(card, out var existing))
         {
-            existing.IsOpen = false; existing.IsOpen = true; UpdateInteractionOverlayPosition(card); BringPopupToFront(existing); return;
+            // Reopening tears down and recreates the popup window under the cursor, which
+            // swallows the rest of the click: a note never received the caret that way.
+            if (!existing.IsOpen) existing.IsOpen = true;
+            UpdateInteractionOverlayPosition(card); BringPopupToFront(existing); return;
         }
         var root = new Grid { Width = card.Width, Height = card.Height, IsHitTestVisible = true };
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) }); root.RowDefinitions.Add(new RowDefinition()); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(10) });
@@ -857,9 +860,13 @@ public partial class MainWindow : Window
         if (e.Key == Key.Escape && reportPopup is { IsOpen: true }) { HideReportModal(); e.Handled = true; return; }
         if (e.Key == Key.F11 && !hotkeyRegistered) { ToggleFullscreen(); e.Handled = true; }
         if (e.Key == Key.Escape && fullscreen) { ToggleFullscreen(); e.Handled = true; }
+        // While a note, a task or any field holds the caret the keyboard belongs to it:
+        // a rich note is a RichTextBox, not a TextBox, so space used to start the timer
+        // instead of being typed, and Ctrl+arrows changed page instead of moving a word.
+        if (Keyboard.FocusedElement is TextBoxBase or PasswordBox) return;
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Left) { NavigateWorkspace(-1); e.Handled = true; return; }
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Right) { NavigateWorkspace(1); e.Handled = true; return; }
-        if (e.Key == Key.Space && CurrentTimerWidget is not null && e.OriginalSource is not TextBox && e.OriginalSource is not Button) { ToggleTimer(); e.Handled = true; }
+        if (e.Key == Key.Space && CurrentTimerWidget is not null && Keyboard.FocusedElement is not ButtonBase) { ToggleTimer(); e.Handled = true; }
     }
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {

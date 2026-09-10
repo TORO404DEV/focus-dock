@@ -24,8 +24,10 @@ internal sealed class CalendarWidget : Grid
         public bool ShowDone { get; set; } = true;
     }
 
-    private const double HourHeight = 42;
-    private const double Gutter = 44;
+    // Base metrics at scale 1. Every size in the card is derived from them, so the whole
+    // widget grows with the room it is given instead of staying small on a big monitor.
+    private double HourHeight => S(42);
+    private double Gutter => S(44);
 
     private readonly MainWindow owner;
     private readonly WidgetConfig config;
@@ -39,6 +41,10 @@ internal sealed class CalendarWidget : Grid
     private readonly TextBlock quickHint;
     private readonly DispatcherTimer minute = new() { Interval = TimeSpan.FromSeconds(30) };
     private readonly Action agendaChanged;
+    private readonly List<Button> chrome = [];
+    private readonly Button addButton;
+    private readonly Button detailedButton;
+    private readonly Grid quickField;
 
     private DateOnly cursor = DateOnly.FromDateTime(DateTime.Now);
     private DateOnly selected = DateOnly.FromDateTime(DateTime.Now);
@@ -46,6 +52,8 @@ internal sealed class CalendarWidget : Grid
     private string filter = "";
     private Border? nowLine;
     private Canvas? nowColumn;
+    private double scale = 1;
+    private double renderedHeight;
 
     public CalendarWidget(MainWindow owner, WidgetConfig config)
     {
@@ -67,9 +75,10 @@ internal sealed class CalendarWidget : Grid
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var nav = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        nav.Children.Add(Small("‹", "Periodo anterior", () => Move(-1)));
-        nav.Children.Add(Small("›", "Periodo siguiente", () => Move(1)));
-        nav.Children.Add(Small("HOY", "Volver a hoy", GoToday));
+        chrome.Add(Small("‹", "Periodo anterior", () => Move(-1)));
+        chrome.Add(Small("›", "Periodo siguiente", () => Move(1)));
+        chrome.Add(Small("HOY", "Volver a hoy", GoToday));
+        foreach (var button in chrome) nav.Children.Add(button);
         toolbar.Children.Add(nav);
 
         periodLabel = new TextBlock
@@ -96,7 +105,7 @@ internal sealed class CalendarWidget : Grid
         Children.Add(summaryLabel);
 
         // Quick add: one line of Spanish becomes an event.
-        var addRow = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        var addRow = new Grid { Margin = new Thickness(0, 0, 0, S(6)) };
         addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 0 });
         addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         addRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -111,11 +120,11 @@ internal sealed class CalendarWidget : Grid
         ScrollViewer.SetHorizontalScrollBarVisibility(quickAdd, ScrollBarVisibility.Hidden);
         quickAdd.TextChanged += (_, _) => UpdateHint();
         quickAdd.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Commit(); e.Handled = true; } };
-        var quickField = AgendaVisuals.WithHint(quickAdd, "Dentista mañana a las 17:30 durante 45m");
+        quickField = AgendaVisuals.WithHint(quickAdd, "Dentista mañana a las 17:30 durante 45m");
         quickField.Margin = new Thickness(0, 0, 6, 0);
-        var add = new Button { Content = "+", FontSize = 16, Width = 34, Height = 32, Padding = new Thickness(0), Margin = new Thickness(0, 0, 5, 0), ToolTip = "Añadir el evento escrito" };
+        var add = addButton = new Button { Content = "+", Padding = new Thickness(0), ToolTip = "Añadir el evento escrito" };
         add.Click += (_, _) => Commit();
-        var detailed = new Button { Content = "⋯", FontSize = 14, Width = 34, Height = 32, Padding = new Thickness(0), Margin = new Thickness(0), ToolTip = "Abrir el formulario completo" };
+        var detailed = detailedButton = new Button { Content = "⋯", Padding = new Thickness(0), Margin = new Thickness(0), ToolTip = "Abrir el formulario completo" };
         detailed.Click += (_, _) => Edit(null, selected, quickAdd.Text.Trim());
         Grid.SetColumn(add, 1); Grid.SetColumn(detailed, 2);
         addRow.Children.Add(quickField); addRow.Children.Add(add); addRow.Children.Add(detailed);
@@ -145,7 +154,60 @@ internal sealed class CalendarWidget : Grid
             Render();
         };
         Unloaded += (_, _) => { agenda.Changed -= agendaChanged; minute.Stop(); };
+        SizeChanged += (_, _) => Rescale();
         Render();
+    }
+
+    // ---------------------------------------------------------------- scale
+
+    /// <summary>Every size in the card passes through here before it reaches a control.</summary>
+    private double S(double value) => Math.Round(value * scale, 1);
+
+    /// <summary>
+    /// Chrome grows more slowly than content. Buttons that doubled in size would eat the width
+    /// the month name needs, and a toolbar is there to be reached, not to be read from afar.
+    /// </summary>
+    private double C(double value) => Math.Round(value * Math.Min(scale, 1.7), 1);
+
+    /// <summary>
+    /// Recomputes the scale from the room the card was given. A widget dragged to fill a tall
+    /// monitor deserves type to match, so the layout keeps its proportions and the text grows.
+    /// </summary>
+    private void Rescale()
+    {
+        if (ActualWidth <= 0 || ActualHeight <= 0) return;
+        double next = Math.Clamp(Math.Min(ActualWidth / 400, ActualHeight / 520), 1, 2.4);
+        // Height alone changes how much the day panel and the month grid may take, so a card
+        // that only grew taller still deserves a rebuild even when the scale itself is capped.
+        bool reshaped = renderedHeight <= 0 || Math.Abs(ActualHeight - renderedHeight) > renderedHeight * 0.12;
+        // A small threshold keeps a slow drag from rebuilding the card on every pixel.
+        if (Math.Abs(next - scale) < 0.05 && !reshaped) return;
+        scale = next;
+        Render();
+    }
+
+    /// <summary>The pieces that live outside a rebuild still have to follow the scale.</summary>
+    private void ScaleChrome()
+    {
+        periodLabel.FontSize = C(12);
+        periodLabel.Margin = new Thickness(C(10), 0, C(8), 0);
+        summaryLabel.FontSize = C(9);
+        summaryLabel.Margin = new Thickness(0, 0, 0, C(6));
+        quickHint.FontSize = C(9);
+        quickAdd.FontSize = C(12);
+        quickAdd.Height = C(32);
+        quickAdd.Padding = new Thickness(C(9), 0, C(9), 0);
+        if (quickField.Children.Count > 1 && quickField.Children[1] is TextBlock placeholder)
+            placeholder.Margin = new Thickness(quickAdd.Padding.Left + C(3), 0, C(8), 0);
+        foreach (var button in chrome)
+        {
+            button.FontSize = C(10);
+            button.Padding = new Thickness(C(8), C(5), C(8), C(5));
+            button.MinWidth = C(28);
+            button.Margin = new Thickness(0, 0, C(4), 0);
+        }
+        addButton.FontSize = C(16); addButton.Width = C(34); addButton.Height = C(32); addButton.Margin = new Thickness(0, 0, C(5), 0);
+        detailedButton.FontSize = C(14); detailedButton.Width = C(34); detailedButton.Height = C(32);
     }
 
     // ---------------------------------------------------------------- state
@@ -251,6 +313,8 @@ internal sealed class CalendarWidget : Grid
         var now = DateTime.Now;
         rendered = DateOnly.FromDateTime(now);
         nowLine = null; nowColumn = null;
+        renderedHeight = ActualHeight;
+        ScaleChrome();
 
         periodLabel.Text = state.View switch
         {
@@ -283,7 +347,7 @@ internal sealed class CalendarWidget : Grid
             bool active = state.View == key;
             var button = new Button
             {
-                Content = label, FontSize = 9, Padding = new Thickness(8, 6, 8, 6), Margin = new Thickness(0, 0, 4, 0),
+                Content = label, FontSize = C(9), Padding = new Thickness(C(8), C(6), C(8), C(6)), Margin = new Thickness(0, 0, C(4), 0),
                 Background = active ? AgendaVisuals.Resource("Ink") : AgendaVisuals.Resource("Surface"),
                 Foreground = active ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Ink"),
                 ToolTip = tip
@@ -293,7 +357,7 @@ internal sealed class CalendarWidget : Grid
         }
         var create = new Button
         {
-            Content = "+ EVENTO", FontSize = 9, Padding = new Thickness(9, 6, 9, 6), Margin = new Thickness(2, 0, 0, 0),
+            Content = "+ EVENTO", FontSize = C(9), Padding = new Thickness(C(9), C(6), C(9), C(6)), Margin = new Thickness(C(2), 0, 0, 0),
             Background = AgendaVisuals.Resource("Accent"), ToolTip = "Crear un evento con todos los detalles"
         };
         create.Click += (_, _) => Edit(null, selected);
@@ -338,19 +402,19 @@ internal sealed class CalendarWidget : Grid
         root.RowDefinitions.Add(new RowDefinition());
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var header = new UniformGrid { Columns = 7, Margin = new Thickness(0, 0, 0, 3) };
+        var header = new UniformGrid { Columns = 7, Margin = new Thickness(0, 0, 0, S(3)) };
         for (int index = 0; index < 7; index++)
             header.Children.Add(new TextBlock
             {
                 Text = AgendaEvent.ShortDay(first.AddDays(index).DayOfWeek),
-                FontFamily = new FontFamily("Consolas"), FontSize = 9, FontWeight = FontWeights.Bold,
+                FontFamily = new FontFamily("Consolas"), FontSize = S(9), FontWeight = FontWeights.Bold,
                 Foreground = AgendaVisuals.Resource("Muted"), HorizontalAlignment = HorizontalAlignment.Center
             });
         root.Children.Add(header);
 
         var grid = new UniformGrid { Columns = 7, Rows = 6 };
         var edge = AgendaVisuals.Fade("Line", 45);
-        var density = new List<(StackPanel Chips, WrapPanel Dots)>();
+        var density = new List<(StackPanel Chips, TextBlock More, WrapPanel Dots, int Total)>();
         for (int index = 0; index < 42; index++)
         {
             var day = first.AddDays(index);
@@ -366,7 +430,7 @@ internal sealed class CalendarWidget : Grid
                 ClipToBounds = true,
                 Cursor = Cursors.Hand
             };
-            var content = new StackPanel { Margin = new Thickness(3, 2, 3, 2) };
+            var content = new StackPanel { Margin = new Thickness(S(3), S(2), S(3), S(2)) };
 
             var numberRow = new Grid();
             numberRow.ColumnDefinitions.Add(new ColumnDefinition());
@@ -374,9 +438,9 @@ internal sealed class CalendarWidget : Grid
             var number = new TextBlock
             {
                 Text = day.Day.ToString("00"),
-                FontFamily = new FontFamily("Consolas"), FontSize = 10, FontWeight = FontWeights.Bold,
+                FontFamily = new FontFamily("Consolas"), FontSize = S(11), FontWeight = FontWeights.Bold,
                 Foreground = isToday ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Ink"),
-                Padding = new Thickness(3, 0, 3, 0)
+                Padding = new Thickness(S(3), S(1), S(3), S(1))
             };
             var badge = new Border
             {
@@ -388,7 +452,7 @@ internal sealed class CalendarWidget : Grid
             {
                 var dot = new TextBlock
                 {
-                    Text = items.Count.ToString("00"), FontFamily = new FontFamily("Consolas"), FontSize = 8,
+                    Text = items.Count.ToString("00"), FontFamily = new FontFamily("Consolas"), FontSize = S(8),
                     Foreground = AgendaVisuals.Resource("Muted"), VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetColumn(dot, 1);
@@ -397,21 +461,21 @@ internal sealed class CalendarWidget : Grid
             content.Children.Add(numberRow);
 
             var chips = new StackPanel();
-            foreach (var item in items.Take(3)) chips.Children.Add(Chip(item));
-            if (items.Count > 3)
-                chips.Children.Add(new TextBlock { Text = $"+{items.Count - 3}", FontSize = 8, Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(3, 1, 0, 0) });
+            foreach (var item in items.Take(8)) chips.Children.Add(Chip(item));
+            var more = new TextBlock { FontSize = S(8), Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(S(3), S(1), 0, 0), Visibility = Visibility.Collapsed };
+            chips.Children.Add(more);
             content.Children.Add(chips);
 
             // A short card cannot hold a single readable chip, so the day speaks in coloured dots.
-            var dots = new WrapPanel { Margin = new Thickness(2, 3, 0, 0), Visibility = Visibility.Collapsed };
+            var dots = new WrapPanel { Margin = new Thickness(S(2), S(3), 0, 0), Visibility = Visibility.Collapsed };
             foreach (var item in items.Take(5))
                 dots.Children.Add(new Border
                 {
-                    Width = 5, Height = 5, CornerRadius = new CornerRadius(3), Margin = new Thickness(0, 0, 3, 0),
+                    Width = S(5), Height = S(5), CornerRadius = new CornerRadius(S(3)), Margin = new Thickness(0, 0, S(3), 0),
                     Background = AgendaVisuals.Solid(item.Event.Color), Opacity = item.Done ? 0.35 : 1
                 });
             content.Children.Add(dots);
-            density.Add((chips, dots));
+            density.Add((chips, more, dots, items.Count));
 
             cell.Child = content;
             if (outside) cell.Opacity = 0.4;
@@ -427,11 +491,23 @@ internal sealed class CalendarWidget : Grid
         // The month adapts live: chips while there is room for words, dots when the card is short.
         void Density()
         {
-            bool compact = grid.ActualHeight > 0 && grid.ActualHeight / 6 < 54;
-            foreach (var (chips, dots) in density)
+            if (grid.ActualHeight <= 0) return;
+            // How many chips a cell can actually hold at this size; below one, the day uses dots.
+            double room = grid.ActualHeight / 6 - S(22);
+            int fits = (int)Math.Floor(room / S(15));
+            bool compact = fits < 1;
+            foreach (var (chips, more, dots, total) in density)
             {
                 chips.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
                 dots.Visibility = compact && dots.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+                if (compact) continue;
+                int shown = Math.Min(fits, total);
+                for (int index = 0; index < chips.Children.Count - 1; index++)
+                    chips.Children[index].Visibility = index < shown ? Visibility.Visible : Visibility.Collapsed;
+                // The counter only appears when the leftover strip can hold it; the day number
+                // already carries the total, so a cropped "+2" would add nothing.
+                more.Text = $"+{total - shown}";
+                more.Visibility = total > shown && room - shown * S(15) >= S(11) ? Visibility.Visible : Visibility.Collapsed;
             }
         }
         grid.SizeChanged += (_, _) => Density();
@@ -450,7 +526,7 @@ internal sealed class CalendarWidget : Grid
         string label = item.AllDay || item.Continuation ? item.Title : $"{item.Start:HH:mm} {item.Title}";
         var text = new TextBlock
         {
-            Text = label, FontSize = 8.5, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis,
+            Text = label, FontSize = S(9), TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = item.Done ? AgendaVisuals.Resource("Muted") : AgendaVisuals.Resource("Ink")
         };
         if (item.Done) text.TextDecorations = TextDecorations.Strikethrough;
@@ -458,9 +534,9 @@ internal sealed class CalendarWidget : Grid
         {
             Background = AgendaVisuals.Wash(item.Event.Color),
             BorderBrush = AgendaVisuals.Solid(item.Event.Color),
-            BorderThickness = new Thickness(2.5, 0, 0, 0),
-            Padding = new Thickness(3, 1, 2, 1),
-            Margin = new Thickness(0, 2, 0, 0),
+            BorderThickness = new Thickness(S(2.5), 0, 0, 0),
+            Padding = new Thickness(S(3), S(1), S(2), S(1)),
+            Margin = new Thickness(0, S(2), 0, 0),
             Child = text,
             ToolTip = Tooltip(item),
             Cursor = Cursors.Hand
@@ -481,7 +557,7 @@ internal sealed class CalendarWidget : Grid
     private UIElement BuildDayPanel(DateOnly day, DateTime now)
     {
         var items = agenda.Book.OnDay(day);
-        var panel = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        var panel = new StackPanel { Margin = new Thickness(0, S(8), 0, 0) };
         var header = new Grid();
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -489,20 +565,23 @@ internal sealed class CalendarWidget : Grid
         header.Children.Add(new TextBlock
         {
             Text = (relative.Length > 0 ? relative + " · " : "") + AgendaVisuals.LongDayLabel(day),
-            FontFamily = new FontFamily("Consolas"), FontSize = 10, FontWeight = FontWeights.Black,
+            FontFamily = new FontFamily("Consolas"), FontSize = S(10), FontWeight = FontWeights.Black,
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
         });
-        var add = new Button { Content = "+ AÑADIR", FontSize = 9, Padding = new Thickness(8, 5, 8, 5), Margin = new Thickness(0) };
+        var add = new Button { Content = "+ AÑADIR", FontSize = S(9), Padding = new Thickness(S(8), S(5), S(8), S(5)), Margin = new Thickness(0) };
         add.Click += (_, _) => Edit(null, day);
         Grid.SetColumn(add, 1);
         header.Children.Add(add);
         panel.Children.Add(header);
 
-        var list = new StackPanel { Margin = new Thickness(0, 6, 0, 0) };
+        var list = new StackPanel { Margin = new Thickness(0, S(6), 0, 0) };
         foreach (var item in items) list.Children.Add(Row(item, now));
         if (items.Count == 0)
-            list.Children.Add(new TextBlock { Text = "Día libre. Escribe arriba para reservarlo.", FontSize = 10, Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(2, 6, 0, 4) });
-        panel.Children.Add(new ScrollViewer { Content = list, MaxHeight = 168, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+            list.Children.Add(new TextBlock { Text = "Día libre. Escribe arriba para reservarlo.", FontSize = S(11), Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(S(2), S(6), 0, S(4)) });
+        // The day panel takes a share of the card instead of a fixed strip, so a tall widget shows
+        // more of the day. The month grid keeps the larger half: it is what this view is for.
+        double panelHeight = Math.Clamp(ActualHeight * 0.26, S(130), S(380));
+        panel.Children.Add(new ScrollViewer { Content = list, MaxHeight = panelHeight, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         return panel;
     }
 
@@ -531,14 +610,14 @@ internal sealed class CalendarWidget : Grid
             var label = new Border
             {
                 Background = isToday ? AgendaVisuals.Resource("Ink") : Brushes.Transparent,
-                Padding = new Thickness(0, 3, 0, 3),
-                Margin = new Thickness(1, 0, 1, 3),
+                Padding = new Thickness(0, S(3), 0, S(3)),
+                Margin = new Thickness(S(1), 0, S(1), S(3)),
                 Cursor = Cursors.Hand
             };
             label.Child = new TextBlock
             {
                 Text = $"{AgendaEvent.ShortDay(day.DayOfWeek)} {day.Day:00}",
-                FontFamily = new FontFamily("Consolas"), FontSize = 9, FontWeight = FontWeights.Bold,
+                FontFamily = new FontFamily("Consolas"), FontSize = S(10), FontWeight = FontWeights.Bold,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Foreground = isToday ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Ink")
             };
@@ -556,13 +635,13 @@ internal sealed class CalendarWidget : Grid
         root.Children.Add(head);
 
         // All-day entries never fit an hour grid, so they get their own strip on top.
-        var strip = new Grid { Margin = new Thickness(0, 0, 0, 3) };
+        var strip = new Grid { Margin = new Thickness(0, 0, 0, S(3)) };
         strip.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Gutter) });
         foreach (var _ in days) strip.ColumnDefinitions.Add(new ColumnDefinition());
         bool anyAllDay = false;
         for (int index = 0; index < days.Length; index++)
         {
-            var column = new StackPanel { Margin = new Thickness(1, 0, 1, 0) };
+            var column = new StackPanel { Margin = new Thickness(S(1), 0, S(1), 0) };
             List<AgendaOccurrence> dayItems = byDay.TryGetValue(days[index], out var found) ? found : [];
             foreach (var item in dayItems.Where(entry => entry.AllDay))
             {
@@ -574,7 +653,7 @@ internal sealed class CalendarWidget : Grid
         }
         if (anyAllDay)
         {
-            strip.Children.Add(new TextBlock { Text = "TODO EL DÍA", FontFamily = new FontFamily("Consolas"), FontSize = 7, Foreground = AgendaVisuals.Resource("Muted"), VerticalAlignment = VerticalAlignment.Center });
+            strip.Children.Add(new TextBlock { Text = "TODO EL DÍA", FontFamily = new FontFamily("Consolas"), FontSize = S(8), Foreground = AgendaVisuals.Resource("Muted"), VerticalAlignment = VerticalAlignment.Center });
             Grid.SetRow(strip, 1);
             root.Children.Add(strip);
         }
@@ -589,10 +668,10 @@ internal sealed class CalendarWidget : Grid
         {
             var label = new TextBlock
             {
-                Text = $"{hour:00}:00", FontFamily = new FontFamily("Consolas"), FontSize = 8,
-                Foreground = AgendaVisuals.Resource("Muted"), Width = Gutter - 7, TextAlignment = TextAlignment.Right
+                Text = $"{hour:00}:00", FontFamily = new FontFamily("Consolas"), FontSize = S(9),
+                Foreground = AgendaVisuals.Resource("Muted"), Width = Gutter - S(7), TextAlignment = TextAlignment.Right
             };
-            Canvas.SetTop(label, Math.Max(0, hour * HourHeight - 5));
+            Canvas.SetTop(label, Math.Max(0, hour * HourHeight - S(5)));
             Canvas.SetLeft(label, 0);
             hours.Children.Add(label);
         }
@@ -624,7 +703,7 @@ internal sealed class CalendarWidget : Grid
             if (day == today)
             {
                 nowColumn = column;
-                nowLine = new Border { Height = 2, Background = AgendaVisuals.Solid("red"), Width = 4000 };
+                nowLine = new Border { Height = S(2), Background = AgendaVisuals.Solid("red"), Width = 4000 };
                 Canvas.SetTop(nowLine, now.TimeOfDay.TotalMinutes / 60 * HourHeight);
                 Panel.SetZIndex(nowLine, 40);
                 column.Children.Add(nowLine);
@@ -666,24 +745,24 @@ internal sealed class CalendarWidget : Grid
     private UIElement Block(AgendaOccurrence item, int lane, int lanes, Canvas column)
     {
         double top = item.DayStartMinutes / 60 * HourHeight;
-        double height = Math.Max(18, (item.DayEndMinutes - item.DayStartMinutes) / 60 * HourHeight - 2);
-        var text = new StackPanel { Margin = new Thickness(4, 2, 3, 2) };
+        double height = Math.Max(S(18), (item.DayEndMinutes - item.DayStartMinutes) / 60 * HourHeight - S(2));
+        var text = new StackPanel { Margin = new Thickness(S(4), S(2), S(3), S(2)) };
         var heading = new TextBlock
         {
-            Text = item.Title, FontSize = 9.5, FontWeight = FontWeights.Bold,
+            Text = item.Title, FontSize = S(10), FontWeight = FontWeights.Bold,
             TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = item.Done ? AgendaVisuals.Resource("Muted") : AgendaVisuals.Resource("Ink")
         };
         if (item.Done) heading.TextDecorations = TextDecorations.Strikethrough;
         text.Children.Add(heading);
-        if (height > 34)
-            text.Children.Add(new TextBlock { Text = item.TimeLabel(), FontFamily = new FontFamily("Consolas"), FontSize = 8, Foreground = AgendaVisuals.Resource("Muted"), TextTrimming = TextTrimming.CharacterEllipsis });
+        if (height > S(34))
+            text.Children.Add(new TextBlock { Text = item.TimeLabel(), FontFamily = new FontFamily("Consolas"), FontSize = S(9), Foreground = AgendaVisuals.Resource("Muted"), TextTrimming = TextTrimming.CharacterEllipsis });
 
         var block = new Border
         {
             Background = AgendaVisuals.Wash(item.Event.Color),
             BorderBrush = AgendaVisuals.Solid(item.Event.Color),
-            BorderThickness = new Thickness(3, 0, 0, 0),
+            BorderThickness = new Thickness(S(3), 0, 0, 0),
             Height = height,
             Child = text,
             ToolTip = Tooltip(item),
@@ -698,8 +777,8 @@ internal sealed class CalendarWidget : Grid
         {
             double available = Math.Max(40, column.ActualWidth - 2);
             double width = available / lanes;
-            block.Width = Math.Max(24, width - 2);
-            Canvas.SetLeft(block, 1 + lane * width);
+            block.Width = Math.Max(S(24), width - S(2));
+            Canvas.SetLeft(block, S(1) + lane * width);
         }
         column.SizeChanged += (_, _) => Size();
         block.Loaded += (_, _) => Size();
@@ -722,12 +801,12 @@ internal sealed class CalendarWidget : Grid
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition());
 
-        var tools = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+        var tools = new Grid { Margin = new Thickness(0, 0, 0, S(6)) };
         tools.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 0 });
         tools.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var search = new TextBox
         {
-            Text = filter, Height = 28, Padding = new Thickness(8, 0, 8, 0), Margin = new Thickness(0), FontSize = 11,
+            Text = filter, Height = S(28), Padding = new Thickness(S(8), 0, S(8), 0), Margin = new Thickness(0), FontSize = S(11),
             MinWidth = 0, VerticalContentAlignment = VerticalAlignment.Center, ToolTip = "Filtrar por título, lugar o notas"
         };
         search.SetValue(AutomationProperties.NameProperty, "Filtrar eventos");
@@ -736,12 +815,12 @@ internal sealed class CalendarWidget : Grid
         search.KeyUp += (_, e) => { if (e.Key is Key.Enter or Key.Escape) { if (e.Key == Key.Escape) filter = ""; Render(); } };
         var toggle = new Button
         {
-            Content = state.ShowDone ? "OCULTAR HECHOS" : "VER HECHOS", FontSize = 9, Padding = new Thickness(8, 5, 8, 5), Margin = new Thickness(0)
+            Content = state.ShowDone ? "OCULTAR HECHOS" : "VER HECHOS", FontSize = S(9), Padding = new Thickness(S(8), S(5), S(8), S(5)), Margin = new Thickness(0)
         };
         toggle.Click += (_, _) => { state.ShowDone = !state.ShowDone; SaveState(); Render(); };
         Grid.SetColumn(toggle, 1);
         var searchField = AgendaVisuals.WithHint(search, "Filtrar por título, lugar o notas · Intro para buscar");
-        searchField.Margin = new Thickness(0, 0, 6, 0);
+        searchField.Margin = new Thickness(0, 0, S(6), 0);
         tools.Children.Add(searchField); tools.Children.Add(toggle);
         root.Children.Add(tools);
 
@@ -756,9 +835,9 @@ internal sealed class CalendarWidget : Grid
                 list.Children.Add(new TextBlock
                 {
                     Text = (relative.Length > 0 ? relative + " · " : "") + AgendaVisuals.LongDayLabel(item.Day),
-                    FontFamily = new FontFamily("Consolas"), FontSize = 9, FontWeight = FontWeights.Black,
+                    FontFamily = new FontFamily("Consolas"), FontSize = S(10), FontWeight = FontWeights.Black,
                     Foreground = item.Day == today ? AgendaVisuals.Resource("Ink") : AgendaVisuals.Resource("Muted"),
-                    Margin = new Thickness(0, 10, 0, 5)
+                    Margin = new Thickness(0, S(10), 0, S(5))
                 });
             }
             list.Children.Add(Row(item, now));
@@ -767,7 +846,7 @@ internal sealed class CalendarWidget : Grid
             list.Children.Add(new TextBlock
             {
                 Text = filter.Length > 0 ? "Nada coincide con ese filtro." : "No hay nada en las próximas semanas.\nEscribe arriba para reservar tu primer bloque.",
-                FontSize = 11, Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(2, 16, 2, 8)
+                FontSize = S(11), Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(S(2), S(16), S(2), S(8))
             });
 
         var scroller = new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -786,35 +865,35 @@ internal sealed class CalendarWidget : Grid
             BorderBrush = AgendaVisuals.Fade("Line", running ? (byte)255 : (byte)70),
             BorderThickness = new Thickness(1),
             Background = AgendaVisuals.Resource("Surface"),
-            Margin = new Thickness(0, 0, 0, 5),
+            Margin = new Thickness(0, 0, 0, S(5)),
             Cursor = Cursors.Hand,
             Opacity = item.Done || item.IsPast(now) ? 0.62 : 1
         };
         var line = new Grid();
-        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
-        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(62) });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(S(4)) });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(S(64)) });
         line.ColumnDefinitions.Add(new ColumnDefinition());
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         line.Children.Add(new Border { Background = AgendaVisuals.Solid(item.Event.Color) });
 
-        var clock = new StackPanel { Margin = new Thickness(7, 6, 4, 6), VerticalAlignment = VerticalAlignment.Center };
+        var clock = new StackPanel { Margin = new Thickness(S(7), S(6), S(4), S(6)), VerticalAlignment = VerticalAlignment.Center };
         clock.Children.Add(new TextBlock
         {
             Text = item.AllDay ? "TODO" : item.Continuation ? "→" : item.Start.ToString("HH:mm"),
-            FontFamily = new FontFamily("Consolas"), FontSize = 12, FontWeight = FontWeights.Bold
+            FontFamily = new FontFamily("Consolas"), FontSize = S(12), FontWeight = FontWeights.Bold
         });
         clock.Children.Add(new TextBlock
         {
             Text = item.AllDay ? "EL DÍA" : AgendaVisuals.DurationLabel(Math.Max(5, (int)(item.DayEndMinutes - item.DayStartMinutes))),
-            FontSize = 8, Foreground = AgendaVisuals.Resource("Muted")
+            FontSize = S(8), Foreground = AgendaVisuals.Resource("Muted")
         });
         Grid.SetColumn(clock, 1);
         line.Children.Add(clock);
 
-        var text = new StackPanel { Margin = new Thickness(2, 6, 6, 6), VerticalAlignment = VerticalAlignment.Center };
+        var text = new StackPanel { Margin = new Thickness(S(2), S(6), S(6), S(6)), VerticalAlignment = VerticalAlignment.Center };
         var title = new TextBlock
         {
-            Text = item.Title, FontSize = 12, FontWeight = FontWeights.SemiBold,
+            Text = item.Title, FontSize = S(12), FontWeight = FontWeights.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap
         };
         if (item.Done) title.TextDecorations = TextDecorations.Strikethrough;
@@ -830,16 +909,16 @@ internal sealed class CalendarWidget : Grid
         if (meta.Count > 0)
             text.Children.Add(new TextBlock
             {
-                Text = string.Join("  ·  ", meta), FontSize = 9, Foreground = running ? AgendaVisuals.Solid(item.Event.Color) : AgendaVisuals.Resource("Muted"),
-                TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap, Margin = new Thickness(0, 2, 0, 0)
+                Text = string.Join("  ·  ", meta), FontSize = S(9), Foreground = running ? AgendaVisuals.Solid(item.Event.Color) : AgendaVisuals.Resource("Muted"),
+                TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap, Margin = new Thickness(0, S(2), 0, 0)
             });
         Grid.SetColumn(text, 2);
         line.Children.Add(text);
 
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, S(4), 0) };
         var check = new Button
         {
-            Content = item.Done ? "✓" : "○", Width = 26, Height = 26, Padding = new Thickness(0), Margin = new Thickness(0, 0, 3, 0), FontSize = 12,
+            Content = item.Done ? "✓" : "○", Width = S(26), Height = S(26), Padding = new Thickness(0), Margin = new Thickness(0, 0, S(3), 0), FontSize = S(12),
             Background = item.Done ? AgendaVisuals.Resource("Ink") : AgendaVisuals.Resource("Surface"),
             Foreground = item.Done ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Muted"),
             ToolTip = item.Done ? "Marcar como pendiente" : "Marcar como hecho"
@@ -853,7 +932,7 @@ internal sealed class CalendarWidget : Grid
         actions.Children.Add(check);
         var drop = new Button
         {
-            Content = "×", Width = 26, Height = 26, Padding = new Thickness(0), Margin = new Thickness(0), FontSize = 14, BorderThickness = new Thickness(0),
+            Content = "×", Width = S(26), Height = S(26), Padding = new Thickness(0), Margin = new Thickness(0), FontSize = S(14), BorderThickness = new Thickness(0),
             ToolTip = item.Event.Repeat == RepeatKind.None ? "Eliminar evento" : "Quitar solo este día de la serie"
         };
         drop.Click += (_, _) =>
@@ -883,6 +962,9 @@ internal sealed class CalendarWidget : Grid
             if (current is T match) return match;
         return null;
     }
+
+    /// <summary>The type scale the card settled on. The self test checks that it follows the size.</summary>
+    internal double Scale => scale;
 
     /// <summary>Switches view without persisting it, so the self test can photograph all three.</summary>
     internal void ShowView(string view)
