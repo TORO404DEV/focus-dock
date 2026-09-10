@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private bool appliedTimerAtBottom;
     private Popup? timerOverlay;
     private Popup? reportPopup;
+    private readonly List<Popup> reportBackdrops = [];
     private ReportWindow? reportContent;
     private bool timerPointerPressed, timerWantsFront;
     public bool DiagnosticMode { get; }
@@ -224,32 +225,38 @@ public partial class MainWindow : Window
     {
         if (reportPopup is { IsOpen: true } existing) { BringPopupToFront(existing); return; }
         CancelTimerGesture();
-        var backdrop = new Grid
-        {
-            Background = new SolidColorBrush(Color.FromArgb(180, 23, 25, 22)),
-            Focusable = true
-        };
         var report = new ReportWindow(this);
         reportContent = report;
-        var panel = report.TakeModalContent(HideReportModal,
-            Math.Clamp(Root.ActualWidth - 44, 540, 820),
-            Math.Clamp(Root.ActualHeight - 44, 500, 880));
-        panel.HorizontalAlignment = HorizontalAlignment.Center;
-        panel.VerticalAlignment = VerticalAlignment.Center;
-        backdrop.Children.Add(panel);
-        backdrop.MouseLeftButtonDown += (_, e) => { if (ReferenceEquals(e.OriginalSource, backdrop)) HideReportModal(); };
+        var panel = report.TakeModalContent(HideReportModal, 1, 1);
+        panel.Focusable = true;
+        KeyboardNavigation.SetTabNavigation(panel, KeyboardNavigationMode.Cycle);
+        // WPF restricts a Popup's screen coverage. Four small backdrop surfaces
+        // cover the owner without putting a fullscreen Grid in a single Popup.
+        // They also intercept input above hosted HWNDs and floating widgets.
+        for (int i = 0; i < 4; i++)
+        {
+            var shade = new Border { Background = new SolidColorBrush(Color.FromArgb(180, 23, 25, 22)) };
+            shade.MouseLeftButtonDown += (_, e) => { HideReportModal(); e.Handled = true; };
+            reportBackdrops.Add(new Popup
+            {
+                Child = shade, Placement = PlacementMode.Absolute, PlacementTarget = Root,
+                AllowsTransparency = true, StaysOpen = true, PopupAnimation = PopupAnimation.None
+            });
+        }
         var popup = new Popup
         {
-            Placement = PlacementMode.Relative,
+            Placement = PlacementMode.Absolute,
             PlacementTarget = Root,
             HorizontalOffset = 0,
             VerticalOffset = 0,
             AllowsTransparency = true,
             StaysOpen = true,
             Focusable = true,
-            Child = backdrop
+            Child = panel
         };
         reportPopup = popup;
+        UpdateReportModalPosition();
+        foreach (var shade in reportBackdrops) { shade.IsOpen = true; BringPopupToFront(shade); }
         popup.Opened += (_, _) => { UpdateReportModalPosition(); BringPopupToFront(popup); Keyboard.Focus(panel); };
         popup.IsOpen = true;
     }
@@ -260,27 +267,61 @@ public partial class MainWindow : Window
         reportPopup.IsOpen = false;
         reportPopup.Child = null;
         reportPopup = null;
+        foreach (var shade in reportBackdrops) { shade.IsOpen = false; shade.Child = null; }
+        reportBackdrops.Clear();
         reportContent = null;
         if (!exiting) Focus();
     }
 
     private void UpdateReportModalPosition()
     {
-        if (reportPopup?.Child is not Grid backdrop || !reportPopup.IsOpen) return;
-        backdrop.Width = Math.Max(1, Root.ActualWidth);
-        backdrop.Height = Math.Max(1, Root.ActualHeight);
-        if (backdrop.Children.Count > 0 && backdrop.Children[0] is FrameworkElement panel)
+        if (reportPopup?.Child is not FrameworkElement panel) return;
+        if (WindowState == WindowState.Minimized) { HideReportModal(); return; }
+        var dpi = VisualTreeHelper.GetDpi(Root);
+        var origin = Root.PointToScreen(new Point());
+        var screen = System.Windows.Forms.Screen.FromHandle(hwnd).Bounds;
+        var viewport = Rect.Intersect(new Rect(origin.X, origin.Y,
+            Root.ActualWidth * dpi.DpiScaleX, Root.ActualHeight * dpi.DpiScaleY),
+            new Rect(screen.Left, screen.Top, screen.Width, screen.Height));
+        if (viewport.IsEmpty) return;
+        for (int i = 0; i < reportBackdrops.Count; i++)
         {
-            panel.Width = Math.Clamp(Root.ActualWidth - 44, 540, 820);
-            panel.Height = Math.Clamp(Root.ActualHeight - 44, 500, 880);
+            var shade = reportBackdrops[i];
+            var left = viewport.Left + Math.Floor(viewport.Width / 2) * (i % 2);
+            var top = viewport.Top + Math.Floor(viewport.Height / 2) * (i / 2);
+            shade.HorizontalOffset = left / dpi.DpiScaleX;
+            shade.VerticalOffset = top / dpi.DpiScaleY;
+            var child = (FrameworkElement)shade.Child;
+            child.Width = (i % 2 == 0 ? Math.Floor(viewport.Width / 2) : Math.Ceiling(viewport.Width / 2)) / dpi.DpiScaleX;
+            child.Height = (i / 2 == 0 ? Math.Floor(viewport.Height / 2) : Math.Ceiling(viewport.Height / 2)) / dpi.DpiScaleY;
         }
+        panel.Width = Math.Max(1, Math.Min(820, viewport.Width / dpi.DpiScaleX - 32));
+        panel.Height = Math.Max(1, Math.Min(880, Math.Min(viewport.Height - 40 * dpi.DpiScaleY, screen.Height * .70) / dpi.DpiScaleY));
+        reportPopup.HorizontalOffset = (viewport.Left + (viewport.Width - panel.Width * dpi.DpiScaleX) / 2) / dpi.DpiScaleX;
+        reportPopup.VerticalOffset = (viewport.Top + (viewport.Height - panel.Height * dpi.DpiScaleY) / 2) / dpi.DpiScaleY;
     }
 
     internal bool IsReportModalOpen => reportPopup is { IsOpen: true };
+    internal bool ReportModalFitsVisibleScreen
+    {
+        get
+        {
+            if (reportPopup?.Child is not FrameworkElement panel ||
+                PresentationSource.FromVisual(panel) is not HwndSource source ||
+                !Win32.GetWindowRect(source.Handle, out var rect)) return false;
+            var dpi = VisualTreeHelper.GetDpi(panel);
+            var screen = System.Windows.Forms.Screen.FromHandle(source.Handle).Bounds;
+            int width = rect.Right - rect.Left;
+            int height = rect.Bottom - rect.Top;
+            return rect.Left >= screen.Left && rect.Top >= screen.Top && rect.Right <= screen.Right && rect.Bottom <= screen.Bottom &&
+                width >= panel.ActualWidth * dpi.DpiScaleX - 2 && height >= panel.ActualHeight * dpi.DpiScaleY - 2;
+        }
+    }
     internal string HeaderClockText => $"{HeaderDateText.Text} {HeaderTimeText.Text}";
     internal int ReportVisibleSessionCount => reportContent?.VisibleSessionCount ?? 0;
     internal FrameworkElement? ReportModalSurface => reportPopup?.Child as FrameworkElement;
     internal void ShowReportForDiagnostics() => ShowReportModal();
+    internal bool ShowReportChartHoverForDiagnostics() => reportContent?.ShowChartHoverForDiagnostics() == true;
     internal void ShowReportDetailForDiagnostics() => reportContent?.ShowDetailForDiagnostics();
     internal void HideReportForDiagnostics() => HideReportModal();
     private void SettingsClick(object sender, RoutedEventArgs e) { new SettingsWindow(this).ShowDialog(); Settings.Validate(); ApplyTimerPosition(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); SaveState(); }
@@ -580,6 +621,7 @@ public partial class MainWindow : Window
     }
     internal void BringCardToFront(WidgetCard card)
     {
+        if (IsReportModalOpen) return;
         timerWantsFront = false;
         HideTimerOverlay();
         Panel.SetZIndex(TimerFrame, 0);
@@ -604,7 +646,7 @@ public partial class MainWindow : Window
 
     private void BringTimerToFront()
     {
-        if (exiting || !IsEnabled) return;
+        if (exiting || !IsEnabled || IsReportModalOpen) return;
         timerWantsFront = true;
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);

@@ -98,8 +98,11 @@ internal static class Diagnostics
             }
             main.ShowReportForDiagnostics(); await Task.Delay(100);
             Assert(main.IsReportModalOpen, "report opens inside the main window modal layer");
+            Assert(main.ReportModalFitsVisibleScreen, "report modal is fully visible and is not clipped by the popup surface");
             Assert(main.ReportVisibleSessionCount >= 14, "report summary loads persisted focus history");
             Render(main.ReportModalSurface!, Path.Combine(directory, "report.png"));
+            Assert(main.ShowReportChartHoverForDiagnostics(), "report chart exposes period and project values on hover");
+            Render(main.ReportModalSurface!, Path.Combine(directory, "report-hover.png"));
             main.ShowReportDetailForDiagnostics(); await Task.Delay(100);
             Assert(main.ReportVisibleSessionCount >= 14, "report detail keeps the selected period data");
             Render(main.ReportModalSurface!, Path.Combine(directory, "report-detail.png"));

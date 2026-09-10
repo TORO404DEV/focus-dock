@@ -32,6 +32,7 @@ public sealed class ReportWindow : Window
     private readonly Button weekTab;
     private readonly Button monthTab;
     private readonly Button yearTab;
+    private StackedBarChart? chart;
     private List<Session> sessions = [];
     private List<Session> exportSessions = [];
     private ReportTab tab = ReportTab.Summary;
@@ -42,12 +43,12 @@ public sealed class ReportWindow : Window
     {
         this.owner = owner;
         Title = "POMODOCK / REPORTE";
-        Width = 820;
-        Height = 880;
+        Width = 760;
+        Height = 760;
         MinWidth = 610;
         MinHeight = 540;
-        MaxWidth = Math.Max(610, SystemParameters.WorkArea.Width - 24);
-        MaxHeight = Math.Max(540, SystemParameters.WorkArea.Height - 24);
+        MaxWidth = Math.Max(540, SystemParameters.WorkArea.Width - 24);
+        MaxHeight = Math.Max(500, SystemParameters.WorkArea.Height - 24);
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -118,6 +119,7 @@ public sealed class ReportWindow : Window
         {
             Width = width,
             Height = height,
+            ClipToBounds = true,
             Background = Resource("Surface"),
             BorderBrush = Resource("Line"),
             BorderThickness = new Thickness(2)
@@ -165,6 +167,7 @@ public sealed class ReportWindow : Window
     private void Render()
     {
         content.Children.Clear();
+        chart = null;
         SetActive(summaryTab, tab == ReportTab.Summary);
         SetActive(detailTab, tab == ReportTab.Detail);
         SetActive(weekTab, period == PeriodMode.Week);
@@ -205,7 +208,8 @@ public sealed class ReportWindow : Window
         }
         else
         {
-            chartFrame.Child = new StackedBarChart(data.Buckets, data.Colors) { Height = 300 };
+            chart = new StackedBarChart(data.Buckets, data.Colors) { Height = 300 };
+            chartFrame.Child = chart;
         }
         content.Children.Add(chartFrame);
 
@@ -563,6 +567,7 @@ public sealed class ReportWindow : Window
         tab = ReportTab.Detail;
         Render();
     }
+    internal bool ShowChartHoverForDiagnostics() => chart?.ShowFirstPopulatedBucketForDiagnostics() == true;
 
     private sealed record ReportBucket(string Label, Dictionary<string, double> Values);
     private sealed record ProjectTotal(string Name, double Minutes, string SeriesName);
@@ -572,6 +577,8 @@ public sealed class ReportWindow : Window
     {
         private const double Left = 54;
         private const double Bottom = 34;
+        private int hoverIndex = -1;
+        private Point hoverPosition;
 
         protected override void OnRender(DrawingContext dc)
         {
@@ -610,17 +617,79 @@ public sealed class ReportWindow : Window
                 if (index % every == 0 || index == buckets.Count - 1)
                     DrawText(dc, buckets[index].Label.Replace('\n', ' '), Left + index * cell, bottom + 8, muted, 8, FontWeights.Normal);
             }
+            if (hoverIndex >= 0 && hoverIndex < buckets.Count)
+                DrawHoverCard(dc, buckets[hoverIndex]);
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
             base.OnMouseMove(e);
             var position = e.GetPosition(this);
-            int index = (int)((position.X - Left) / Math.Max(1, ActualWidth - Left - 5) * buckets.Count);
-            if (index < 0 || index >= buckets.Count) { ToolTip = null; return; }
-            var bucket = buckets[index];
-            var lines = bucket.Values.OrderByDescending(pair => pair.Value).Select(pair => $"{pair.Key}: {FormatDuration(pair.Value)}");
-            ToolTip = $"{bucket.Label.Replace('\n', ' ')} · {FormatDuration(bucket.Values.Values.Sum())}\n{string.Join("\n", lines)}";
+            var next = BucketAt(position);
+            if (next == hoverIndex && position == hoverPosition) return;
+            hoverIndex = next;
+            hoverPosition = position;
+            Cursor = hoverIndex >= 0 ? Cursors.Hand : Cursors.Arrow;
+            AutomationProperties.SetHelpText(this, hoverIndex >= 0 ? HoverText(buckets[hoverIndex]) : string.Empty);
+            InvalidateVisual();
+        }
+
+        protected override void OnMouseLeave(MouseEventArgs e)
+        {
+            base.OnMouseLeave(e);
+            hoverIndex = -1;
+            Cursor = Cursors.Arrow;
+            AutomationProperties.SetHelpText(this, string.Empty);
+            InvalidateVisual();
+        }
+
+        private int BucketAt(Point position)
+        {
+            if (buckets.Count == 0 || position.X < Left || position.X > ActualWidth - 5 || position.Y < 10 || position.Y > ActualHeight - Bottom)
+                return -1;
+            var width = Math.Max(1, ActualWidth - Left - 5);
+            int index = Math.Clamp((int)((position.X - Left) / width * buckets.Count), 0, buckets.Count - 1);
+            return buckets[index].Values.Values.Sum() > .001 ? index : -1;
+        }
+
+        private void DrawHoverCard(DrawingContext dc, ReportBucket bucket)
+        {
+            var ink = Resource("Ink");
+            var paper = Resource("Surface");
+            var text = new FormattedText(HoverText(bucket), CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                new Typeface(Mono(), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), 10, ink,
+                VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            {
+                MaxTextWidth = Math.Max(120, Math.Min(245, ActualWidth - 42)),
+                MaxTextHeight = 170
+            };
+            double cardWidth = Math.Min(ActualWidth - 16, Math.Max(160, text.Width + 24));
+            double cardHeight = text.Height + 20;
+            double x = Math.Clamp(hoverPosition.X + 14, 8, Math.Max(8, ActualWidth - cardWidth - 8));
+            double y = hoverPosition.Y - cardHeight - 12;
+            if (y < 8) y = Math.Min(ActualHeight - cardHeight - 8, hoverPosition.Y + 14);
+            var rect = new Rect(x, Math.Max(8, y), cardWidth, cardHeight);
+            dc.DrawRectangle(paper, new Pen(ink, 1.5), rect);
+            dc.DrawText(text, new Point(rect.X + 12, rect.Y + 10));
+        }
+
+        private static string HoverText(ReportBucket bucket)
+        {
+            var total = bucket.Values.Values.Sum();
+            var rows = bucket.Values.OrderByDescending(pair => pair.Value)
+                .Select(pair => $"{pair.Key}  {FormatDuration(pair.Value)}");
+            return $"{bucket.Label.Replace('\n', ' ')}  ·  TOTAL {FormatDuration(total)}\n{string.Join("\n", rows)}";
+        }
+
+        internal bool ShowFirstPopulatedBucketForDiagnostics()
+        {
+            hoverIndex = buckets.FindIndex(bucket => bucket.Values.Values.Sum() > .001);
+            if (hoverIndex < 0) return false;
+            double width = Math.Max(1, ActualWidth - Left - 5);
+            double cell = width / Math.Max(1, buckets.Count);
+            hoverPosition = new Point(Left + (hoverIndex + .5) * cell, Math.Max(30, ActualHeight / 2));
+            InvalidateVisual();
+            return true;
         }
 
         private static int LabelFrequency(int count, double cell) => count <= 12 ? 1 : Math.Max(1, (int)Math.Ceiling(28 / Math.Max(1, cell)));
