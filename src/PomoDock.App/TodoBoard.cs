@@ -380,10 +380,5 @@ internal sealed class TodoBoard : Grid
         Render();
     }
 
-    private static T? Ancestor<T>(DependencyObject source) where T : DependencyObject
-    {
-        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
-            if (current is T match) return match;
-        return null;
-    }
+    private static T? Ancestor<T>(DependencyObject source) where T : DependencyObject => Ancestors.Find<T>(source);
 }

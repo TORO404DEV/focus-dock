@@ -101,15 +101,7 @@ public sealed class WidgetCard : Border
     }
     private static bool IsGestureSource(object source)
     {
-        // A click inside a rich note reports a FlowDocument, which is a content element and
-        // not a visual: asking the visual tree for its parent throws. Step through the
-        // logical tree for those and keep climbing once back on visual ground.
-        for (var current = source as DependencyObject; current is not null;)
-        {
-            if (current is Thumb) return true;
-            current = current is Visual ? VisualTreeHelper.GetParent(current) : LogicalTreeHelper.GetParent(current);
-        }
-        return false;
+        return Ancestors.Find<Thumb>(source as DependencyObject) is not null;
     }
     private Thumb CreateHandle(string label, Cursor cursor)
     {

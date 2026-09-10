@@ -395,7 +395,7 @@ public partial class MainWindow
 
     private static bool IsInteractiveSwipeSource(DependencyObject? source)
     {
-        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+        for (var current = source; current is not null; current = Ancestors.Up(current))
         {
             if (current is ButtonBase or TextBoxBase or PasswordBox or Selector or ScrollBar or Slider or Thumb) return true;
             if (current is FrameworkElement element && element.Cursor == Cursors.SizeAll) return true;

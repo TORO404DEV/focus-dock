@@ -424,7 +424,7 @@ public partial class MainWindow : Window
 
     private void TimerMoveHeaderDown(object sender, MouseButtonEventArgs e)
     {
-        for (var current = e.OriginalSource as DependencyObject; current is not null && current != TimerMoveHeader; current = VisualTreeHelper.GetParent(current))
+        for (var current = e.OriginalSource as DependencyObject; current is not null && current != TimerMoveHeader; current = Ancestors.Up(current))
             if (current is ButtonBase) return;
         BeginTimerGesture("MOVE");
         if (TimerMoveHeader.CaptureMouse()) e.Handled = true;

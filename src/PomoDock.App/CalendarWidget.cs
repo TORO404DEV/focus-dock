@@ -956,12 +956,7 @@ internal sealed class CalendarWidget : Grid
         return frame;
     }
 
-    private static T? Ancestor<T>(DependencyObject source) where T : DependencyObject
-    {
-        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
-            if (current is T match) return match;
-        return null;
-    }
+    private static T? Ancestor<T>(DependencyObject source) where T : DependencyObject => Ancestors.Find<T>(source);
 
     /// <summary>The type scale the card settled on. The self test checks that it follows the size.</summary>
     internal double Scale => scale;
