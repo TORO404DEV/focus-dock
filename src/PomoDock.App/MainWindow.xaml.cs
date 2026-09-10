@@ -723,9 +723,9 @@ public partial class MainWindow : Window
         Panel.SetZIndex(TimerFrame, 0);
         foreach (var other in cards) Panel.SetZIndex(other, 0);
         Panel.SetZIndex(card, 1);
-        if (cards.Any(c => c.IsExternalAttached))
+        if (cards.Any(c => c.HasNativeSurface))
         {
-            if (card.IsExternalAttached)
+            if (card.HasNativeSurface)
             {
                 foreach (var other in cards.Where(c => c != card)) HideOverlay(other);
                 card.BringExternalToFront();
@@ -748,7 +748,7 @@ public partial class MainWindow : Window
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         foreach (var other in cards) Panel.SetZIndex(other, 0);
         Panel.SetZIndex(TimerFrame, 20);
-        if (cards.Any(c => c.IsExternalAttached)) ShowTimerOverlay();
+        if (cards.Any(c => c.HasNativeSurface)) ShowTimerOverlay();
     }
 
     private void ShowTimerOverlay()

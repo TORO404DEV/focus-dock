@@ -96,6 +96,13 @@ public sealed class WidgetCard : Border
         }
     }
     internal bool IsExternalAttached => host?.Alive == true;
+    /// <summary>
+    /// This card paints part of itself through a real HWND — an embedded app window or a
+    /// WebView2 — so ordinary WPF Z-index cannot put anything above it; only another native
+    /// surface (a Popup, which is its own HWND) can. A WebView2 counts even though it is not
+    /// an "external" window: it breaks airspace exactly the same way.
+    /// </summary>
+    internal bool HasNativeSurface => host?.Alive == true || web is not null;
     internal bool IsGestureActive => resizing || moveSurface.IsMouseCaptured || gestureHandles.Any(handle => handle.IsDragging);
     internal int StatsLayoutKeyForDiagnostics => statsLayoutKey;
     internal void BringExternalToFront() => host?.BringToFront();
