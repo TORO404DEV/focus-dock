@@ -658,16 +658,17 @@ public partial class MainWindow : Window
         };
         if (newPlacement)
         {
-            int index = cards.Count;
-            int columns = canvasWidth >= 560 ? 2 : 1;
-            int column = index % columns;
-            int row = index / columns;
-            config.X = 12 + column * (config.Width + 16);
-            config.Y = 12 + row * (config.Height + 16);
+            // A new widget lands where the eye already is, not tucked into a corner behind
+            // whatever is already there — dead centre of the visible canvas, every time.
+            double viewportWidth = WidgetArea.ActualWidth > 0 ? WidgetArea.ActualWidth : canvasWidth;
+            double viewportHeight = WidgetArea.ActualHeight > 0 ? WidgetArea.ActualHeight : 720;
+            config.X = Math.Max(0, (viewportWidth - config.Width) / 2);
+            config.Y = Math.Max(0, (viewportHeight - config.Height) / 2);
         }
         var card = new WidgetCard(this, config); cards.Add(card); WidgetArea.Children.Add(card);
         ArrangeCards();
-        if (IsLoaded && !pageTransitioning) ShowInteractionOverlay(card);
+        // On top of everything else — the timer included — so it is never born hidden under one.
+        if (IsLoaded && !pageTransitioning) BringCardToFront(card);
         if (save)
         {
             SaveState();
