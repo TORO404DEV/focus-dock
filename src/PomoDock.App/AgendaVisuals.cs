@@ -12,8 +12,8 @@ namespace PomoDock.App;
 /// </summary>
 internal static class AgendaVisuals
 {
-    /// <summary>The interface is Spanish, so month and weekday names never follow the system locale.</summary>
-    public static readonly CultureInfo Spanish = CultureInfo.GetCultureInfo("es-ES");
+    /// <summary>Month and weekday names follow the language the user chose, not the system locale.</summary>
+    public static CultureInfo Culture => Strings.Culture;
 
     private static readonly Dictionary<string, SolidColorBrush> solids = [];
     private static readonly Dictionary<string, SolidColorBrush> washes = [];
@@ -78,17 +78,18 @@ internal static class AgendaVisuals
         return wrap;
     }
 
-    public static string MonthLabel(DateOnly day) => day.ToString("MMMM yyyy", Spanish).ToUpper(Spanish);
-    public static string DayLabel(DateOnly day) => day.ToString("ddd dd MMM", Spanish).ToUpper(Spanish).Replace(".", "");
-    public static string WeekdayLabel(DateOnly day) => day.ToString("ddd", Spanish).ToUpper(Spanish).Replace(".", "");
-    public static string LongDayLabel(DateOnly day) => day.ToString("dddd d 'de' MMMM", Spanish).ToUpper(Spanish);
+    public static string MonthLabel(DateOnly day) => day.ToString("MMMM yyyy", Culture).ToUpper(Culture);
+    public static string DayLabel(DateOnly day) => day.ToString("ddd dd MMM", Culture).ToUpper(Culture).Replace(".", "");
+    public static string WeekdayLabel(DateOnly day) => day.ToString("ddd", Culture).ToUpper(Culture).Replace(".", "");
+    /// <summary>The long form differs per language, so the whole pattern is a translated string.</summary>
+    public static string LongDayLabel(DateOnly day) => day.ToString(L.T("date.longDay"), Culture).ToUpper(Culture);
 
-    /// <summary>"HOY", "MAÑANA", "AYER" — or an empty string when the day speaks for itself.</summary>
+    /// <summary>"TODAY", "TOMORROW", "YESTERDAY" — or an empty string when the day speaks for itself.</summary>
     public static string Relative(DateOnly day, DateOnly today) => (day.DayNumber - today.DayNumber) switch
     {
-        0 => "HOY",
-        1 => "MAÑANA",
-        -1 => "AYER",
+        0 => L.T("common.today"),
+        1 => L.T("common.tomorrow"),
+        -1 => L.T("common.yesterday"),
         _ => ""
     };
 
@@ -96,16 +97,16 @@ internal static class AgendaVisuals
     public static string Countdown(DateTime start, DateTime now)
     {
         var delta = start - now;
-        if (delta.TotalSeconds <= 30) return "AHORA";
-        if (delta.TotalMinutes < 60) return $"EN {Math.Max(1, Math.Round(delta.TotalMinutes))} MIN";
-        if (delta.TotalHours < 24) return delta.Minutes == 0 ? $"EN {(int)delta.TotalHours} H" : $"EN {(int)delta.TotalHours} H {delta.Minutes} MIN";
-        return $"EN {(int)delta.TotalDays} DÍAS";
+        if (delta.TotalSeconds <= 30) return L.T("common.now");
+        if (delta.TotalMinutes < 60) return L.T("common.inMinutes", Math.Max(1, Math.Round(delta.TotalMinutes)));
+        if (delta.TotalHours < 24) return delta.Minutes == 0 ? L.T("common.inHours", (int)delta.TotalHours) : L.T("common.inHoursMinutes", (int)delta.TotalHours, delta.Minutes);
+        return L.T("common.inDays", (int)delta.TotalDays);
     }
 
     public static string DurationLabel(int minutes)
     {
-        if (minutes % 1440 == 0 && minutes >= 1440) return minutes == 1440 ? "1 día" : $"{minutes / 1440} días";
-        if (minutes < 60) return $"{minutes} min";
-        return minutes % 60 == 0 ? $"{minutes / 60} h" : $"{minutes / 60} h {minutes % 60} min";
+        if (minutes % 1440 == 0 && minutes >= 1440) return minutes == 1440 ? L.T("common.day") : L.T("common.days", minutes / 1440);
+        if (minutes < 60) return L.T("common.minutesShort", minutes);
+        return minutes % 60 == 0 ? L.T("common.hoursShort", minutes / 60) : L.T("common.hoursMinutes", minutes / 60, minutes % 60);
     }
 }

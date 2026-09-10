@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -44,13 +45,13 @@ public sealed class SettingsWindow : Window
         }
     }
 
-    /// <summary>Rhythms worth having a name. Anything else is simply "a medida".</summary>
-    private static readonly (string Name, string Detail, string Story, int Focus, int Short, int Long, int Interval)[] Rhythms =
+    /// <summary>Rhythms worth having a name. Anything else is simply "custom".</summary>
+    private static (string Name, string Detail, string Story, int Focus, int Short, int Long, int Interval)[] Rhythms =>
     [
-        ("CLÁSICO", "25 · 5 · 15", "El pomodoro de siempre. Bueno para casi todo.", 25, 5, 15, 4),
-        ("PROFUNDO", "50 · 10 · 20", "Menos cortes, para trabajo que necesita carrerilla.", 50, 10, 20, 3),
-        ("SPRINT", "15 · 3 · 10", "Bloques cortos para días dispersos o tareas que dan pereza.", 15, 3, 10, 4),
-        ("MARATÓN", "90 · 20 · 30", "Un ciclo completo de atención. Exige estar descansado.", 90, 20, 30, 2)
+        (L.T("settings.rhythmClassic"), "25 · 5 · 15", L.T("settings.rhythmClassicStory"), 25, 5, 15, 4),
+        (L.T("settings.rhythmDeep"), "50 · 10 · 20", L.T("settings.rhythmDeepStory"), 50, 10, 20, 3),
+        (L.T("settings.rhythmSprint"), "15 · 3 · 10", L.T("settings.rhythmSprintStory"), 15, 3, 10, 4),
+        (L.T("settings.rhythmMarathon"), "90 · 20 · 30", L.T("settings.rhythmMarathonStory"), 90, 20, 30, 2)
     ];
 
     /// <summary>Soft tones that keep the paper look when they fill the whole timer frame.</summary>
@@ -77,7 +78,7 @@ public sealed class SettingsWindow : Window
         opening = Snapshot.Of(settings);
         rank = FocusProfile.Of(owner.Store.Sessions());
 
-        Owner = owner; Title = "POMODOCK / Panel de control";
+        Owner = owner; Title = L.T("settings.title");
         Width = 660; Height = 780; MinWidth = 460; MinHeight = 480;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None;
         AllowsTransparency = true; Background = Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
@@ -150,18 +151,18 @@ public sealed class SettingsWindow : Window
         statusLine.VerticalAlignment = VerticalAlignment.Center;
         statusLine.TextWrapping = TextWrapping.Wrap;
         statusLine.Margin = new Thickness(0, 0, 12, 0);
-        statusLine.Text = "Cada cambio se aplica al momento. Las duraciones entran en la próxima sesión.";
+        statusLine.Text = L.T("settings.footerHint");
         footer.Children.Add(statusLine);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
         Grid.SetColumn(buttons, 1);
-        var undo = new Button { Content = "DESHACER", FontSize = 11, Padding = new Thickness(13, 9, 13, 9) };
-        undo.ToolTip = "Devolver todos los ajustes a como estaban al abrir este panel";
+        var undo = new Button { Content = L.T("settings.undo"), FontSize = 11, Padding = new Thickness(13, 9, 13, 9) };
+        undo.ToolTip = L.T("settings.undoTip");
         undo.Click += (_, _) => RestoreOpening();
         buttons.Children.Add(undo);
         var done = new Button
         {
-            Content = "LISTO", FontSize = 12, Padding = new Thickness(20, 9, 20, 9), Margin = new Thickness(0),
+            Content = L.T("common.done"), FontSize = 12, Padding = new Thickness(20, 9, 20, 9), Margin = new Thickness(0),
             Background = AgendaVisuals.Resource("Ink"), Foreground = AgendaVisuals.Resource("Paper"), IsDefault = true
         };
         done.Click += (_, _) => { DialogResult = true; };
@@ -183,14 +184,14 @@ public sealed class SettingsWindow : Window
     private void Render()
     {
         string next = FocusProfile.NextName(rank);
-        rankTitle.Text = $"NIVEL {rank.Level:00}  ·  {rank.Name}";
+        rankTitle.Text = L.T("settings.rank", rank.Level.ToString("00", CultureInfo.InvariantCulture), rank.Name);
         rankDetail.Text = rank.IsHighest
-            ? $"{rank.Hours:0.#} h de enfoque acumuladas. {rank.Detail}"
-            : $"{rank.Hours:0.#} h de enfoque acumuladas · faltan {rank.ToNext:0.#} h para {next}.";
+            ? L.T("settings.rankHighest", rank.Hours.ToString("0.#", Strings.Culture), rank.Detail)
+            : L.T("settings.rankProgress", rank.Hours.ToString("0.#", Strings.Culture), rank.ToNext.ToString("0.#", Strings.Culture), next);
         PaintRank();
 
         tabs.Children.Clear();
-        foreach (var (key, label) in new[] { ("rhythm", "RITMO"), ("sound", "SONIDO"), ("look", "ASPECTO"), ("space", "ESPACIO") })
+        foreach (var (key, label) in new[] { ("rhythm", L.T("settings.tabRhythm")), ("sound", L.T("settings.tabSound")), ("look", L.T("settings.tabLook")), ("space", L.T("settings.tabSpace")) })
         {
             bool active = section == key;
             var tab = new Button
@@ -217,7 +218,7 @@ public sealed class SettingsWindow : Window
 
     private void BuildRhythm()
     {
-        body.Children.Add(Lead("ELIGE TU RITMO", "Un preajuste cambia las tres duraciones y el ciclo de una vez. Después puedes afinar cada número."));
+        body.Children.Add(Lead(L.T("settings.rhythmLead"), L.T("settings.rhythmHelp")));
 
         var active = Rhythms.FirstOrDefault(preset =>
             preset.Focus == settings.FocusMinutes && preset.Short == settings.ShortMinutes &&
@@ -247,7 +248,7 @@ public sealed class SettingsWindow : Window
                 Foreground = chosen ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Ink"),
                 BorderThickness = new Thickness(chosen ? 2.5 : 1.5)
             };
-            card.SetValue(AutomationProperties.NameProperty, $"Ritmo {preset.Name}, {preset.Detail}");
+            card.SetValue(AutomationProperties.NameProperty, L.T("settings.rhythmName", preset.Name, preset.Detail));
             var chosenPreset = preset;
             card.Click += (_, _) => ApplyRhythm(chosenPreset);
             grid.Children.Add(card);
@@ -256,89 +257,150 @@ public sealed class SettingsWindow : Window
         if (active.Name is null)
             body.Children.Add(new TextBlock
             {
-                Text = "A MEDIDA · tus duraciones no coinciden con ningún preajuste.",
+                Text = L.T("settings.custom"),
                 FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = AgendaVisuals.Resource("Muted"),
                 Margin = new Thickness(0, 0, 0, 10)
             });
 
-        body.Children.Add(Lead("AFINA LOS NÚMEROS", ""));
-        body.Children.Add(Stepper("Pomodoro", "Cuánto dura un bloque de enfoque.", settings.FocusMinutes, 1, 180, 5, Minutes, value => settings.FocusMinutes = value));
-        body.Children.Add(Stepper("Descanso corto", "Entre pomodoros.", settings.ShortMinutes, 1, 60, 1, Minutes, value => settings.ShortMinutes = value));
-        body.Children.Add(Stepper("Descanso largo", "Cuando cierras un ciclo completo.", settings.LongMinutes, 1, 120, 5, Minutes, value => settings.LongMinutes = value));
-        body.Children.Add(Stepper("Ciclo", "Pomodoros antes de un descanso largo.", settings.LongInterval, 1, 12, 1, value => $"{value}", value => settings.LongInterval = value));
-        body.Children.Add(Stepper("Meta diaria", "El objetivo que persigue el widget de métricas.", settings.DailyGoalMinutes, 15, 720, 15, Minutes, value => settings.DailyGoalMinutes = value));
+        body.Children.Add(Lead(L.T("settings.numbersLead"), ""));
+        body.Children.Add(Stepper(L.T("settings.focusLabel"), L.T("settings.focusHelp"), settings.FocusMinutes, 1, 180, 5, Minutes, value => settings.FocusMinutes = value));
+        body.Children.Add(Stepper(L.T("settings.shortLabel"), L.T("settings.shortHelp"), settings.ShortMinutes, 1, 60, 1, Minutes, value => settings.ShortMinutes = value));
+        body.Children.Add(Stepper(L.T("settings.longLabel"), L.T("settings.longHelp"), settings.LongMinutes, 1, 120, 5, Minutes, value => settings.LongMinutes = value));
+        body.Children.Add(Stepper(L.T("settings.cycleLabel"), L.T("settings.cycleHelp"), settings.LongInterval, 1, 12, 1, value => $"{value}", value => settings.LongInterval = value));
+        body.Children.Add(Stepper(L.T("settings.goalLabel"), L.T("settings.goalHelp"), settings.DailyGoalMinutes, 15, 720, 15, Minutes, value => settings.DailyGoalMinutes = value));
 
-        body.Children.Add(Lead("ENCADENADO", ""));
-        body.Children.Add(Toggle("Iniciar los descansos solo", "Al terminar un pomodoro, el descanso arranca sin pulsar nada.", settings.AutoBreak, value => settings.AutoBreak = value));
-        body.Children.Add(Toggle("Volver al enfoque solo", "Al terminar un descanso, el siguiente pomodoro arranca solo.", settings.AutoFocus, value => settings.AutoFocus = value));
+        body.Children.Add(Lead(L.T("settings.chainLead"), ""));
+        body.Children.Add(Toggle(L.T("settings.autoBreak"), L.T("settings.autoBreakHelp"), settings.AutoBreak, value => settings.AutoBreak = value));
+        body.Children.Add(Toggle(L.T("settings.autoFocus"), L.T("settings.autoFocusHelp"), settings.AutoFocus, value => settings.AutoFocus = value));
     }
 
     private void BuildSound()
     {
-        body.Children.Add(Lead("SONIDO", $"{SoundLibrary.Catalog.Count} sonidos generados dentro de la app, sin archivos ni descargas. Pulsa uno para elegirlo y escucharlo."));
-        body.Children.Add(Toggle("Sonido", "El interruptor general. Si está apagado, no suena nada.", settings.Sound, value => settings.Sound = value));
+        body.Children.Add(Lead(L.T("settings.soundLead"), L.T("settings.soundHelp", SoundLibrary.Catalog.Count)));
+        body.Children.Add(Toggle(L.T("settings.soundMaster"), L.T("settings.soundMasterHelp"), settings.Sound, value => settings.Sound = value));
 
         if (!settings.Sound)
         {
-            body.Children.Add(Note("El resto del sonido está en silencio mientras esto siga apagado."));
+            body.Children.Add(Note(L.T("settings.soundOff")));
             return;
         }
 
-        body.Children.Add(Lead("ALARMAS", "Lo que suena cuando se acaba un bloque. El pomodoro y el descanso pueden sonar distinto."));
-        body.Children.Add(Toggle("Alarma al terminar", "Un aviso cuando se acaba el pomodoro o el descanso.", settings.AlarmEnabled, value => settings.AlarmEnabled = value));
+        string Percent(int value) => L.T("settings.percent", value);
+        body.Children.Add(Lead(L.T("settings.alarmsLead"), L.T("settings.alarmsHelp")));
+        body.Children.Add(Toggle(L.T("settings.alarmEnabled"), L.T("settings.alarmEnabledHelp"), settings.AlarmEnabled, value => settings.AlarmEnabled = value));
         if (settings.AlarmEnabled)
         {
-            body.Children.Add(Picker("Fin del pomodoro", "Hora de parar.", SoundKind.Alarm, settings.FocusEndSound, value => settings.FocusEndSound = value));
-            body.Children.Add(Picker("Fin del descanso", "Hora de volver.", SoundKind.Alarm, settings.BreakEndSound, value => settings.BreakEndSound = value));
-            body.Children.Add(Stepper("Repeticiones", "Cuántas veces suena la alarma.", settings.AlarmRepeats, 1, 8, 1, value => $"{value}", value => settings.AlarmRepeats = value));
+            body.Children.Add(Picker(L.T("settings.focusEnd"), L.T("settings.focusEndHelp"), SoundKind.Alarm, settings.FocusEndSound, value => settings.FocusEndSound = value));
+            body.Children.Add(Picker(L.T("settings.breakEnd"), L.T("settings.breakEndHelp"), SoundKind.Alarm, settings.BreakEndSound, value => settings.BreakEndSound = value));
+            body.Children.Add(Stepper(L.T("settings.alarmRepeats"), L.T("settings.alarmRepeatsHelp"), settings.AlarmRepeats, 1, 8, 1, value => $"{value}", value => settings.AlarmRepeats = value));
         }
-        body.Children.Add(Stepper("Volumen de alarmas y avisos", "También el de los recordatorios del calendario.", settings.AlarmVolume, 0, 100, 5, value => $"{value} %", value => settings.AlarmVolume = value));
+        body.Children.Add(Stepper(L.T("settings.alarmVolume"), L.T("settings.alarmVolumeHelp"), settings.AlarmVolume, 0, 100, 5, Percent, value => settings.AlarmVolume = value));
 
-        body.Children.Add(Lead("DURANTE LA SESIÓN", "Un fondo continuo que arranca con cada pomodoro y se calla al pausar. Nada lo interrumpe: ni los clics ni los avisos."));
-        body.Children.Add(Toggle("Ambiente al enfocar", "Lluvia, ruido, olas, un reloj… lo que te ayude a entrar en el trabajo.", settings.WhiteNoise, value => settings.WhiteNoise = value));
+        body.Children.Add(Lead(L.T("settings.sessionLead"), L.T("settings.sessionHelp")));
+        body.Children.Add(Toggle(L.T("settings.ambient"), L.T("settings.ambientHelp"), settings.WhiteNoise, value => settings.WhiteNoise = value));
         if (settings.WhiteNoise)
         {
-            body.Children.Add(Picker("Ambiente", "Al elegirlo suena cuatro segundos.", SoundKind.Ambient, settings.AmbientSound, value => settings.AmbientSound = value));
-            body.Children.Add(Stepper("Volumen del ambiente", "", settings.WhiteNoiseVolume, 0, 100, 5, value => $"{value} %", value => settings.WhiteNoiseVolume = value));
+            body.Children.Add(Picker(L.T("settings.ambientPick"), L.T("settings.ambientPickHelp"), SoundKind.Ambient, settings.AmbientSound, value => settings.AmbientSound = value));
+            body.Children.Add(Stepper(L.T("settings.ambientVolume"), "", settings.WhiteNoiseVolume, 0, 100, 5, Percent, value => settings.WhiteNoiseVolume = value));
         }
 
-        body.Children.Add(Lead("CALENDARIO", "El aviso de los recordatorios de la agenda."));
-        body.Children.Add(Picker("Recordatorios", "", SoundKind.Reminder, settings.ReminderSound, value => settings.ReminderSound = value));
+        body.Children.Add(Lead(L.T("settings.calendarLead"), L.T("settings.calendarHelp")));
+        body.Children.Add(Picker(L.T("settings.reminders"), "", SoundKind.Reminder, settings.ReminderSound, value => settings.ReminderSound = value));
 
-        body.Children.Add(Lead("BOTONES", "El pequeño sonido de iniciar, pausar, saltar o marcar un hábito."));
-        body.Children.Add(Toggle("Sonidos de los botones", "Cada acción tiene su propio tono dentro del pack.", settings.ButtonSounds, value => settings.ButtonSounds = value));
+        body.Children.Add(Lead(L.T("settings.buttonsLead"), L.T("settings.buttonsHelp")));
+        body.Children.Add(Toggle(L.T("settings.buttonSounds"), L.T("settings.buttonSoundsHelp"), settings.ButtonSounds, value => settings.ButtonSounds = value));
         if (settings.ButtonSounds)
         {
-            body.Children.Add(Picker("Pack de clics", "", SoundKind.Click, settings.ClickSound, value => settings.ClickSound = value));
-            body.Children.Add(Stepper("Volumen de los clics", "", settings.EffectsVolume, 0, 100, 5, value => $"{value} %", value => settings.EffectsVolume = value));
+            body.Children.Add(Picker(L.T("settings.clickPack"), "", SoundKind.Click, settings.ClickSound, value => settings.ClickSound = value));
+            body.Children.Add(Stepper(L.T("settings.clickVolume"), "", settings.EffectsVolume, 0, 100, 5, Percent, value => settings.EffectsVolume = value));
         }
     }
 
     private void BuildLook()
     {
-        body.Children.Add(Lead("ASPECTO", "Los colores se aplican en cuanto los eliges. El marco del temporizador se tiñe con la fase activa."));
-        body.Children.Add(Toggle("Modo oscuro", "Papel oscuro y tinta clara para trabajar de noche.", settings.Dark, value => settings.Dark = value));
-        body.Children.Add(Toggle("Reducir movimiento", "Quita las animaciones de entrada y de página.", settings.ReduceMotion, value => settings.ReduceMotion = value));
+        body.Children.Add(Lead(L.T("settings.languageLead"), L.T("settings.languageHelp")));
+        body.Children.Add(LanguagePicker());
 
-        body.Children.Add(Swatches("Pomodoro", "El color del marco mientras enfocas.", settings.FocusColor, value => settings.FocusColor = value));
-        body.Children.Add(Swatches("Descanso corto", "", settings.ShortBreakColor, value => settings.ShortBreakColor = value));
-        body.Children.Add(Swatches("Descanso largo", "", settings.LongBreakColor, value => settings.LongBreakColor = value));
-        body.Children.Add(Swatches("Acento", "Botones destacados y el día de hoy en el calendario.", settings.AccentColor, value => settings.AccentColor = value));
+        body.Children.Add(Lead(L.T("settings.lookLead"), L.T("settings.lookHelp")));
+        body.Children.Add(Toggle(L.T("settings.dark"), L.T("settings.darkHelp"), settings.Dark, value => settings.Dark = value));
+        body.Children.Add(Toggle(L.T("settings.reduceMotion"), L.T("settings.reduceMotionHelp"), settings.ReduceMotion, value => settings.ReduceMotion = value));
+
+        body.Children.Add(Swatches(L.T("settings.colorFocus"), L.T("settings.colorFocusHelp"), settings.FocusColor, value => settings.FocusColor = value));
+        body.Children.Add(Swatches(L.T("settings.colorShort"), "", settings.ShortBreakColor, value => settings.ShortBreakColor = value));
+        body.Children.Add(Swatches(L.T("settings.colorLong"), "", settings.LongBreakColor, value => settings.LongBreakColor = value));
+        body.Children.Add(Swatches(L.T("settings.colorAccent"), L.T("settings.colorAccentHelp"), settings.AccentColor, value => settings.AccentColor = value));
+    }
+
+    /// <summary>
+    /// The interface language. "Same as the system" is the default and names the language it
+    /// currently resolves to, so the choice is never a mystery. Picking one redraws the whole app
+    /// at once — this panel included — which is why it renders again from the top.
+    /// </summary>
+    private UIElement LanguagePicker()
+    {
+        var row = new Border
+        {
+            BorderBrush = AgendaVisuals.Fade("Line", 70), BorderThickness = new Thickness(1),
+            Background = AgendaVisuals.Resource("Surface"), Padding = new Thickness(13, 11, 11, 12), Margin = new Thickness(0, 0, 0, 6)
+        };
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock { Text = L.T("settings.languageLabel"), FontSize = 13, FontWeight = FontWeights.SemiBold });
+
+        var shelf = new WrapPanel { Margin = new Thickness(0, 9, 0, 0) };
+        var systemName = Strings.Catalog.First(language => language.Code == Strings.Resolve("system")).Name;
+        foreach (var (code, label, detail) in new[] { ("system", L.T("settings.languageSystem"), L.T("settings.languageSystemDetail", systemName)) }
+            .Concat(Strings.Catalog.Select(language => (language.Code, language.Name, ""))))
+        {
+            bool chosen = settings.Language == code;
+            var content = new StackPanel();
+            content.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
+            if (detail.Length > 0)
+                content.Children.Add(new TextBlock
+                {
+                    Text = detail, FontSize = 9, Margin = new Thickness(0, 3, 0, 0), TextWrapping = TextWrapping.Wrap,
+                    Foreground = chosen ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Muted"), Opacity = chosen ? .85 : 1
+                });
+            var card = new Button
+            {
+                Content = content, MinWidth = 134, MinHeight = 46, Margin = new Thickness(0, 0, 6, 6), Padding = new Thickness(11, 8, 11, 8),
+                HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Center,
+                Background = chosen ? AgendaVisuals.Resource("Ink") : AgendaVisuals.Resource("Surface"),
+                Foreground = chosen ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Ink"),
+                BorderThickness = new Thickness(chosen ? 2.5 : 1.2)
+            };
+            card.SetValue(AutomationProperties.NameProperty, label);
+            string picked = code;
+            card.Click += (_, _) =>
+            {
+                settings.Language = picked;
+                Changed();
+                statusLine.Text = L.T("settings.languageChanged", Strings.Catalog.First(language => language.Code == Strings.Code).Name);
+            };
+            shelf.Children.Add(card);
+        }
+        stack.Children.Add(shelf);
+        stack.Children.Add(new TextBlock
+        {
+            Text = L.T("settings.languageParserNote"), FontSize = 10, Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap, Foreground = AgendaVisuals.Resource("Muted")
+        });
+        row.Child = stack;
+        return row;
     }
 
     private void BuildSpace()
     {
-        body.Children.Add(Lead("ESPACIO", "Cómo se coloca PomoDock en tu monitor."));
-        body.Children.Add(Toggle("Temporizador abajo", "Coloca el pomodoro bajo los widgets al abrir. Si lo mueves a mano, manda tu posición.", settings.TimerAtBottom, value => settings.TimerAtBottom = value));
-        body.Children.Add(Toggle("Mantener encima", "La ventana no se va detrás de otras aplicaciones.", settings.AlwaysOnTop, value => settings.AlwaysOnTop = value));
+        body.Children.Add(Lead(L.T("settings.spaceLead"), L.T("settings.spaceHelp")));
+        body.Children.Add(Toggle(L.T("settings.timerAtBottom"), L.T("settings.timerAtBottomHelp"), settings.TimerAtBottom, value => settings.TimerAtBottom = value));
+        body.Children.Add(Toggle(L.T("settings.alwaysOnTop"), L.T("settings.alwaysOnTopHelp"), settings.AlwaysOnTop, value => settings.AlwaysOnTop = value));
 
-        body.Children.Add(Lead("TUS DATOS", "Todo vive en este equipo. No hay cuenta ni servidor."));
+        body.Children.Add(Lead(L.T("settings.dataLead"), L.T("settings.dataHelp")));
         body.Children.Add(Note(owner.Store.DirectoryPath));
-        var open = new Button { Content = "ABRIR LA CARPETA DE DATOS", FontSize = 11, Padding = new Thickness(13, 9, 13, 9), Margin = new Thickness(0, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+        var open = new Button { Content = L.T("settings.openFolder"), FontSize = 11, Padding = new Thickness(13, 9, 13, 9), Margin = new Thickness(0, 4, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
         open.Click += (_, _) =>
         {
             try { Process.Start(new ProcessStartInfo(owner.Store.DirectoryPath) { UseShellExecute = true }); }
-            catch (Exception ex) { statusLine.Text = "No se pudo abrir la carpeta: " + ex.Message; }
+            catch (Exception ex) { statusLine.Text = L.T("settings.openFolderFailed", ex.Message); }
         };
         body.Children.Add(open);
     }
@@ -348,7 +410,7 @@ public sealed class SettingsWindow : Window
         settings.FocusMinutes = preset.Focus; settings.ShortMinutes = preset.Short;
         settings.LongMinutes = preset.Long; settings.LongInterval = preset.Interval;
         Changed();
-        statusLine.Text = $"Ritmo {preset.Name} · {preset.Detail}. Entra en la próxima sesión.";
+        statusLine.Text = L.T("settings.rhythmApplied", preset.Name, preset.Detail);
     }
 
     /// <summary>Puts every setting back to the moment the panel was opened.</summary>
@@ -357,7 +419,7 @@ public sealed class SettingsWindow : Window
         opening.Restore(settings);
         owner.ApplyLiveSettings();
         Render();
-        statusLine.Text = "Ajustes devueltos a como estaban al abrir el panel.";
+        statusLine.Text = L.T("settings.undone");
     }
 
     internal void ShowSection(string key) { section = key; Render(); }
@@ -367,7 +429,7 @@ public sealed class SettingsWindow : Window
     // ---------------------------------------------------------------- pieces
 
     private static string Minutes(int value) =>
-        value < 60 ? $"{value} min" : value % 60 == 0 ? $"{value / 60} h" : $"{value / 60} h {value % 60} min";
+        value < 60 ? L.T("common.minutesShort", value) : value % 60 == 0 ? L.T("common.hoursShort", value / 60) : L.T("common.hoursMinutes", value / 60, value % 60);
 
     private UIElement Lead(string title, string detail)
     {
@@ -425,7 +487,7 @@ public sealed class SettingsWindow : Window
                 HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Top,
                 Background = chosen ? AgendaVisuals.Resource("Ink") : AgendaVisuals.Resource("Surface"),
                 Foreground = chosen ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Ink"),
-                BorderThickness = new Thickness(chosen ? 2.5 : 1.2), ToolTip = "Elegir y escuchar"
+                BorderThickness = new Thickness(chosen ? 2.5 : 1.2), ToolTip = L.T("settings.pickAndHear")
             };
             card.SetValue(AutomationProperties.NameProperty, $"{label}: {sound.Name}");
             card.Click += (_, _) =>
@@ -435,7 +497,7 @@ public sealed class SettingsWindow : Window
                 // During a focus session the new ambience already took over; a preview would only stutter it.
                 bool sessionAmbience = kind == SoundKind.Ambient && owner.Timer.Running && owner.Timer.Phase == Phase.Focus;
                 if (!sessionAmbience) owner.Sounds.Preview(sound.Id);
-                statusLine.Text = $"{label.ToUpper(AgendaVisuals.Spanish)} · {sound.Name}";
+                statusLine.Text = L.T("settings.soundChosen", label.ToUpper(Strings.Culture), sound.Name);
             };
             shelf.Children.Add(card);
         }
@@ -482,7 +544,7 @@ public sealed class SettingsWindow : Window
         grid.Children.Add(pill);
 
         row.Child = grid;
-        row.SetValue(AutomationProperties.NameProperty, label + (value ? ": activado" : ": desactivado"));
+        row.SetValue(AutomationProperties.NameProperty, label + (value ? L.T("settings.on") : L.T("settings.off")));
         row.MouseLeftButtonDown += (_, _) => { set(!value); Changed(); };
         return row;
     }
@@ -516,7 +578,7 @@ public sealed class SettingsWindow : Window
 
         var controls = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         var less = new Button { Content = "−", Width = 30, Height = 30, FontSize = 15, Padding = new Thickness(0), Margin = new Thickness(0, 0, 6, 0), IsEnabled = value > min };
-        less.SetValue(AutomationProperties.NameProperty, "Bajar " + label);
+        less.SetValue(AutomationProperties.NameProperty, L.T("settings.stepDown", label));
         less.Click += (_, _) => Apply(value - step);
         controls.Children.Add(less);
         controls.Children.Add(new TextBlock
@@ -525,7 +587,7 @@ public sealed class SettingsWindow : Window
             VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center, MinWidth = 76
         });
         var more = new Button { Content = "+", Width = 30, Height = 30, FontSize = 15, Padding = new Thickness(0), Margin = new Thickness(6, 0, 0, 0), IsEnabled = value < max };
-        more.SetValue(AutomationProperties.NameProperty, "Subir " + label);
+        more.SetValue(AutomationProperties.NameProperty, L.T("settings.stepUp", label));
         more.Click += (_, _) => Apply(value + step);
         controls.Children.Add(more);
         Grid.SetColumn(controls, 1);
@@ -574,24 +636,24 @@ public sealed class SettingsWindow : Window
                 BorderThickness = new Thickness(chosen ? 3.5 : 1), Content = chosen ? "✓" : "", FontSize = 12,
                 ToolTip = tone
             };
-            swatch.SetValue(AutomationProperties.NameProperty, $"{label} color {tone}");
+            swatch.SetValue(AutomationProperties.NameProperty, L.T("settings.colorName", label, tone));
             swatch.Click += (_, _) => { set(tone); Changed(); };
             strip.Children.Add(swatch);
         }
         var other = new Button
         {
-            Content = known ? "OTRO…" : current.ToUpperInvariant(), FontSize = 10, Height = 30, Padding = new Thickness(10, 0, 10, 0),
+            Content = known ? L.T("settings.colorOther") : current.ToUpperInvariant(), FontSize = 10, Height = 30, Padding = new Thickness(10, 0, 10, 0),
             Margin = new Thickness(0, 0, 6, 6), BorderThickness = new Thickness(known ? 1 : 3.5),
             Background = known ? AgendaVisuals.Resource("Surface") : Tone(current),
-            ToolTip = "Escribir un color hexadecimal exacto"
+            ToolTip = L.T("settings.colorOtherTip")
         };
         other.Click += (_, _) =>
         {
-            var typed = Dialogs.Prompt(this, "COLOR EXACTO", "Hexadecimal, por ejemplo #D7D9D1", current);
+            var typed = Dialogs.Prompt(this, L.T("settings.colorExactTitle"), L.T("settings.colorExactLabel"), current);
             if (string.IsNullOrWhiteSpace(typed)) return;
             var value = typed.Trim();
             try { _ = (Color)ColorConverter.ConvertFromString(value)!; }
-            catch (Exception) { statusLine.Text = "Ese color no se entiende. Usa un hexadecimal como #D7D9D1."; return; }
+            catch (Exception) { statusLine.Text = L.T("settings.colorBad"); return; }
             set(value);
             Changed();
         };
@@ -613,14 +675,14 @@ public sealed class LayoutsWindow : Window
 {
     public LayoutsWindow(MainWindow owner)
     {
-        Owner = owner; Title = "POMODOCK / Distribuciones"; Width = 500; Height = 460; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
+        Owner = owner; Title = L.T("layouts.title"); Width = 500; Height = 460; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
         // A window of our own gets no Window style, so its content would inherit black text.
         SetResourceReference(ForegroundProperty, "Ink");
-        var stack = new StackPanel { Margin = new Thickness(22) }; Content = stack; stack.Children.Add(Dialogs.Heading("GUARDA TU ESPACIO."));
-        stack.Children.Add(new TextBlock { Text = "Guarda widgets y proporciones. Al cargar otra distribución se liberan las ventanas actuales; podrás reconectarlas." });
-        var input = new TextBox { Text = "Mi escritorio" }; stack.Children.Add(input);
+        var stack = new StackPanel { Margin = new Thickness(22) }; Content = stack; stack.Children.Add(Dialogs.Heading(L.T("layouts.heading")));
+        stack.Children.Add(new TextBlock { Text = L.T("layouts.help") });
+        var input = new TextBox { Text = L.T("layouts.default") }; stack.Children.Add(input);
         var list = new ListBox { Height = 150, Margin = new Thickness(0, 10, 0, 10), ItemsSource = owner.Settings.Layouts.Keys.ToList() };
-        stack.Children.Add(Dialogs.Button("GUARDAR DISTRIBUCIÓN ACTUAL", () =>
+        stack.Children.Add(Dialogs.Button(L.T("layouts.save"), () =>
         {
             if (string.IsNullOrWhiteSpace(input.Text)) return;
             owner.SaveState();
@@ -628,6 +690,6 @@ public sealed class LayoutsWindow : Window
             owner.SaveState(); list.ItemsSource = owner.Settings.Layouts.Keys.ToList();
         }));
         stack.Children.Add(list);
-        stack.Children.Add(Dialogs.Button("CARGAR SELECCIONADA", () => { if (list.SelectedItem is string name) { owner.LoadLayout(owner.Settings.Layouts[name]); Close(); } })); Dialogs.Modalize(this);
+        stack.Children.Add(Dialogs.Button(L.T("layouts.load"), () => { if (list.SelectedItem is string name) { owner.LoadLayout(owner.Settings.Layouts[name]); Close(); } })); Dialogs.Modalize(this);
     }
 }

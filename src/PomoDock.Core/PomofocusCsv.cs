@@ -13,12 +13,12 @@ public static class PomofocusCsv
 
     public static CsvImportResult Import(Store store, Settings settings, string path)
     {
-        if (!File.Exists(path)) throw new FileNotFoundException("No se encontró el archivo CSV.", path);
+        if (!File.Exists(path)) throw new FileNotFoundException(L.T("csv.missing"), path);
         var text = File.ReadAllText(path);
-        if (string.IsNullOrWhiteSpace(text)) throw new InvalidDataException("El CSV está vacío.");
+        if (string.IsNullOrWhiteSpace(text)) throw new InvalidDataException(L.T("csv.empty"));
         var delimiter = DetectDelimiter(text);
         var records = ParseRecords(text, delimiter).Where(r => r.Any(v => !string.IsNullOrWhiteSpace(v))).ToList();
-        if (records.Count < 2) throw new InvalidDataException("El CSV no contiene sesiones.");
+        if (records.Count < 2) throw new InvalidDataException(L.T("csv.noSessions"));
 
         var header = records[0].Select(NormalizeHeader).ToArray();
         int dateIndex = RequiredColumn(header, "date");
@@ -61,9 +61,9 @@ public static class PomofocusCsv
                 }
 
                 if (!double.TryParse(row[hoursIndex].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var hours) || !double.IsFinite(hours) || hours < 0 || hours > 24)
-                    throw new InvalidDataException("Horas inválidas.");
+                    throw new InvalidDataException(L.T("csv.badHours"));
                 if (!DateTime.TryParseExact(row[dateIndex].Trim(), DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
-                    throw new InvalidDataException("Fecha inválida.");
+                    throw new InvalidDataException(L.T("csv.badDate"));
                 bool hasStart = DateTime.TryParseExact(row[startIndex].Trim(), TimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var startTime);
                 bool hasEnd = DateTime.TryParseExact(row[endIndex].Trim(), TimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var endTime);
                 var seconds = hours * 3600;

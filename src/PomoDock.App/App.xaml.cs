@@ -18,11 +18,11 @@ public partial class App : Application
         if (e.Args.Length >= 2 && e.Args[0] == "--fixture") { Diagnostics.RunFixture(e.Args[1]); return; }
         if (e.Args.Length >= 2 && e.Args[0] == "--self-test") { Diagnostics.Run(e.Args[1]); return; }
         mutex = new Mutex(true, "Local\\PomoDock.Desktop.SingleInstance", out bool created);
-        if (!created) { Dialogs.Alert(null, "POMODOCK YA ESTÁ ABIERTO", "Cierra la instancia actual desde la bandeja o la ventana principal."); Shutdown(); return; }
+        if (!created) { Dialogs.Alert(null, PomoDock.Core.L.T("app.alreadyOpenTitle"), PomoDock.Core.L.T("app.alreadyOpenBody")); Shutdown(); return; }
         DispatcherUnhandledException += (_, args) =>
         {
             try { File.AppendAllText(Path.Combine(PomoDock.App.MainWindow.DataPath, "errors.log"), $"{DateTimeOffset.Now:O} {args.Exception}\n"); } catch { }
-            Dialogs.Alert(MainWindow, "ERROR RECUPERABLE", "No se pudo completar la acción. Tus datos guardados se conservan.\n\n" + args.Exception.Message);
+            Dialogs.Alert(MainWindow, PomoDock.Core.L.T("app.errorTitle"), PomoDock.Core.L.T("app.errorBody", args.Exception.Message));
             args.Handled = true;
         };
         Native.WindowLease.Recover(Path.Combine(PomoDock.App.MainWindow.DataPath, "windows.json"));

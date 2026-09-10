@@ -78,7 +78,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
 
         var nav = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         chrome.Add(Small("‹", "Periodo anterior", () => Move(-1)));
-        chrome.Add(Small("›", "Periodo siguiente", () => Move(1)));
+        chrome.Add(Small("›", L.T("calendar.nextPeriod"), () => Move(1)));
         chrome.Add(Small("HOY", "Volver a hoy", GoToday));
         foreach (var button in chrome) nav.Children.Add(button);
         toolbar.Children.Add(nav);
@@ -116,15 +116,15 @@ internal sealed class CalendarWidget : Grid, IReskinnable
             Height = 32, Margin = new Thickness(0), Padding = new Thickness(9, 0, 9, 0), MinWidth = 0,
             FontSize = 12, TextWrapping = TextWrapping.NoWrap,
             VerticalContentAlignment = VerticalAlignment.Center,
-            ToolTip = "Escribe en tu idioma: Dentista mañana a las 17:30 durante 45m"
+            ToolTip = L.T("calendar.quickTip")
         };
-        quickAdd.SetValue(AutomationProperties.NameProperty, "Añadir evento rápido");
+        quickAdd.SetValue(AutomationProperties.NameProperty, L.T("calendar.quickName"));
         ScrollViewer.SetHorizontalScrollBarVisibility(quickAdd, ScrollBarVisibility.Hidden);
         quickAdd.TextChanged += (_, _) => UpdateHint();
         quickAdd.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Commit(); e.Handled = true; } };
-        quickField = AgendaVisuals.WithHint(quickAdd, "Dentista mañana a las 17:30 durante 45m");
+        quickField = AgendaVisuals.WithHint(quickAdd, L.T("calendar.quickPlaceholder"));
         quickField.Margin = new Thickness(0, 0, 6, 0);
-        var add = addButton = new Button { Content = "+", Padding = new Thickness(0), ToolTip = "Añadir el evento escrito" };
+        var add = addButton = new Button { Content = "+", Padding = new Thickness(0), ToolTip = L.T("calendar.quickAddTip") };
         add.Click += (_, _) => Commit();
         var detailed = detailedButton = new Button { Content = "⋯", Padding = new Thickness(0), Margin = new Thickness(0), ToolTip = "Abrir el formulario completo" };
         detailed.Click += (_, _) => Edit(null, selected, quickAdd.Text.Trim());
@@ -280,21 +280,21 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         if (text.Length == 0) { quickHint.Visibility = Visibility.Collapsed; return; }
         quickHint.Visibility = Visibility.Visible;
         var draft = AgendaQuickAdd.Parse(text, DateTime.Now);
-        if (draft is null) { quickHint.Text = "Escribe también un nombre para el evento."; return; }
+        if (draft is null) { quickHint.Text = L.T("calendar.needTitle"); return; }
         var day = DateOnly.FromDateTime(draft.Start);
         string when = draft.AllDay
             ? draft.SpanDays > 1
-                ? $"{AgendaVisuals.DayLabel(day)} – {AgendaVisuals.DayLabel(day.AddDays(draft.SpanDays - 1))} · todo el día"
-                : $"{AgendaVisuals.DayLabel(day)} · todo el día"
-            : $"{AgendaVisuals.DayLabel(day)} · {draft.Start:HH:mm} – {draft.EndOn(day):HH:mm}";
-        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToLower(AgendaVisuals.Spanish)
+                ? L.T("calendar.spanAllDay", AgendaVisuals.DayLabel(day), AgendaVisuals.DayLabel(day.AddDays(draft.SpanDays - 1)))
+                : L.T("calendar.oneAllDay", AgendaVisuals.DayLabel(day))
+            : L.T("calendar.timed", AgendaVisuals.DayLabel(day), $"{draft.Start:HH:mm}", $"{draft.EndOn(day):HH:mm}");
+        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToLower(Strings.Culture)
             + (draft.Until is { } until ? $" hasta {AgendaVisuals.DayLabel(until)}" : draft.Count > 0 ? $", {draft.Count} veces" : "");
-        string place = draft.Location.Length > 0 ? $"   ·   en {draft.Location}" : "";
+        string place = draft.Location.Length > 0 ? L.T("calendar.atPlace", draft.Location) : "";
         // Only a reminder the reader changed is worth a word; the default one is implied.
         int usual = draft.AllDay ? 0 : 10;
-        string alert = draft.Reminders.Count == 0 ? "   ·   sin aviso"
-            : draft.Reminders[0] != usual ? $"   ·   aviso {Before(draft.Reminders[0])}" : "";
-        quickHint.Text = $"↵  {draft.Title}   ·   {when}{repeat}{place}{alert}";
+        string alert = draft.Reminders.Count == 0 ? L.T("calendar.noAlert")
+            : draft.Reminders[0] != usual ? L.T("calendar.alertAt", Before(draft.Reminders[0])) : "";
+        quickHint.Text = L.T("calendar.quickPreview", draft.Title, when, repeat, place, alert);
     }
 
     private static string Before(int minutes) =>
@@ -318,7 +318,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         var day = DateOnly.FromDateTime(draft.Start);
         cursor = selected = day;
         dayPicked = true;
-        owner.Status($"EVENTO CREADO · {draft.Title} · {AgendaVisuals.DayLabel(day)}");
+        owner.Status(L.T("calendar.created", draft.Title, AgendaVisuals.DayLabel(day)));
         Render();
     }
 
@@ -347,7 +347,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         periodLabel.Text = state.View switch
         {
             "week" => WeekTitle(),
-            "agenda" => "PRÓXIMOS 45 DÍAS",
+            "agenda" => L.T("calendar.agendaRange"),
             _ => AgendaVisuals.MonthLabel(cursor)
         };
         summaryLabel.Text = Summary(now);
@@ -397,7 +397,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         var start = AgendaEvent.WeekStart(cursor);
         var end = start.AddDays(6);
         return start.Month == end.Month
-            ? $"{start:dd} – {end:dd} {AgendaVisuals.MonthLabel(start)}"
+            ? L.T("calendar.weekSameMonth", $"{start:dd}", $"{end:dd}", AgendaVisuals.MonthLabel(start))
             : $"{AgendaVisuals.DayLabel(start)} – {AgendaVisuals.DayLabel(end)}";
     }
 
@@ -405,7 +405,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
     {
         var counts = agenda.Book.Today(now);
         var next = agenda.Book.Upcoming(now, 14).FirstOrDefault(item => !item.Done);
-        string head = counts.Total == 0 ? "HOY · SIN EVENTOS" : $"HOY · {counts.Total:00} EVENTOS · {counts.Done:00} HECHOS";
+        string head = counts.Total == 0 ? L.T("calendar.todayNoEvents") : L.T("calendar.todayCount", counts.Total.ToString("00", System.Globalization.CultureInfo.InvariantCulture), counts.Done.ToString("00", System.Globalization.CultureInfo.InvariantCulture));
         if (next is null) return head;
         var today = DateOnly.FromDateTime(now);
         string relative = AgendaVisuals.Relative(next.Day, today);
@@ -413,7 +413,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         if (next.AllDay) when = relative.Length > 0 ? relative : AgendaVisuals.DayLabel(next.Day);
         else if (next.Day == today) when = AgendaVisuals.Countdown(next.Start, now);
         else when = $"{AgendaVisuals.DayLabel(next.Day)} {next.Start:HH:mm}";
-        return $"{head}   ·   SIGUIENTE: {when} · {next.Title.ToUpper(AgendaVisuals.Spanish)}";
+        return L.T("calendar.upNext", head, when, next.Title.ToUpper(Strings.Culture));
     }
 
     // ---------------------------------------------------------------- month
@@ -590,7 +590,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         string relative = AgendaVisuals.Relative(day, DateOnly.FromDateTime(now));
         var list = new StackPanel { Margin = new Thickness(0, S(6), 0, 0) };
         foreach (var item in items) list.Children.Add(Row(item, now));
-        if (items.Count == 0) list.Children.Add(Empty("Día libre. Escribe arriba para reservarlo."));
+        if (items.Count == 0) list.Children.Add(Empty(L.T("calendar.freeDay")));
         return PanelFrame((relative.Length > 0 ? relative + " · " : "") + AgendaVisuals.LongDayLabel(day), day, list);
     }
 
@@ -622,10 +622,10 @@ internal sealed class CalendarWidget : Grid, IReskinnable
             list.Children.Add(Row(item, now));
         }
         if (items.Count == 0)
-            list.Children.Add(Empty(current ? "Nada más este mes. Escribe arriba para reservar un día." : "Mes libre. Escribe arriba para reservar un día."));
+            list.Children.Add(Empty(current ? L.T("calendar.restOfMonthFree") : L.T("calendar.monthFree")));
         string month = AgendaVisuals.MonthLabel(start);
-        string title = current ? $"PRÓXIMOS · {month[..month.LastIndexOf(' ')]} · DESDE HOY" : month;
-        return PanelFrame(items.Count > 0 ? $"{title} · {items.Count:00}" : title, current ? today : start, list);
+        string title = current ? L.T("calendar.upcomingTitle", month[..month.LastIndexOf(' ')]) : month;
+        return PanelFrame(items.Count > 0 ? L.T("calendar.panelCount", title, items.Count.ToString("00", System.Globalization.CultureInfo.InvariantCulture)) : title, current ? today : start, list);
     }
 
     private UIElement PanelFrame(string title, DateOnly addOn, UIElement list)
@@ -640,7 +640,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
             FontFamily = new FontFamily("Consolas"), FontSize = S(10), FontWeight = FontWeights.Black,
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
         });
-        var add = new Button { Content = "+ AÑADIR", FontSize = S(9), Padding = new Thickness(S(8), S(5), S(8), S(5)), Margin = new Thickness(0) };
+        var add = new Button { Content = L.T("common.add"), FontSize = S(9), Padding = new Thickness(S(8), S(5), S(8), S(5)), Margin = new Thickness(0) };
         add.Click += (_, _) => Edit(null, addOn);
         Grid.SetColumn(add, 1);
         header.Children.Add(add);
@@ -738,7 +738,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         }
         if (anyAllDay)
         {
-            strip.Children.Add(new TextBlock { Text = "TODO EL DÍA", FontFamily = new FontFamily("Consolas"), FontSize = S(8), Foreground = AgendaVisuals.Resource("Muted"), VerticalAlignment = VerticalAlignment.Center });
+            strip.Children.Add(new TextBlock { Text = L.T("agenda.allDay"), FontFamily = new FontFamily("Consolas"), FontSize = S(8), Foreground = AgendaVisuals.Resource("Muted"), VerticalAlignment = VerticalAlignment.Center });
             Grid.SetRow(strip, 1);
             root.Children.Add(strip);
         }
@@ -892,7 +892,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         var search = new TextBox
         {
             Text = filter, Height = S(28), Padding = new Thickness(S(8), 0, S(8), 0), Margin = new Thickness(0), FontSize = S(11),
-            MinWidth = 0, VerticalContentAlignment = VerticalAlignment.Center, ToolTip = "Filtrar por título, lugar o notas"
+            MinWidth = 0, VerticalContentAlignment = VerticalAlignment.Center, ToolTip = L.T("calendar.searchTip")
         };
         search.SetValue(AutomationProperties.NameProperty, "Filtrar eventos");
         ScrollViewer.SetHorizontalScrollBarVisibility(search, ScrollBarVisibility.Hidden);
@@ -904,7 +904,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         };
         toggle.Click += (_, _) => { state.ShowDone = !state.ShowDone; SaveState(); Render(); };
         Grid.SetColumn(toggle, 1);
-        var searchField = AgendaVisuals.WithHint(search, "Filtrar por título, lugar o notas · Intro para buscar");
+        var searchField = AgendaVisuals.WithHint(search, L.T("calendar.searchPlaceholder"));
         searchField.Margin = new Thickness(0, 0, S(6), 0);
         tools.Children.Add(searchField); tools.Children.Add(toggle);
         root.Children.Add(tools);
@@ -923,7 +923,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         if (items.Count == 0)
             list.Children.Add(new TextBlock
             {
-                Text = filter.Length > 0 ? "Nada coincide con ese filtro." : "No hay nada en las próximas semanas.\nEscribe arriba para reservar tu primer bloque.",
+                Text = filter.Length > 0 ? L.T("calendar.noMatch") : L.T("calendar.nothingSoon"),
                 FontSize = S(11), Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(S(2), S(16), S(2), S(8))
             });
 
@@ -962,7 +962,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         });
         clock.Children.Add(new TextBlock
         {
-            Text = item.AllDay ? "EL DÍA" : AgendaVisuals.DurationLabel(Math.Max(5, (int)(item.DayEndMinutes - item.DayStartMinutes))),
+            Text = item.AllDay ? L.T("calendar.wholeDay") : AgendaVisuals.DurationLabel(Math.Max(5, (int)(item.DayEndMinutes - item.DayStartMinutes))),
             FontSize = S(8), Foreground = AgendaVisuals.Resource("Muted")
         });
         Grid.SetColumn(clock, 1);
@@ -1011,13 +1011,13 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         var drop = new Button
         {
             Content = "×", Width = S(26), Height = S(26), Padding = new Thickness(0), Margin = new Thickness(0), FontSize = S(14), BorderThickness = new Thickness(0),
-            ToolTip = item.Event.Repeat == RepeatKind.None ? "Eliminar evento" : "Quitar solo este día de la serie"
+            ToolTip = item.Event.Repeat == RepeatKind.None ? L.T("calendar.deleteEvent") : L.T("calendar.deleteOccurrence")
         };
         drop.Click += (_, _) =>
         {
             if (item.Event.Repeat == RepeatKind.None) agenda.Remove(item.Event);
             else { item.Event.Cancel(item.Series); agenda.Save(); }
-            owner.Status($"EVENTO ELIMINADO · {item.Title}");
+            owner.Status(L.T("calendar.deleted", item.Title));
             Render();
         };
         actions.Children.Add(drop);

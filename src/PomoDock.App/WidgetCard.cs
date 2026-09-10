@@ -40,7 +40,7 @@ public sealed class WidgetCard : Border
         foreach (var (label, tip, action) in new (string, string, Action)[] {
             ("⋯", config.Kind == "notes" ? "Historial de notas" : "Opciones del widget", Options),
             ("−", "Contraer / expandir", ToggleCollapsed),
-            ("×", "Quitar widget y liberar ventana", () => owner.RemoveCard(this)) })
+            ("×", L.T("widgets.remove"), () => owner.RemoveCard(this)) })
         {
             var button = new Button { Content = label, ToolTip = tip, Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(0), BorderThickness = new Thickness(0), FontSize = 13 };
             button.Click += (_, _) => action(); actions.Children.Add(button); headerButtons.Add(button);
@@ -187,7 +187,17 @@ public sealed class WidgetCard : Border
     internal void BeginOverlayResize(string edge) => BeginResize(edge);
     internal void UpdateOverlayResize() => UpdateGesture();
     internal void EndOverlayResize() => EndResize();
-    private string KindLabel() => Config.Kind == "window" ? "APP" : Config.Kind == "web" ? "WEB" : Config.Kind == "stats" ? "STATS" : Config.Kind == "todo" ? "TODO" : Config.Kind == "habits" ? "HÁBITOS" : Config.Kind == "calendar" ? "AGENDA" : Config.Kind == "notes" ? "NOTA" : "TXT";
+    private string KindLabel() => Config.Kind switch
+    {
+        "window" => L.T("widgets.kindApp"),
+        "web" => L.T("widgets.kindWeb"),
+        "stats" => L.T("widgets.kindStats"),
+        "todo" => L.T("widgets.kindTodo"),
+        "habits" => L.T("widgets.kindHabits"),
+        "calendar" => L.T("widgets.kindCalendar"),
+        "notes" => L.T("widgets.kindNote"),
+        _ => L.T("widgets.kindText")
+    };
     private void BuildNotes()
     {
         body.Children.Clear();
@@ -242,7 +252,7 @@ public sealed class WidgetCard : Border
     {
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(20) };
         stack.Children.Add(new TextBlock { Text = "TU APP. DENTRO DE TU ESPACIO.", FontSize = 14, FontWeight = FontWeights.Bold });
-        stack.Children.Add(new TextBlock { Text = "Selecciona una ventana que ya tengas abierta.\nSu sesión permanecerá en la aplicación original.", FontSize = 11, Margin = new Thickness(0, 8, 0, 12) });
+        stack.Children.Add(new TextBlock { Text = L.T("widgets.chooseWindow"), FontSize = 11, Margin = new Thickness(0, 8, 0, 12) });
         var button = new Button { Content = "CONECTAR VENTANA", HorizontalAlignment = HorizontalAlignment.Left };
         button.Click += async (_, _) => { var candidate = Dialogs.PickWindow(owner); if (candidate is not null) await Attach(candidate.Handle); };
         stack.Children.Add(button); body.Children.Add(stack);
@@ -256,11 +266,11 @@ public sealed class WidgetCard : Border
             if (host is not null) { host.Detach(); host.Dispose(); }
             body.Children.Clear();
             host = connectingHost = new ExternalWindowHost(); body.Children.Add(host); body.UpdateLayout();
-            owner.Status("CONECTANDO VENTANA · La interfaz sigue disponible mientras se prepara.");
+            owner.Status(L.T("widgets.connecting"));
             await host.AttachAsync(hwnd, owner.Journal);
             if (released || host != connectingHost) return;
             owner.BringCardToFront(this);
-            owner.Status("VENTANA CONECTADA · Usa la cabecera para moverla y cualquiera de sus bordes para cambiar su tamaño.");
+            owner.Status(L.T("widgets.connected"));
         }
         catch (Exception ex)
         {
@@ -273,7 +283,7 @@ public sealed class WidgetCard : Border
     private async Task BuildWeb()
     {
         if (web is not null || released || Config.Collapsed) return;
-        if (!Uri.TryCreate(Config.Value, UriKind.Absolute, out var uri) || uri.Scheme != "https") { owner.Status("El widget web requiere una dirección HTTPS."); return; }
+        if (!Uri.TryCreate(Config.Value, UriKind.Absolute, out var uri) || uri.Scheme != "https") { owner.Status(L.T("widgets.webNeedsHttps")); return; }
         try
         {
             browserEnvironment ??= CoreWebView2Environment.CreateAsync(null, Path.Combine(owner.Store.DirectoryPath, "browser"));
@@ -285,7 +295,7 @@ public sealed class WidgetCard : Border
             web.CoreWebView2.Settings.AreHostObjectsAllowed = false;
             web.CoreWebView2.Settings.IsWebMessageEnabled = false;
             web.CoreWebView2.Settings.IsStatusBarEnabled = false;
-            web.CoreWebView2.NavigationStarting += (_, e) => { if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var target) || target.Scheme is not ("https" or "about")) { e.Cancel = true; owner.Status("Se bloqueó una navegación fuera de HTTPS."); } };
+            web.CoreWebView2.NavigationStarting += (_, e) => { if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var target) || target.Scheme is not ("https" or "about")) { e.Cancel = true; owner.Status(L.T("widgets.webBlocked")); } };
             web.CoreWebView2.NewWindowRequested += (_, e) =>
             {
                 e.Handled = true;
@@ -293,10 +303,10 @@ public sealed class WidgetCard : Border
                     System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target.AbsoluteUri) { UseShellExecute = true });
             };
             web.CoreWebView2.NavigationCompleted += (_, e) => { if (!e.IsSuccess) owner.Status("La web no pudo cargar: " + e.WebErrorStatus); };
-            web.CoreWebView2.ProcessFailed += (_, _) => owner.Status("El panel web se interrumpió. Puedes recargarlo desde ⋯.");
+            web.CoreWebView2.ProcessFailed += (_, _) => owner.Status(L.T("widgets.webCrashed"));
             web.Source = uri;
         }
-        catch (Exception ex) { owner.Status("WebView2 no está disponible: " + ex.Message); body.Children.Add(new TextBlock { Text = "No se pudo abrir el navegador. Instala Microsoft Edge WebView2 Runtime y vuelve a abrir este widget.", Margin = new Thickness(18) }); }
+        catch (Exception ex) { owner.Status(L.T("widgets.webUnavailable", ex.Message)); body.Children.Add(new TextBlock { Text = L.T("widgets.webInstall"), Margin = new Thickness(18) }); }
     }
     private async void ToggleCollapsed()
     {
@@ -311,8 +321,8 @@ public sealed class WidgetCard : Border
         // A note has nothing to configure; its ⋯ opens every note ever written, closed ones included.
         if (Config.Kind == "notes") { NotesHistory.Show(owner, Config.Id); return; }
         var options = Config.Kind == "window" ? new[] { "Renombrar", "Recortar barras superior / inferior", "Liberar ventana", "Conectar otra ventana" }
-            : Config.Kind == "web" ? ["Renombrar", "Cambiar URL", "Recargar", Config.KeepAlive ? "Permitir suspensión" : "Mantener activo (música / dashboard)"]
-            : Config.Kind == "stats" ? ["Renombrar", $"Meta diaria · {owner.Settings.DailyGoalMinutes} min"] : ["Renombrar"];
+            : Config.Kind == "web" ? [L.T("widgets.menuRename"), L.T("widgets.menuChangeUrl"), L.T("widgets.menuReload"), Config.KeepAlive ? L.T("widgets.menuAllowSleep") : L.T("widgets.menuKeepAlive")]
+            : Config.Kind == "stats" ? [L.T("widgets.menuRename"), L.T("widgets.menuGoal", owner.Settings.DailyGoalMinutes)] : [L.T("widgets.menuRename")];
         var choice = Dialogs.Choose(owner, "OPCIONES DEL WIDGET", options);
         if (choice == 0)
         {
@@ -322,21 +332,21 @@ public sealed class WidgetCard : Border
         else if (Config.Kind == "stats")
         {
             if (choice != 1) { owner.SaveState(); return; }
-            var minutes = Dialogs.Prompt(owner, "META DIARIA", "Minutos de enfoque al día (15–960)", owner.Settings.DailyGoalMinutes.ToString());
+            var minutes = Dialogs.Prompt(owner, L.T("widgets.goalTitle"), L.T("widgets.goalLabel"), owner.Settings.DailyGoalMinutes.ToString());
             if (int.TryParse(minutes, out int value))
             {
                 owner.Settings.DailyGoalMinutes = Math.Clamp(value, 15, 960);
                 Refresh();
-                owner.Status($"META DIARIA · {owner.Settings.DailyGoalMinutes} MIN AL DÍA");
+                owner.Status(L.T("widgets.goalSet", owner.Settings.DailyGoalMinutes));
             }
         }
         else if (Config.Kind == "window")
         {
             if (choice == 1 && host is not null)
             {
-                var top = Dialogs.Prompt(owner, "RECORTAR VENTANA", "Píxeles de la barra superior (0–200)", host.CropTop.ToString());
+                var top = Dialogs.Prompt(owner, L.T("widgets.cropTitle"), L.T("widgets.cropTop"), host.CropTop.ToString());
                 if (top is not null && double.TryParse(top, out double t)) host.CropTop = Math.Clamp(t, 0, 200);
-                var bottom = Dialogs.Prompt(owner, "RECORTAR VENTANA", "Píxeles de la barra inferior (0–200)", host.CropBottom.ToString());
+                var bottom = Dialogs.Prompt(owner, L.T("widgets.cropTitle"), L.T("widgets.cropBottom"), host.CropBottom.ToString());
                 if (bottom is not null && double.TryParse(bottom, out double b)) host.CropBottom = Math.Clamp(b, 0, 200);
                 host.Resize();
             }
@@ -363,7 +373,7 @@ public sealed class WidgetCard : Border
     }
     public void Refresh()
     {
-        if (host is not null && !host.IsConnecting && !host.Alive) { host.Dispose(); host = null; body.Children.Clear(); BuildWindow(); owner.Status("La ventana externa se cerró. Puedes conectar otra."); }
+        if (host is not null && !host.IsConnecting && !host.Alive) { host.Dispose(); host = null; body.Children.Clear(); BuildWindow(); owner.Status(L.T("widgets.windowClosed")); }
         if (Config.Kind != "stats") return;
         double statsWidth = body.ActualWidth > 4 ? body.ActualWidth : Math.Max(120, Config.Width - 22);
         double statsHeight = body.ActualHeight > 4 ? body.ActualHeight : Math.Max(60, Config.Height - 46);

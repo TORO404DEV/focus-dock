@@ -420,15 +420,17 @@ public sealed class HabitStats
     {
         var awards = new List<HabitAward>();
         void Add(bool earned, string id, string name, string detail) { if (earned) awards.Add(new HabitAward(id, name, detail)); }
-        Add(total >= 1, "first", "PRIMER PASO", "Registraste tu primer día.");
-        Add(habitStreak >= 7, "week", "SIETE SEGUIDOS", "Una semana entera sin fallar un hábito.");
-        Add(habitStreak >= 30, "month", "TREINTA DÍAS", "Un mes completo de constancia.");
-        Add(habitStreak >= 100, "hundred", "CIEN DÍAS", "Cien días seguidos con el mismo hábito.");
-        Add(total >= 100, "marks", "CIEN MARCAS", "Cien días registrados en total.");
-        Add(perfectStreak >= 7, "perfect", "SEMANA PERFECTA", "Siete días cumpliendo todo lo que tocaba.");
-        Add(active >= 5, "five", "CINCO FRENTES", "Cinco hábitos activos a la vez.");
-        Add(level >= 5, "level5", "NIVEL 5", "Constancia suficiente para llegar al nivel 5.");
-        Add(level >= 10, "level10", "NIVEL 10", "Nivel 10: esto ya es tu forma de vivir.");
+        // The id stays stored so an award already celebrated is not celebrated again in another language.
+        void Award(bool earned, string id) => Add(earned, id, L.T("award." + id), L.T("award." + id + "Detail"));
+        Award(total >= 1, "first");
+        Award(habitStreak >= 7, "week");
+        Award(habitStreak >= 30, "month");
+        Award(habitStreak >= 100, "hundred");
+        Award(total >= 100, "marks");
+        Award(perfectStreak >= 7, "perfect");
+        Award(active >= 5, "five");
+        Award(level >= 5, "level5");
+        Award(level >= 10, "level10");
         return awards;
     }
 }

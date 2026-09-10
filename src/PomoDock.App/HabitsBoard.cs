@@ -173,7 +173,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
                 FontSize = Math.Max(8, size * .46),
                 FontWeight = FontWeights.Bold,
                 Content = habit.Name.Length > 0 ? habit.Name[..1].ToUpper(CultureInfo.CurrentCulture) : "·",
-                ToolTip = $"{habit.Name} · {(value.DoneToday ? "hecho hoy" : "pendiente")} · racha {value.Streak}"
+                ToolTip = L.T("habits.chipTip", habit.Name, value.DoneToday ? L.T("habits.doneToday") : L.T("habits.pending"), value.Streak)
             };
             chip.SetResourceReference(Control.BackgroundProperty, value.DoneToday ? "Ink" : "Surface");
             chip.SetResourceReference(Control.ForegroundProperty, value.DoneToday ? "Paper" : value.DueToday ? "Ink" : "Muted");
@@ -183,12 +183,12 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             strip.Children.Add(chip);
         }
         if (!book.Active.Any())
-            strip.Children.Add(Text("SIN HÁBITOS", 9.5, "Muted"));
+            strip.Children.Add(Text(L.T("habits.none"), 9.5, "Muted"));
 
         var summary = Text($"{stats.DoneToday:00}/{stats.DueToday:00}", single ? 11 : 12.5, "Ink", FontWeights.Bold);
         summary.FontFamily = Mono;
         summary.Margin = new Thickness(0, 0, 8, 0);
-        summary.ToolTip = $"Hoy · nivel {stats.Level} · racha {stats.Streak}";
+        summary.ToolTip = L.T("habits.summaryTip", stats.Level, stats.Streak);
 
         var scroll = new ScrollViewer { Content = strip, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, Focusable = false };
 
@@ -221,7 +221,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         var line = new StackPanel { Orientation = Orientation.Horizontal };
         var mark = Text("◆", 11, "Paper", FontWeights.Bold);
         mark.Margin = new Thickness(0, 0, 7, 0);
-        var name = Text("LOGRO · " + award.Name, 9.5, "Paper", FontWeights.Bold);
+        var name = Text(L.T("habits.award", award.Name), 9.5, "Paper", FontWeights.Bold);
         line.Children.Add(mark);
         line.Children.Add(name);
         frame.Child = line;
@@ -250,12 +250,12 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         var right = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         var level = Text($"NIVEL {stats.Level:00}", 11, "Ink", FontWeights.Black);
         level.HorizontalAlignment = HorizontalAlignment.Right;
-        level.ToolTip = $"{stats.Xp} XP acumulados · {stats.ToNextLevel} XP para el nivel {stats.Level + 1}";
+        level.ToolTip = L.T("habits.levelTip", stats.Xp, stats.ToNextLevel, stats.Level + 1);
         right.Children.Add(level);
-        var flame = Text(stats.Streak > 0 ? $"RACHA {stats.Streak} {(stats.Streak == 1 ? "DÍA" : "DÍAS")}" : "SIN RACHA", 9, "Muted", FontWeights.Bold);
+        var flame = Text(stats.Streak > 0 ? L.T("habits.streakDays", stats.Streak, stats.Streak == 1 ? L.T("habits.dayOne") : L.T("habits.dayMany")) : L.T("habits.noStreak"), 9, "Muted", FontWeights.Bold);
         flame.FontFamily = Mono;
         flame.HorizontalAlignment = HorizontalAlignment.Right;
-        flame.ToolTip = $"Días perfectos seguidos · mejor marca {stats.BestStreak}";
+        flame.ToolTip = L.T("habits.streakTip", stats.BestStreak);
         right.Children.Add(flame);
         SetColumn(right, 1);
         head.Children.Add(right);
@@ -273,7 +273,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             bar.Margin = new Thickness(0, 0, 8, 0);
             bar.ToolTip = $"{stats.LevelXp} / {stats.LevelSpan} XP del nivel {stats.Level}";
             xp.Children.Add(bar);
-            var note = Text($"{stats.Xp} XP · {stats.ToNextLevel} AL {stats.Level + 1:00}", 8.5, "Muted");
+            var note = Text(L.T("habits.xpNote", stats.Xp, stats.ToNextLevel, (stats.Level + 1).ToString("00", CultureInfo.InvariantCulture)), 8.5, "Muted");
             note.FontFamily = Mono;
             SetColumn(note, 1);
             xp.Children.Add(note);
@@ -294,7 +294,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             block.SetResourceReference(Border.BackgroundProperty, i < stats.DoneToday ? "Ink" : "Raised");
             strip.Children.Add(block);
         }
-        strip.ToolTip = $"{stats.DoneToday} de {stats.DueToday} hábitos de hoy";
+        strip.ToolTip = L.T("habits.todayTip", stats.DoneToday, stats.DueToday);
         return strip;
     }
 
@@ -312,8 +312,8 @@ internal sealed class HabitsBoard : Grid, IReskinnable
 
         var end = week.AddDays(6);
         string range = week.Month == end.Month
-            ? $"{week.Day:00} – {end.Day:00} {MonthNames[end.Month - 1]}"
-            : $"{week.Day:00} {MonthNames[week.Month - 1]} – {end.Day:00} {MonthNames[end.Month - 1]}";
+            ? L.T("habits.weekSameMonth", week.Day.ToString("00", CultureInfo.InvariantCulture), end.Day.ToString("00", CultureInfo.InvariantCulture), MonthNames[end.Month - 1])
+            : L.T("habits.weekSpan", week.Day.ToString("00", CultureInfo.InvariantCulture), MonthNames[week.Month - 1], end.Day.ToString("00", CultureInfo.InvariantCulture), MonthNames[end.Month - 1]);
         var label = Text(range, 9.5, "Ink", FontWeights.Bold);
         label.FontFamily = Mono;
         label.HorizontalAlignment = HorizontalAlignment.Center;
@@ -331,7 +331,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             bar.Children.Add(now);
         }
 
-        var next = Chip("›", "Semana siguiente");
+        var next = Chip("›", L.T("habits.nextWeek"));
         next.IsEnabled = week < current7;
         next.Click += (_, _) => { week = week.AddDays(7); Render(); };
         SetColumn(next, 3);
@@ -344,7 +344,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         var header = TrackGrid(current);
         header.Margin = new Thickness(0, 0, 0, 3);
 
-        var title = Text("HÁBITO", 8.5, "Muted", FontWeights.Bold);
+        var title = Text(L.T("habits.habit"), 8.5, "Muted", FontWeights.Bold);
         title.Margin = new Thickness(2, 0, 4, 0);
         header.Children.Add(title);
 
@@ -381,7 +381,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         }
         if (current.Rate)
         {
-            var rate = Text("30 DÍAS", 8, "Muted", FontWeights.Bold);
+            var rate = Text(L.T("habits.thirtyDays"), 8, "Muted", FontWeights.Bold);
             rate.HorizontalAlignment = HorizontalAlignment.Center;
             SetColumn(rate, TrackIndex(current, days.Length, "rate"));
             header.Children.Add(rate);
@@ -418,14 +418,14 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         var title = Text(archived ? "TODO ARCHIVADO" : "EMPIEZA POR UNO", 13, "Ink", FontWeights.Black);
         box.Children.Add(title);
         var detail = Text(archived
-            ? "Restaura un hábito desde el pie del widget, o escribe uno nuevo."
-            : "Escribe abajo la práctica que quieres sostener y marca cada día que la cumplas.", 10.5, "Muted");
+            ? L.T("habits.emptyArchived")
+            : L.T("habits.emptyNew"), 10.5, "Muted");
         detail.TextWrapping = TextWrapping.Wrap;
         detail.Margin = new Thickness(0, 6, 0, 0);
         box.Children.Add(detail);
         if (current.Stats && !archived)
         {
-            var examples = Text("LEER 20 MINUTOS   ·   ESTIRAR   ·   SIN MÓVIL AL DESPERTAR", 8.5, "Muted", FontWeights.Bold);
+            var examples = Text(L.T("habits.examples"), 8.5, "Muted", FontWeights.Bold);
             examples.TextWrapping = TextWrapping.Wrap;
             examples.Margin = new Thickness(0, 12, 0, 0);
             box.Children.Add(examples);
@@ -467,7 +467,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         }
         name.Background = Brushes.Transparent;
         name.Cursor = Cursors.Hand;
-        name.ToolTip = $"{habit.Name}\nRacha {value.Streak} · mejor {value.Best} · {value.Rate * 100:0}% en 30 días\nPulsa para ver el detalle";
+        name.ToolTip = L.T("habits.nameTip", habit.Name, value.Streak, value.Best, (value.Rate * 100).ToString("0", CultureInfo.InvariantCulture));
         name.MouseLeftButtonUp += (_, _) => ShowDetail(habit);
         line.Children.Add(name);
 
@@ -486,8 +486,8 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             streak.HorizontalAlignment = HorizontalAlignment.Center;
             streak.VerticalAlignment = VerticalAlignment.Center;
             streak.ToolTip = value.StreakInWeeks
-                ? $"{value.Streak} semanas seguidas cumpliendo {habit.TimesPerWeek}/semana · mejor {value.Best}"
-                : $"Racha actual {value.Streak} · mejor marca {value.Best}";
+                ? L.T("habits.weeklyStreakTip", value.Streak, habit.TimesPerWeek, value.Best)
+                : L.T("habits.dayStreakTip", value.Streak, value.Best);
             SetColumn(streak, TrackIndex(current, days.Length, "streak"));
             line.Children.Add(streak);
         }
@@ -498,7 +498,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             rate.FontFamily = Mono;
             rate.HorizontalAlignment = HorizontalAlignment.Center;
             rate.VerticalAlignment = VerticalAlignment.Center;
-            rate.ToolTip = "Días cumplidos de los que tocaban en los últimos 30 días";
+            rate.ToolTip = L.T("habits.rateTip");
             SetColumn(rate, TrackIndex(current, days.Length, "rate"));
             line.Children.Add(rate);
         }
@@ -515,7 +515,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
                 BorderThickness = new Thickness(0),
                 Background = Brushes.Transparent,
                 FontSize = 13,
-                ToolTip = "Opciones del hábito"
+                ToolTip = L.T("habits.options")
             };
             menu.Click += (_, _) => HabitMenu(habit);
             SetColumn(menu, TrackIndex(current, days.Length, "menu"));
@@ -561,9 +561,9 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             button.Content = free;
         }
 
-        string state = future ? "aún no llega" : done ? "completado" : count > 0 ? $"{count}/{habit.Target}" : due ? "pendiente" : "día libre";
-        button.ToolTip = $"{habit.Name} · {day:dd/MM} · {state}"
-            + (future ? "" : habit.Target > 1 ? "\nClic para sumar una repetición · clic derecho para restarla" : "\nClic para marcar el día · clic derecho para deshacerlo");
+        string state = future ? L.T("habits.stateFuture") : done ? L.T("habits.stateDone") : count > 0 ? $"{count}/{habit.Target}" : due ? L.T("habits.statePending") : L.T("habits.stateFree");
+        button.ToolTip = L.T("habits.cellTip", habit.Name, $"{day:dd/MM}", state)
+            + (future ? "" : habit.Target > 1 ? L.T("habits.cellCountHint") : L.T("habits.cellMarkHint"));
         System.Windows.Automation.AutomationProperties.SetName(button, $"{habit.Name}, {day:dd/MM}, {state}");
         button.Click += (_, _) => Toggle(habit, day);
         button.MouseRightButtonUp += (_, e) => { if (!future) { habit.Advance(day, -1); Commit(); } e.Handled = true; };
@@ -592,9 +592,9 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         };
         // A narrow, resizable widget can scroll the caret out of view while it is measured.
         ScrollViewer.SetHorizontalScrollBarVisibility(input, ScrollBarVisibility.Hidden);
-        input.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, "Nuevo hábito");
+        input.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, L.T("habits.newName"));
 
-        var hint = Text("Nuevo hábito…", 11.5, "Muted");
+        var hint = Text(L.T("habits.newPlaceholder"), 11.5, "Muted");
         hint.IsHitTestVisible = false;
         hint.Margin = new Thickness(11, 0, 8, 0);
         hint.VerticalAlignment = VerticalAlignment.Center;
@@ -614,12 +614,12 @@ internal sealed class HabitsBoard : Grid, IReskinnable
 
         var add = new Button
         {
-            Content = current.Streak ? "+ HÁBITO" : "+",
+            Content = current.Streak ? L.T("habits.addLong") : "+",
             Height = height,
             Padding = new Thickness(current.Streak ? 10 : 9, 0, current.Streak ? 10 : 9, 0),
             Margin = new Thickness(0),
             FontSize = 11,
-            ToolTip = "Añadir hábito"
+            ToolTip = L.T("habits.addTip")
         };
         add.Click += (_, _) => AddHabit();
         SetColumn(add, 1);
@@ -645,7 +645,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         }
         if (stats.Awards.Count == 0)
         {
-            var pending = Text("SIN LOGROS AÚN · Marca tu primer día para empezar.", 8.5, "Muted");
+            var pending = Text(L.T("habits.noAwards"), 8.5, "Muted");
             awards.Children.Add(pending);
         }
         footer.Children.Add(awards);
@@ -653,14 +653,14 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         var line = new Grid { Margin = new Thickness(0, 2, 0, 0) };
         line.ColumnDefinitions.Add(new ColumnDefinition());
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var summary = Text($"{stats.Total} DÍAS REGISTRADOS · {stats.Rate * 100:0}% EN 30 DÍAS", 8.5, "Muted");
+        var summary = Text(L.T("habits.totalSummary", stats.Total, (stats.Rate * 100).ToString("0", CultureInfo.InvariantCulture)), 8.5, "Muted");
         summary.FontFamily = Mono;
         summary.VerticalAlignment = VerticalAlignment.Center;
         line.Children.Add(summary);
         int archived = book.Archived.Count();
         if (archived > 0)
         {
-            var restore = Chip($"ARCHIVADOS {archived}", "Restaurar o borrar hábitos archivados", 84);
+            var restore = Chip(L.T("habits.archivedChip", archived), L.T("habits.archivedTip"), 84);
             restore.Click += (_, _) => ManageArchived();
             SetColumn(restore, 1);
             line.Children.Add(restore);
@@ -669,7 +669,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
 
         if (current.Hint)
         {
-            var hint = Text("Clic en un día para marcarlo · clic derecho para retroceder · clic en el nombre para ver su mapa.", 8.5, "Muted");
+            var hint = Text(L.T("habits.footerHint"), 8.5, "Muted");
             hint.TextWrapping = TextWrapping.Wrap;
             hint.Margin = new Thickness(0, 6, 0, 0);
             footer.Children.Add(hint);
@@ -682,17 +682,17 @@ internal sealed class HabitsBoard : Grid, IReskinnable
     private void AddHabit()
     {
         var name = (composer?.Text ?? draft).Trim();
-        if (name.Length == 0) { owner.Status("ESCRIBE UN HÁBITO ANTES DE AÑADIRLO."); return; }
+        if (name.Length == 0) { owner.Status(L.T("habits.typeFirst")); return; }
         if (store.Book.Active.Any(habit => string.Equals(habit.Name, name, StringComparison.CurrentCultureIgnoreCase)))
         {
-            owner.Status("YA SIGUES ESE HÁBITO.");
+            owner.Status(L.T("habits.alreadyTracked"));
             return;
         }
         store.Add(name);
         draft = "";
         composerFocused = true;
         Commit();
-        owner.Status($"HÁBITO AÑADIDO · {name.ToUpper(CultureInfo.CurrentCulture)}");
+        owner.Status(L.T("habits.added", name.ToUpper(Strings.Culture)));
     }
 
     private void Toggle(Habit habit, DateOnly day)
@@ -717,7 +717,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             applause.Stop();
             applause.Start();
             owner.Sounds.Button("phase");
-            owner.Status($"LOGRO DESBLOQUEADO · {fresh.Name} — {fresh.Detail}");
+            owner.Status(L.T("habits.awardUnlocked", fresh.Name, fresh.Detail));
         }
         store.Save();
     }
@@ -727,18 +727,18 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         var options = new[]
         {
             "Renombrar",
-            "Frecuencia · " + CadenceLabel(habit),
-            $"Meta diaria · {habit.Target} {(habit.Target == 1 ? "vez" : "veces")}",
+            L.T("habits.menuCadence", CadenceLabel(habit)),
+            L.T("habits.menuTarget", habit.Target, habit.Target == 1 ? L.T("habits.timeOne") : L.T("habits.timeMany")),
             "Ver detalle y mapa",
             "Subir",
             "Bajar",
             "Archivar",
             "Eliminar"
         };
-        switch (Dialogs.Choose(owner, "HÁBITO / " + habit.Name.ToUpper(CultureInfo.CurrentCulture), options))
+        switch (Dialogs.Choose(owner, L.T("habits.menuTitle", habit.Name.ToUpper(Strings.Culture)), options))
         {
             case 0:
-                var name = Dialogs.Prompt(owner, "RENOMBRAR HÁBITO", "Nombre", habit.Name);
+                var name = Dialogs.Prompt(owner, L.T("habits.renameTitle"), L.T("habits.renameLabel"), habit.Name);
                 if (!string.IsNullOrWhiteSpace(name))
                 {
                     var trimmed = name.Trim();
@@ -750,7 +750,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
                 if (EditCadence(habit)) Commit();
                 break;
             case 2:
-                var target = Dialogs.Prompt(owner, "META DIARIA", "Repeticiones que completan el día (1–20)", habit.Target.ToString(CultureInfo.InvariantCulture));
+                var target = Dialogs.Prompt(owner, L.T("habits.targetTitle"), L.T("habits.targetLabel"), habit.Target.ToString(CultureInfo.InvariantCulture));
                 if (int.TryParse(target, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
                 {
                     habit.Target = Math.Clamp(value, 1, 20);
@@ -763,7 +763,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             case 6:
                 habit.Archived = true;
                 Commit();
-                owner.Status("HÁBITO ARCHIVADO · Su historial se conserva.");
+                owner.Status(L.T("habits.archived"));
                 break;
             case 7: ConfirmDelete(habit); break;
         }
@@ -771,9 +771,9 @@ internal sealed class HabitsBoard : Grid, IReskinnable
 
     private void ConfirmDelete(Habit habit)
     {
-        var choice = Dialogs.Choose(owner, "ELIMINAR HÁBITO", ["Archivar y conservar el historial", "Eliminar para siempre", "Cancelar"]);
-        if (choice == 0) { habit.Archived = true; Commit(); owner.Status("HÁBITO ARCHIVADO · Su historial se conserva."); }
-        else if (choice == 1) { store.Book.Habits.Remove(habit); Commit(); owner.Status("HÁBITO ELIMINADO."); }
+        var choice = Dialogs.Choose(owner, L.T("habits.deleteTitle"), [L.T("habits.archiveKeep"), L.T("common.deleteForever"), L.T("common.cancel")]);
+        if (choice == 0) { habit.Archived = true; Commit(); owner.Status(L.T("habits.archived")); }
+        else if (choice == 1) { store.Book.Habits.Remove(habit); Commit(); owner.Status(L.T("habits.deleted")); }
     }
 
     private void ManageArchived()
@@ -781,12 +781,12 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         var archived = store.Book.Archived.ToList();
         if (archived.Count == 0) return;
         var names = archived.Select(habit => habit.Name).Append("Cancelar").ToArray();
-        int index = Dialogs.Choose(owner, "HÁBITOS ARCHIVADOS", names);
+        int index = Dialogs.Choose(owner, L.T("habits.archivedTitle"), names);
         if (index < 0 || index >= archived.Count) return;
         var target = archived[index];
-        int action = Dialogs.Choose(owner, target.Name.ToUpper(CultureInfo.CurrentCulture), ["Restaurar", "Eliminar para siempre", "Cancelar"]);
-        if (action == 0) { target.Archived = false; Commit(); owner.Status("HÁBITO RESTAURADO."); }
-        else if (action == 1) { store.Book.Habits.Remove(target); Commit(); owner.Status("HÁBITO ELIMINADO."); }
+        int action = Dialogs.Choose(owner, target.Name.ToUpper(Strings.Culture), [L.T("common.restore"), L.T("common.deleteForever"), L.T("common.cancel")]);
+        if (action == 0) { target.Archived = false; Commit(); owner.Status(L.T("habits.restored")); }
+        else if (action == 1) { store.Book.Habits.Remove(target); Commit(); owner.Status(L.T("habits.deleted")); }
     }
 
     private bool EditCadence(Habit habit)
@@ -795,7 +795,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         var stack = new StackPanel { Margin = new Thickness(24) };
         window.Content = stack;
         stack.Children.Add(Dialogs.Heading("FRECUENCIA"));
-        stack.Children.Add(Text($"Cada cuánto cuenta «{habit.Name}». Las rachas solo juzgan los días que tocan.", 11.5, "Muted"));
+        stack.Children.Add(Text(L.T("habits.cadenceHelp", habit.Name), 11.5, "Muted"));
 
         var cadence = habit.Cadence;
         var days = new HashSet<DayOfWeek>(habit.Days);
@@ -803,7 +803,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
 
         var modes = new StackPanel { Margin = new Thickness(0, 16, 0, 8) };
         var buttons = new List<(HabitCadence Mode, Button Button)>();
-        foreach (var (mode, label) in new[] { (HabitCadence.Daily, "TODOS LOS DÍAS"), (HabitCadence.Selected, "DÍAS CONCRETOS"), (HabitCadence.Weekly, "VECES POR SEMANA") })
+        foreach (var (mode, label) in new[] { (HabitCadence.Daily, L.T("habits.cadenceDaily")), (HabitCadence.Selected, L.T("habits.cadenceSelected")), (HabitCadence.Weekly, L.T("habits.cadenceWeekly")) })
         {
             var button = new Button { Content = label, Margin = new Thickness(0, 0, 0, 6), HorizontalContentAlignment = HorizontalAlignment.Left };
             buttons.Add((mode, button));
@@ -855,9 +855,9 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             amount.Text = times.ToString(CultureInfo.InvariantCulture);
             explain.Text = cadence switch
             {
-                HabitCadence.Selected => days.Count == 0 ? "Elige al menos un día." : "Los demás días quedan libres y no rompen la racha.",
-                HabitCadence.Weekly => $"Cumple {times} {(times == 1 ? "día" : "días")} cualesquiera dentro de cada semana. La racha cuenta semanas.",
-                _ => "Cada día cuenta y cada día suma a la racha."
+                HabitCadence.Selected => days.Count == 0 ? L.T("habits.cadencePickDay") : L.T("habits.cadenceSelectedHelp"),
+                HabitCadence.Weekly => L.T("habits.cadenceWeeklyHelp", times, times == 1 ? L.T("habits.dayOne").ToLower(Strings.Culture) : L.T("habits.dayMany").ToLower(Strings.Culture)),
+                _ => L.T("habits.cadenceDailyHelp")
             };
         }
         foreach (var (mode, button) in buttons) button.Click += (_, _) => { cadence = mode; Sync(); };
@@ -887,21 +887,21 @@ internal sealed class HabitsBoard : Grid, IReskinnable
     private void ShowDetail(Habit habit)
     {
         var value = HabitProgress.For(habit, today);
-        var window = Dialogs.Window(owner, "HÁBITO", 640, 560);
+        var window = Dialogs.Window(owner, L.T("habits.detailTitle"), 640, 560);
         var root = new StackPanel { Margin = new Thickness(26, 22, 26, 22) };
         window.Content = root;
         root.Children.Add(Dialogs.Heading(habit.Name.ToUpper(CultureInfo.CurrentCulture)));
-        var cadence = Text(CadenceLabel(habit) + (habit.Target > 1 ? $" · {habit.Target} veces al día" : ""), 11.5, "Muted");
+        var cadence = Text(CadenceLabel(habit) + (habit.Target > 1 ? L.T("habits.timesADay", habit.Target) : ""), 11.5, "Muted");
         cadence.Margin = new Thickness(0, -10, 0, 16);
         root.Children.Add(cadence);
 
         var tiles = new UniformGrid { Columns = 4, Margin = new Thickness(0, 0, 0, 18) };
         foreach (var (caption, text) in new[]
         {
-            (value.StreakInWeeks ? "RACHA (SEM)" : "RACHA", value.Streak.ToString(CultureInfo.InvariantCulture)),
-            ("MEJOR", value.Best.ToString(CultureInfo.InvariantCulture)),
-            ("DÍAS", value.Total.ToString(CultureInfo.InvariantCulture)),
-            ("30 DÍAS", $"{value.Rate * 100:0}%")
+            (value.StreakInWeeks ? L.T("habits.streakWeeks") : L.T("habits.streak"), value.Streak.ToString(CultureInfo.InvariantCulture)),
+            (L.T("habits.best"), value.Best.ToString(CultureInfo.InvariantCulture)),
+            (L.T("habits.days"), value.Total.ToString(CultureInfo.InvariantCulture)),
+            (L.T("habits.thirtyDays"), L.T("habits.percent", (value.Rate * 100).ToString("0", CultureInfo.InvariantCulture)))
         })
         {
             var tile = new Border { BorderThickness = new Thickness(1.5), Padding = new Thickness(12, 10, 12, 10), Margin = new Thickness(0, 0, 8, 0) };
@@ -925,7 +925,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         }
         DrawMap();
 
-        var note = Text($"{value.Xp} XP generados por este hábito. Pulsa cualquier día del mapa para corregirlo.", 10.5, "Muted");
+        var note = Text(L.T("habits.xpDetail", value.Xp), 10.5, "Muted");
         note.TextWrapping = TextWrapping.Wrap;
         note.Margin = new Thickness(0, 16, 0, 14);
         root.Children.Add(note);
@@ -991,7 +991,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
                     Padding = new Thickness(0),
                     BorderThickness = new Thickness(day == today ? 2 : 1),
                     IsEnabled = !future,
-                    ToolTip = $"{day:dd/MM/yyyy} · {(future ? "aún no llega" : done ? "completado" : count > 0 ? $"{count}/{habit.Target}" : habit.IsDue(day) ? "sin marcar" : "día libre")}"
+                    ToolTip = L.T("habits.mapTip", $"{day:dd/MM/yyyy}", future ? L.T("habits.stateFuture") : done ? L.T("habits.stateDone") : count > 0 ? $"{count}/{habit.Target}" : habit.IsDue(day) ? L.T("habits.stateUnmarked") : L.T("habits.stateFree"))
                 };
                 cell.SetResourceReference(Control.BackgroundProperty, done ? "Ink" : "Surface");
                 cell.SetResourceReference(Control.BorderBrushProperty, habit.IsDue(day) ? "Line" : "Muted");
@@ -1025,7 +1025,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         var start = HabitBook.WeekStart(today).AddDays(-7 * (weeks - 1));
 
         var panel = new StackPanel { Margin = new Thickness(0, 10, 0, 0) };
-        panel.Children.Add(Text($"CONSTANCIA · ÚLTIMAS {weeks} SEMANAS", 8, "Muted", FontWeights.Bold));
+        panel.Children.Add(Text(L.T("habits.consistency", weeks), 8, "Muted", FontWeights.Bold));
         var body = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 0) };
         for (int w = 0; w < weeks; w++)
         {
@@ -1054,7 +1054,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
                 {
                     if (due == 0) cell.Opacity = .35;
                     else if (made > 0 && made < due) cell.Child = Gauge(made, due, size - 3, .55);
-                    cell.ToolTip = due == 0 ? $"{day:dd/MM} · nada que cumplir" : $"{day:dd/MM} · {made} de {due} hábitos";
+                    cell.ToolTip = due == 0 ? L.T("habits.nothingDue", $"{day:dd/MM}") : L.T("habits.dayProgress", $"{day:dd/MM}", made, due);
                 }
                 column.Children.Add(cell);
             }
@@ -1156,9 +1156,9 @@ internal sealed class HabitsBoard : Grid, IReskinnable
 
     private static string CadenceLabel(Habit habit) => habit.Cadence switch
     {
-        HabitCadence.Selected => "Días concretos · " + string.Join(" ", habit.Days.Select(day => DayLetters[((int)day + 6) % 7])),
+        HabitCadence.Selected => L.T("habits.cadenceSelectedLabel", string.Join(" ", habit.Days.Select(day => DayLetters[((int)day + 6) % 7]))),
         HabitCadence.Weekly => $"{habit.TimesPerWeek} veces por semana",
-        _ => "Todos los días"
+        _ => L.T("habits.cadenceDailyLabel")
     };
 
     private static string? CadenceBadge(Habit habit) => habit.Cadence switch

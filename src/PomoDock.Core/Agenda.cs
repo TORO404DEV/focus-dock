@@ -12,15 +12,16 @@ public sealed record AgendaColor(string Key, string Name, string Hex);
 
 public static class AgendaPalette
 {
-    public static readonly AgendaColor[] All =
+    /// <summary>The key stays stored; only the name shown beside the swatch is translated.</summary>
+    public static AgendaColor[] All =>
     [
-        new("ink", "Tinta", "#171916"),
-        new("blue", "Azul", "#3C6E9F"),
-        new("green", "Verde", "#4E7A52"),
-        new("amber", "Ámbar", "#B8862B"),
-        new("red", "Rojo", "#B5493C"),
-        new("violet", "Violeta", "#6C5A9E"),
-        new("teal", "Turquesa", "#2F7D7A")
+        new("ink", L.T("color.ink"), "#171916"),
+        new("blue", L.T("color.blue"), "#3C6E9F"),
+        new("green", L.T("color.green"), "#4E7A52"),
+        new("amber", L.T("color.amber"), "#B8862B"),
+        new("red", L.T("color.red"), "#B5493C"),
+        new("violet", L.T("color.violet"), "#6C5A9E"),
+        new("teal", L.T("color.teal"), "#2F7D7A")
     ];
     public static AgendaColor Of(string? key) => All.FirstOrDefault(color => string.Equals(color.Key, key, StringComparison.OrdinalIgnoreCase)) ?? All[0];
 }
@@ -221,39 +222,36 @@ public sealed class AgendaEvent
 
     public string RepeatLabel() => Repeat switch
     {
-        RepeatKind.Daily => Interval == 1 ? "Cada día" : $"Cada {Interval} días",
+        RepeatKind.Daily => Interval == 1 ? L.T("repeat.daily") : L.T("repeat.dailyEvery", Interval),
         RepeatKind.Weekly => WeeklyLabel(),
-        RepeatKind.Monthly => Interval == 1 ? "Cada mes" : $"Cada {Interval} meses",
-        RepeatKind.Yearly => Interval == 1 ? "Cada año" : $"Cada {Interval} años",
-        _ => "No se repite"
+        RepeatKind.Monthly => Interval == 1 ? L.T("repeat.monthly") : L.T("repeat.monthlyEvery", Interval),
+        RepeatKind.Yearly => Interval == 1 ? L.T("repeat.yearly") : L.T("repeat.yearlyEvery", Interval),
+        _ => L.T("repeat.none")
     };
 
     private string WeeklyLabel()
     {
         var days = (Days.Count > 0 ? Days : [Start.DayOfWeek]).OrderBy(Ordinal).Select(ShortDay);
-        var cadence = Interval == 1 ? "Cada semana" : $"Cada {Interval} semanas";
+        var cadence = Interval == 1 ? L.T("repeat.weekly") : L.T("repeat.weeklyEvery", Interval);
         return $"{cadence} · {string.Join(" ", days)}";
     }
 
-    public static string ShortDay(DayOfWeek day) => day switch
-    {
-        DayOfWeek.Monday => "L", DayOfWeek.Tuesday => "M", DayOfWeek.Wednesday => "X", DayOfWeek.Thursday => "J",
-        DayOfWeek.Friday => "V", DayOfWeek.Saturday => "S", _ => "D"
-    };
+    /// <summary>The one-letter weekday initials, which differ per language (L M X J V S D / M T W T F S S).</summary>
+    public static string ShortDay(DayOfWeek day) => L.T("weekday.short." + day.ToString().ToLowerInvariant());
 
-    /// <summary>Spanish label for a reminder offset, phrased for timed or all-day events.</summary>
+    /// <summary>Label for a reminder offset, phrased for timed or all-day events.</summary>
     public string ReminderLabel(int minutes)
     {
         if (AllDay)
         {
-            if (minutes <= 0) return $"Ese día a las {AllDayHour:00}:00";
-            if (minutes % 1440 == 0) return minutes == 1440 ? "1 día antes" : $"{minutes / 1440} días antes";
+            if (minutes <= 0) return L.T("reminder.thatDayAt", $"{AllDayHour:00}");
+            if (minutes % 1440 == 0) return minutes == 1440 ? L.T("reminder.dayBefore") : L.T("reminder.daysBefore", minutes / 1440);
         }
-        if (minutes <= 0) return "Al empezar";
-        if (minutes < 60) return $"{minutes} min antes";
-        if (minutes % 1440 == 0) return minutes == 1440 ? "1 día antes" : $"{minutes / 1440} días antes";
-        if (minutes % 60 == 0) return minutes == 60 ? "1 hora antes" : $"{minutes / 60} horas antes";
-        return $"{minutes / 60} h {minutes % 60} min antes";
+        if (minutes <= 0) return L.T("reminder.atStart");
+        if (minutes < 60) return L.T("reminder.minutesBefore", minutes);
+        if (minutes % 1440 == 0) return minutes == 1440 ? L.T("reminder.dayBefore") : L.T("reminder.daysBefore", minutes / 1440);
+        if (minutes % 60 == 0) return minutes == 60 ? L.T("reminder.hourBefore") : L.T("reminder.hoursBefore", minutes / 60);
+        return L.T("reminder.hoursMinutesBefore", minutes / 60, minutes % 60);
     }
 }
 
@@ -280,8 +278,8 @@ public sealed record AgendaOccurrence(AgendaEvent Event, DateOnly Series, DateOn
 
     public string TimeLabel()
     {
-        if (AllDay) return "TODO EL DÍA";
-        if (Continuation) return $"HASTA {End:HH:mm}";
+        if (AllDay) return L.T("agenda.allDay");
+        if (Continuation) return L.T("agenda.until", End.ToString("HH:mm", CultureInfo.InvariantCulture));
         return Multiday ? $"{Start:HH:mm} → {End:dd/MM HH:mm}" : $"{Start:HH:mm} – {End:HH:mm}";
     }
 }

@@ -133,6 +133,8 @@ public sealed class Settings
     public int AlarmVolume { get; set; } = 70;
     /// <summary>Button and habit clicks.</summary>
     public int EffectsVolume { get; set; } = 45;
+    /// <summary>Interface language: a code from <see cref="Strings.Catalog"/>, or "system".</summary>
+    public string Language { get; set; } = "system";
     public bool Dark { get; set; }
     public bool ReduceMotion { get; set; }
     public bool AlwaysOnTop { get; set; }

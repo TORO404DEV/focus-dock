@@ -45,18 +45,18 @@ internal static class AgendaEditor
 
         form.Children.Add(Dialogs.Heading(creating ? "NUEVO EVENTO" : "EDITAR EVENTO"));
 
-        var title = Entry(item.Title, "El nombre que verás en el calendario");
+        var title = Entry(item.Title, L.T("agendaEditor.titleHelp"));
         title.FontSize = 16; title.FontWeight = FontWeights.Bold;
-        title.SetValue(AutomationProperties.NameProperty, "Título del evento");
-        form.Children.Add(Label("TÍTULO"));
+        title.SetValue(AutomationProperties.NameProperty, L.T("agendaEditor.titleName"));
+        form.Children.Add(Label(L.T("agendaEditor.titleLabel")));
         form.Children.Add(title);
 
-        var allDay = new CheckBox { Content = "Todo el día", IsChecked = item.AllDay, FontSize = 12, Margin = new Thickness(0, 2, 0, 6) };
+        var allDay = new CheckBox { Content = L.T("agendaEditor.allDay"), IsChecked = item.AllDay, FontSize = 12, Margin = new Thickness(0, 2, 0, 6) };
         form.Children.Add(allDay);
 
         form.Children.Add(Label("FECHA"));
         var dateRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
-        var date = Entry(item.Start.ToString("dd/MM/yyyy", AgendaVisuals.Spanish), "Formato dd/mm/aaaa");
+        var date = Entry(item.Start.ToString("dd/MM/yyyy", Strings.Culture), L.T("agendaEditor.dateFormatHelp"));
         date.Width = 130; date.Margin = new Thickness(0, 0, 8, 0);
         date.SetValue(AutomationProperties.NameProperty, "Fecha del evento");
         dateRow.Children.Add(date);
@@ -66,7 +66,7 @@ internal static class AgendaEditor
             jump.Click += (_, _) =>
             {
                 var current = shift == 0 ? DateOnly.FromDateTime(DateTime.Now) : (TryDate(date.Text, out var parsed) ? parsed : DateOnly.FromDateTime(DateTime.Now)).AddDays(shift);
-                date.Text = current.ToString("dd/MM/yyyy", AgendaVisuals.Spanish);
+                date.Text = current.ToString("dd/MM/yyyy", Strings.Culture);
             };
             dateRow.Children.Add(jump);
         }
@@ -75,10 +75,10 @@ internal static class AgendaEditor
         // Timed events carry a start and an end; all-day events carry a number of days instead.
         var timedRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         for (int column = 0; column < 3; column++) timedRow.ColumnDefinitions.Add(new ColumnDefinition { Width = column == 2 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
-        var start = Entry(item.Start.ToString("HH:mm", CultureInfo.InvariantCulture), "Hora de inicio, formato 24 h");
+        var start = Entry(item.Start.ToString("HH:mm", CultureInfo.InvariantCulture), L.T("agendaEditor.startHelp"));
         start.Width = 88; start.Margin = new Thickness(0, 0, 10, 0);
         start.SetValue(AutomationProperties.NameProperty, "Hora de inicio");
-        var end = Entry(item.Start.AddMinutes(Math.Max(5, item.Minutes)).ToString("HH:mm", CultureInfo.InvariantCulture), "Hora de fin, formato 24 h");
+        var end = Entry(item.Start.AddMinutes(Math.Max(5, item.Minutes)).ToString("HH:mm", CultureInfo.InvariantCulture), L.T("agendaEditor.endHelp"));
         end.Width = 88; end.Margin = new Thickness(0, 0, 12, 0);
         end.SetValue(AutomationProperties.NameProperty, "Hora de fin");
         var span = new TextBlock { FontSize = 11, Foreground = AgendaVisuals.Resource("Muted"), VerticalAlignment = VerticalAlignment.Center };
@@ -94,10 +94,10 @@ internal static class AgendaEditor
         form.Children.Add(timedBlock);
 
         var daysBlock = new StackPanel();
-        daysBlock.Children.Add(Label("DURACIÓN EN DÍAS"));
-        var dayCount = Entry(Math.Max(1, item.Minutes / 1440).ToString(CultureInfo.InvariantCulture), "Cuántos días ocupa");
+        daysBlock.Children.Add(Label(L.T("agendaEditor.daysLabel")));
+        var dayCount = Entry(Math.Max(1, item.Minutes / 1440).ToString(CultureInfo.InvariantCulture), L.T("agendaEditor.daysHelp"));
         dayCount.Width = 88;
-        dayCount.SetValue(AutomationProperties.NameProperty, "Duración en días");
+        dayCount.SetValue(AutomationProperties.NameProperty, L.T("agendaEditor.daysName"));
         daysBlock.Children.Add(dayCount);
         form.Children.Add(daysBlock);
 
@@ -129,18 +129,19 @@ internal static class AgendaEditor
         }
         PaintSwatches();
 
-        form.Children.Add(Label("REPETICIÓN"));
-        var repeat = new ComboBox { Margin = new Thickness(0, 4, 0, 6), ItemsSource = new[] { "No se repite", "Cada día", "Cada semana", "Cada mes", "Cada año" } };
+        form.Children.Add(Label(L.T("agendaEditor.repeatLabel")));
+        // The list is read by index, so translating these never changes which RepeatKind is chosen.
+        var repeat = new ComboBox { Margin = new Thickness(0, 4, 0, 6), ItemsSource = new[] { L.T("agendaEditor.repeatNone"), L.T("agendaEditor.repeatDaily"), L.T("agendaEditor.repeatWeekly"), L.T("agendaEditor.repeatMonthly"), L.T("agendaEditor.repeatYearly") } };
         repeat.SelectedIndex = (int)item.Repeat;
-        repeat.SetValue(AutomationProperties.NameProperty, "Repetición");
+        repeat.SetValue(AutomationProperties.NameProperty, L.T("agendaEditor.repeatName"));
         form.Children.Add(repeat);
 
         var repeatDetail = new StackPanel();
         var intervalRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
         intervalRow.Children.Add(new TextBlock { Text = "Cada", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
-        var interval = Entry(item.Interval.ToString(CultureInfo.InvariantCulture), "Repetir cada N periodos");
+        var interval = Entry(item.Interval.ToString(CultureInfo.InvariantCulture), L.T("agendaEditor.intervalHelp"));
         interval.Width = 62; interval.Margin = new Thickness(0, 0, 8, 0);
-        interval.SetValue(AutomationProperties.NameProperty, "Intervalo de repetición");
+        interval.SetValue(AutomationProperties.NameProperty, L.T("agendaEditor.intervalName"));
         intervalRow.Children.Add(interval);
         var intervalUnit = new TextBlock { FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         intervalRow.Children.Add(intervalUnit);
@@ -171,11 +172,11 @@ internal static class AgendaEditor
 
         var untilRow = new StackPanel { Orientation = Orientation.Horizontal };
         untilRow.Children.Add(new TextBlock { Text = "Hasta", FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) });
-        var until = Entry(item.Until?.ToString("dd/MM/yyyy", AgendaVisuals.Spanish) ?? "", "Vacío = sin fin");
+        var until = Entry(item.Until?.ToString("dd/MM/yyyy", Strings.Culture) ?? "", L.T("agendaEditor.untilHelp"));
         until.Width = 130;
         until.SetValue(AutomationProperties.NameProperty, "Repetir hasta");
         untilRow.Children.Add(until);
-        untilRow.Children.Add(new TextBlock { Text = "vacío = sin fin", FontSize = 10, Foreground = AgendaVisuals.Resource("Muted"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) });
+        untilRow.Children.Add(new TextBlock { Text = L.T("agendaEditor.untilNote"), FontSize = 10, Foreground = AgendaVisuals.Resource("Muted"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) });
         repeatDetail.Children.Add(untilRow);
         form.Children.Add(repeatDetail);
 
@@ -187,12 +188,12 @@ internal static class AgendaEditor
         form.Children.Add(reminderHint);
 
         form.Children.Add(Label("LUGAR"));
-        var place = Entry(item.Location, "Opcional: sala, enlace o dirección");
+        var place = Entry(item.Location, L.T("agendaEditor.placeHelp"));
         place.SetValue(AutomationProperties.NameProperty, "Lugar");
         form.Children.Add(place);
 
         form.Children.Add(Label("NOTAS"));
-        var notes = Entry(item.Notes, "Detalles, orden del día, enlaces");
+        var notes = Entry(item.Notes, L.T("agendaEditor.notesHelp"));
         notes.AcceptsReturn = true; notes.TextWrapping = TextWrapping.Wrap; notes.Height = 74; notes.VerticalContentAlignment = VerticalAlignment.Top;
         notes.SetValue(AutomationProperties.NameProperty, "Notas");
         form.Children.Add(notes);
@@ -215,10 +216,10 @@ internal static class AgendaEditor
             weekRow.Visibility = kind == RepeatKind.Weekly ? Visibility.Visible : Visibility.Collapsed;
             intervalUnit.Text = kind switch
             {
-                RepeatKind.Daily => "día(s)",
+                RepeatKind.Daily => L.T("agendaEditor.unitDays"),
                 RepeatKind.Weekly => "semana(s), en:",
                 RepeatKind.Monthly => "mes(es)",
-                _ => "año(s)"
+                _ => L.T("agendaEditor.unitYears")
             };
             var presets = whole ? AllDayReminders : TimedReminders;
             reminders.RemoveAll(minutes => !presets.Contains(minutes));
@@ -235,8 +236,8 @@ internal static class AgendaEditor
                 reminderRow.Children.Add(chip);
             }
             reminderHint.Text = reminders.Count == 0
-                ? "Sin recordatorios: este evento no sonará."
-                : "Sonará y aparecerá una tarjeta aunque PomoDock esté minimizado.";
+                ? L.T("agendaEditor.noReminders")
+                : L.T("agendaEditor.withReminders");
             preview.Text = Preview(Draft(), whole);
         }
 
@@ -299,7 +300,7 @@ internal static class AgendaEditor
                 }
                 else
                 {
-                    int choice = Dialogs.Choose(owner, "ELIMINAR EVENTO REPETIDO", ["Solo este día", "Toda la serie", "Cancelar"]);
+                    int choice = Dialogs.Choose(owner, L.T("agendaEditor.deleteRepeatTitle"), [L.T("agendaEditor.deleteThisDay"), L.T("agendaEditor.deleteSeries"), L.T("common.cancel")]);
                     if (choice == 0) { existing.Cancel(day); agenda.Save(); }
                     else if (choice == 1) agenda.Remove(existing);
                     else return;
@@ -317,8 +318,8 @@ internal static class AgendaEditor
         {
             var draft = Draft();
             if (draft.Title.Length == 0) { title.Focus(); preview.Text = "PONLE UN NOMBRE AL EVENTO PARA GUARDARLO."; return; }
-            if (!TryDate(date.Text, out _)) { date.Focus(); preview.Text = "REVISA LA FECHA · USA EL FORMATO DD/MM/AAAA."; return; }
-            if (!draft.AllDay && !TryTime(start.Text, out _)) { start.Focus(); preview.Text = "REVISA LA HORA DE INICIO · USA HH:MM."; return; }
+            if (!TryDate(date.Text, out _)) { date.Focus(); preview.Text = L.T("agendaEditor.badDate"); return; }
+            if (!draft.AllDay && !TryTime(start.Text, out _)) { start.Focus(); preview.Text = L.T("agendaEditor.badTime"); return; }
             if (creating) agenda.Add(draft); else agenda.Replace(draft);
             changed = true;
             window.DialogResult = true;
@@ -368,10 +369,10 @@ internal static class AgendaEditor
 
     private static string ChipLabel(int minutes, bool allDay) => minutes switch
     {
-        0 => allDay ? "ESE DÍA 09:00" : "AL EMPEZAR",
+        0 => allDay ? L.T("agendaEditor.reminderAllDay") : L.T("agendaEditor.reminderAtStart"),
         < 60 => $"{minutes} MIN",
-        1440 => "1 DÍA",
-        2880 => "2 DÍAS",
+        1440 => L.T("agendaEditor.reminderOneDay"),
+        2880 => L.T("agendaEditor.reminderTwoDays"),
         10080 => "1 SEMANA",
         _ => $"{minutes / 60} H"
     };
@@ -389,10 +390,10 @@ internal static class AgendaEditor
         if (draft.Title.Length == 0) return "";
         var day = DateOnly.FromDateTime(draft.Start);
         string when = allDay
-            ? $"{AgendaVisuals.LongDayLabel(day)} · TODO EL DÍA"
-            : $"{AgendaVisuals.LongDayLabel(day)} · {draft.Start:HH:mm} – {draft.EndOn(day):HH:mm}";
-        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToUpper(AgendaVisuals.Spanish);
-        string alerts = draft.Reminders.Count == 0 ? " · SIN AVISO" : " · " + draft.ReminderLabel(draft.Reminders[0]).ToUpper(AgendaVisuals.Spanish);
+            ? L.T("agendaEditor.previewAllDay", AgendaVisuals.LongDayLabel(day))
+            : L.T("agendaEditor.previewTime", AgendaVisuals.LongDayLabel(day), $"{draft.Start:HH:mm}", $"{draft.EndOn(day):HH:mm}");
+        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToUpper(Strings.Culture);
+        string alerts = draft.Reminders.Count == 0 ? L.T("agendaEditor.previewNoAlert") : " · " + draft.ReminderLabel(draft.Reminders[0]).ToUpper(Strings.Culture);
         return when + repeat + alerts;
     }
 
@@ -405,7 +406,7 @@ internal static class AgendaEditor
     }
 
     private static bool TryDate(string text, out DateOnly value) =>
-        DateOnly.TryParseExact(text.Trim(), DateFormats, AgendaVisuals.Spanish, DateTimeStyles.None, out value);
+        DateOnly.TryParseExact(text.Trim(), DateFormats, Strings.Culture, DateTimeStyles.None, out value);
 
     private static bool TryTime(string text, out TimeOnly value) =>
         TimeOnly.TryParseExact(text.Trim(), TimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out value);

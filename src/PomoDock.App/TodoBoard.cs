@@ -69,7 +69,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
         {
             Height = 32, Margin = new Thickness(0), Padding = new Thickness(9, 0, 9, 0), MinWidth = 0, FontSize = 12,
             TextWrapping = TextWrapping.NoWrap, VerticalContentAlignment = VerticalAlignment.Center,
-            ToolTip = "Escribe como hablas: «Pagar luz el viernes 18», «Ir por madera antes de 2pm», «Llamar a Ana mañana a las 5 avísame 30 min antes». ! o !! para la prioridad."
+            ToolTip = L.T("todo.hint")
         };
         input.SetValue(AutomationProperties.NameProperty, "Nueva tarea");
         ScrollViewer.SetHorizontalScrollBarVisibility(input, ScrollBarVisibility.Hidden);
@@ -78,9 +78,9 @@ internal sealed class TodoBoard : Grid, IReskinnable
             if (e.Key == Key.Enter) { Commit(); e.Handled = true; }
             else if (e.Key == Key.Escape) { input.Clear(); e.Handled = true; }
         };
-        var field = AgendaVisuals.WithHint(input, "Comprar café mañana !");
+        var field = AgendaVisuals.WithHint(input, L.T("todo.placeholder"));
         field.Margin = new Thickness(0, 0, 6, 0);
-        var add = new Button { Content = "+ AÑADIR", FontSize = 10, Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(0), Height = 32 };
+        var add = new Button { Content = L.T("common.add"), FontSize = 10, Padding = new Thickness(10, 6, 10, 6), Margin = new Thickness(0), Height = 32 };
         add.Click += (_, _) => Commit();
         Grid.SetColumn(add, 1);
         addRow.Children.Add(field); addRow.Children.Add(add);
@@ -151,12 +151,12 @@ internal sealed class TodoBoard : Grid, IReskinnable
         if (reading?.Draft is not { } draft) { hint.Visibility = Visibility.Collapsed; return; }
         var day = DateOnly.FromDateTime(draft.Start);
         string when = draft.AllDay ? AgendaVisuals.DayLabel(day) : $"{AgendaVisuals.DayLabel(day)} · {draft.Start:HH:mm}";
-        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToLower(AgendaVisuals.Spanish);
-        string alert = draft.Reminders.Count == 0 ? " · sin aviso"
-            : draft.AllDay ? $" · aviso a las {AgendaEvent.AllDayHour}:00"
-            : draft.Reminders[0] >= 60 && draft.Reminders[0] % 60 == 0 ? $" · aviso {draft.Reminders[0] / 60} h antes"
-            : $" · aviso {draft.Reminders[0]} min antes";
-        hint.Text = $"↵  {reading.Task.Title}  ·  {when}{repeat}{alert}  ·  también en el calendario";
+        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToLower(Strings.Culture);
+        string alert = draft.Reminders.Count == 0 ? L.T("todo.noAlert")
+            : draft.AllDay ? L.T("todo.alertAtHour", AgendaEvent.AllDayHour)
+            : draft.Reminders[0] >= 60 && draft.Reminders[0] % 60 == 0 ? L.T("todo.alertHoursBefore", draft.Reminders[0] / 60)
+            : L.T("todo.alertMinutesBefore", draft.Reminders[0]);
+        hint.Text = L.T("todo.preview", reading.Task.Title, when, repeat, alert);
         hint.Visibility = Visibility.Visible;
     }
 
@@ -173,7 +173,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
             SaveView();
         }
         if (task.Due is { } due)
-            owner.Status($"TAREA AÑADIDA · {task.Title} · {AgendaVisuals.DayLabel(due)}{(task.At is { } at ? $" {at:HH:mm}" : "")} · también en el calendario");
+            owner.Status(L.T("todo.added", task.Title, AgendaVisuals.DayLabel(due), task.At is { } at ? $" {at:HH:mm}" : ""));
         Render();
     }
 
@@ -223,7 +223,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
         if (counts.Open > 1)
         {
             var sort = new Button { Content = "⇅", FontSize = 12, Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(0, 0, 4, 0), ToolTip = "Ordenar por fecha y prioridad" };
-            sort.Click += (_, _) => { book.SortByUrgency(today); Save(); Render(); owner.Status("LISTA ORDENADA · Primero lo vencido, luego lo más cercano."); };
+            sort.Click += (_, _) => { book.SortByUrgency(today); Save(); Render(); owner.Status(L.T("todo.sorted")); };
             tools.Children.Add(sort);
         }
         if (counts.Done > 0)
@@ -248,10 +248,10 @@ internal sealed class TodoBoard : Grid, IReskinnable
     {
         Text = filter switch
         {
-            "done" => "Nada terminado todavía. Marca una tarea y aparecerá aquí.",
-            "today" => counts.Open > 0 ? "Nada con fecha para hoy. Ponle fecha a una tarea con el botón ◷." : "Nada para hoy.",
+            "done" => L.T("todo.emptyDone"),
+            "today" => counts.Open > 0 ? L.T("todo.emptyTodayOpen") : L.T("todo.emptyToday"),
             "open" => counts.Total > 0 ? "Todo hecho. Disfruta el hueco." : "Sin tareas. Escribe arriba la primera.",
-            _ => "SIN TAREAS · Añade la primera cosa que quieres sacar adelante."
+            _ => L.T("todo.emptyAll")
         },
         FontSize = 11,
         Foreground = AgendaVisuals.Resource("Muted"),
@@ -300,7 +300,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
             Margin = new Thickness(0, 5, 4, 5), BorderThickness = new Thickness(0), Background = Brushes.Transparent,
             Foreground = accent,
             Opacity = task.Priority == TodoPriority.None ? 0.22 : 1,
-            ToolTip = task.PriorityLabel() + " · pulsa para cambiar"
+            ToolTip = L.T("todo.priorityTip", task.PriorityLabel())
         };
         priority.SetValue(AutomationProperties.NameProperty, task.PriorityLabel());
         priority.Click += (_, _) => { task.Priority = task.NextPriority(); Save(); Render(); };
@@ -355,7 +355,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
             Background = overdue ? AgendaVisuals.Wash("red") : Brushes.Transparent,
             Foreground = overdue ? AgendaVisuals.Solid("red") : AgendaVisuals.Resource("Ink"),
             Opacity = due.Length > 0 ? 1 : 0.3,
-            ToolTip = due.Length > 0 ? $"Vence {task.Due:dd/MM/yyyy} · pulsa para cambiar" : "Sin fecha · pulsa para vencer hoy"
+            ToolTip = due.Length > 0 ? L.T("todo.dueTip", $"{task.Due:dd/MM/yyyy}") : L.T("todo.noDueTip")
         };
         date.SetValue(AutomationProperties.NameProperty, due.Length > 0 ? "Fecha: " + due : "Poner fecha");
         date.Click += (_, _) => { task.Due = task.NextDue(today); Save(); Render(); };
@@ -365,7 +365,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
         var more = new Button
         {
             Content = "⋯", Width = 22, Height = 26, FontSize = 13, Padding = new Thickness(0), Margin = new Thickness(0, 5, 4, 5),
-            BorderThickness = new Thickness(0), Background = Brushes.Transparent, ToolTip = "Más acciones"
+            BorderThickness = new Thickness(0), Background = Brushes.Transparent, ToolTip = L.T("todo.moreActions")
         };
         more.SetValue(AutomationProperties.NameProperty, "Acciones de la tarea");
         more.Click += (_, _) => Actions(task);
@@ -386,9 +386,9 @@ internal sealed class TodoBoard : Grid, IReskinnable
     private static string Tooltip(TodoTask task, DateOnly today)
     {
         var lines = new List<string> { task.Title, task.PriorityLabel() };
-        if (task.Due is { } due) lines.Add((task.IsOverdue(today) ? $"Venció el {due:dd/MM/yyyy}" : $"Vence el {due:dd/MM/yyyy}") + (task.At is { } at ? $" a las {at:HH:mm}" : ""));
-        if (task.EventId is not null) lines.Add("En el calendario · suena con sus avisos");
-        lines.Add(task.Done ? "Hecha · doble clic para renombrar" : "Doble clic para renombrar");
+        if (task.Due is { } due) lines.Add((task.IsOverdue(today) ? L.T("todo.overdueOn", $"{due:dd/MM/yyyy}") : L.T("todo.dueOn", $"{due:dd/MM/yyyy}")) + (task.At is { } at ? L.T("todo.atTime", $"{at:HH:mm}") : ""));
+        if (task.EventId is not null) lines.Add(L.T("todo.inCalendar"));
+        lines.Add(task.Done ? L.T("todo.doneRename") : L.T("todo.rename"));
         return string.Join("\n", lines);
     }
 
@@ -403,7 +403,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
                 Render();
                 return;
             case 1:
-                var typed = Dialogs.Prompt(owner, "FECHA DE LA TAREA", "Cuándo: «mañana a las 5», «el viernes 18», «25/12»…", task.Due?.ToString("dd/MM/yyyy") ?? "hoy");
+                var typed = Dialogs.Prompt(owner, L.T("todo.dateTitle"), L.T("todo.dateLabel"), task.Due?.ToString("dd/MM/yyyy") ?? L.T("todo.dateDefault"));
                 if (typed is null) return;
                 // The same reader as the entry line, so a date can be written the same way here.
                 if (AgendaQuickAdd.Read("tarea " + typed, DateTime.Now) is { Scheduled: true } when)
@@ -411,7 +411,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
                     task.Due = DateOnly.FromDateTime(when.Event.Start);
                     task.At = when.Event.AllDay ? null : TimeOnly.FromDateTime(when.Event.Start);
                 }
-                else { owner.Status("FECHA NO RECONOCIDA · Prueba «mañana», «el viernes 18» o «25/12 a las 9»."); return; }
+                else { owner.Status(L.T("todo.dateUnknown")); return; }
                 break;
             case 2:
                 task.Due = null;
@@ -422,7 +422,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
                 break;
             case 5:
                 book.Items.RemoveAll(item => item.Id == task.Id);
-                owner.Status($"TAREA ELIMINADA · {task.Title}");
+                owner.Status(L.T("todo.deleted", task.Title));
                 break;
             default:
                 return;

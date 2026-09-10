@@ -108,9 +108,9 @@ public sealed class Store : IDisposable
     /// </summary>
     public static BackupData ReadBackup(string path)
     {
-        var data = JsonSerializer.Deserialize<BackupData>(File.ReadAllText(path)) ?? throw new InvalidDataException("Archivo inválido");
+        var data = JsonSerializer.Deserialize<BackupData>(File.ReadAllText(path)) ?? throw new InvalidDataException(L.T("backup.badFile"));
         data.Sessions ??= [];
-        if (data.Version != 1 || data.Sessions.Any(s => s.PlannedSeconds <= 0 || s.Segments.Any(x => x.End < x.Start))) throw new InvalidDataException("Datos de sesión inválidos");
+        if (data.Version != 1 || data.Sessions.Any(s => s.PlannedSeconds <= 0 || s.Segments.Any(x => x.End < x.Start))) throw new InvalidDataException(L.T("backup.badSessions"));
         return data;
     }
 

@@ -37,51 +37,46 @@ public static class SoundLibrary
     /// <summary>The moments a click pack gives a voice to.</summary>
     public static readonly string[] ClickActions = ["start", "pause", "skip", "reset", "phase"];
 
-    public static readonly IReadOnlyList<SoundInfo> Catalog =
+    /// <summary>Which sound is which, in the order they are offered. Ids are stored; names are shown.</summary>
+    private static readonly (string Id, SoundKind Kind)[] Sounds =
     [
-        new("classic", SoundKind.Alarm, "Clásica", "Dos pitidos limpios: el aviso de siempre."),
-        new("bell", SoundKind.Alarm, "Campana", "Bronce que se apaga despacio."),
-        new("chime", SoundKind.Alarm, "Carillón", "Tres notas que suben, claras y amables."),
-        new("bowl", SoundKind.Alarm, "Cuenco tibetano", "Un tono grave que vibra y tarda en irse."),
-        new("marimba", SoundKind.Alarm, "Marimba", "Un arpegio de madera, alegre sin sobresaltar."),
-        new("harp", SoundKind.Alarm, "Arpa", "Cuerdas punteadas en cascada."),
-        new("gong", SoundKind.Alarm, "Gong", "Un golpe profundo para cerrar un bloque largo."),
-        new("digital", SoundKind.Alarm, "Despertador", "Pitidos digitales insistentes: imposible no oírlo."),
-        new("kitchen", SoundKind.Alarm, "Cocina", "El timbre metálico del temporizador de ruleta."),
-        new("birds", SoundKind.Alarm, "Pájaros", "Trinos cortos, como abrir una ventana."),
-        new("arcade", SoundKind.Alarm, "Arcade", "Un arpegio de 8 bits: nivel superado."),
-        new("pulse", SoundKind.Alarm, "Pulso suave", "Dos respiraciones graves, casi un susurro."),
+        ("classic", SoundKind.Alarm), ("bell", SoundKind.Alarm), ("chime", SoundKind.Alarm),
+        ("bowl", SoundKind.Alarm), ("marimba", SoundKind.Alarm), ("harp", SoundKind.Alarm),
+        ("gong", SoundKind.Alarm), ("digital", SoundKind.Alarm), ("kitchen", SoundKind.Alarm),
+        ("birds", SoundKind.Alarm), ("arcade", SoundKind.Alarm), ("pulse", SoundKind.Alarm),
 
-        new("white", SoundKind.Ambient, "Ruido blanco", "Siseo filtrado que tapa las voces de fondo."),
-        new("pink", SoundKind.Ambient, "Ruido rosa", "Más equilibrado que el blanco, menos agudo."),
-        new("brown", SoundKind.Ambient, "Ruido marrón", "Un rumor grave y cálido, como un avión lejano."),
-        new("rain", SoundKind.Ambient, "Lluvia", "Lluvia constante sobre el tejado."),
-        new("storm", SoundKind.Ambient, "Tormenta", "Lluvia intensa y truenos a lo lejos."),
-        new("waves", SoundKind.Ambient, "Olas", "El mar que va y viene, sin prisa."),
-        new("wind", SoundKind.Ambient, "Viento", "Rachas que suben y bajan."),
-        new("stream", SoundKind.Ambient, "Arroyo", "Agua corriendo entre piedras."),
-        new("fire", SoundKind.Ambient, "Chimenea", "El crepitar de la leña."),
-        new("fan", SoundKind.Ambient, "Ventilador", "Un zumbido constante que aísla."),
-        new("clock", SoundKind.Ambient, "Reloj", "Tic-tac de pared, un golpe por segundo."),
-        new("binaural", SoundKind.Ambient, "Binaural alfa", "Dos tonos a 10 Hz de distancia. Con auriculares."),
+        ("white", SoundKind.Ambient), ("pink", SoundKind.Ambient), ("brown", SoundKind.Ambient),
+        ("rain", SoundKind.Ambient), ("storm", SoundKind.Ambient), ("waves", SoundKind.Ambient),
+        ("wind", SoundKind.Ambient), ("stream", SoundKind.Ambient), ("fire", SoundKind.Ambient),
+        ("fan", SoundKind.Ambient), ("clock", SoundKind.Ambient), ("binaural", SoundKind.Ambient),
 
-        new("call-two-note", SoundKind.Reminder, "Dos notas", "El aviso de siempre del calendario."),
-        new("call-ding", SoundKind.Reminder, "Campanilla", "Un «ding» breve y limpio."),
-        new("call-glass", SoundKind.Reminder, "Cristal", "Un toque agudo que brilla."),
-        new("call-marimba", SoundKind.Reminder, "Marimba", "Dos notas de madera."),
-        new("call-bubbles", SoundKind.Reminder, "Burbujas", "Tres pops que suben."),
-        new("call-knock", SoundKind.Reminder, "Toc toc", "Alguien llama a la puerta."),
+        ("call-two-note", SoundKind.Reminder), ("call-ding", SoundKind.Reminder), ("call-glass", SoundKind.Reminder),
+        ("call-marimba", SoundKind.Reminder), ("call-bubbles", SoundKind.Reminder), ("call-knock", SoundKind.Reminder),
 
-        new("click-soft", SoundKind.Click, "Suave", "Tonos cortos y redondos."),
-        new("click-wood", SoundKind.Click, "Madera", "Golpes de bloque de madera."),
-        new("click-mech", SoundKind.Click, "Mecánico", "Como un teclado mecánico."),
-        new("click-retro", SoundKind.Click, "Retro", "Pitidos de consola de 8 bits."),
-        new("click-bubble", SoundKind.Click, "Burbuja", "Gotas que suben y bajan."),
-        new("click-glass", SoundKind.Click, "Cristal", "Tintineos pequeños y agudos.")
+        ("click-soft", SoundKind.Click), ("click-wood", SoundKind.Click), ("click-mech", SoundKind.Click),
+        ("click-retro", SoundKind.Click), ("click-bubble", SoundKind.Click), ("click-glass", SoundKind.Click)
     ];
 
+    /// <summary>
+    /// The library as the panel shows it. It is resolved on every read rather than cached in a
+    /// field, so switching language renames the sounds without restarting; the ids never move.
+    /// </summary>
+    public static IReadOnlyList<SoundInfo> Catalog =>
+        [.. Sounds.Select(sound => new SoundInfo(sound.Id, sound.Kind, L.T("sound." + sound.Id), L.T("sound." + sound.Id + "Detail")))];
+
     public static IEnumerable<SoundInfo> OfKind(SoundKind kind) => Catalog.Where(sound => sound.Kind == kind);
-    public static SoundInfo? Find(string? id) => Catalog.FirstOrDefault(sound => string.Equals(sound.Id, id, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Looks a sound up by its id. It walks the id table rather than the catalog, so the hot path
+    /// that plays a sound never builds thirty-six translated records to read one <c>Kind</c>.
+    /// </summary>
+    public static SoundInfo? Find(string? id)
+    {
+        foreach (var sound in Sounds)
+            if (string.Equals(sound.Id, id, StringComparison.Ordinal))
+                return new SoundInfo(sound.Id, sound.Kind, L.T("sound." + sound.Id), L.T("sound." + sound.Id + "Detail"));
+        return null;
+    }
 
     public static string Default(SoundKind kind) => kind switch
     {

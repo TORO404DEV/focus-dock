@@ -129,7 +129,7 @@ public partial class MainWindow
         SaveState();
         if (!CanCreateWorkspacePage(1))
         {
-            Status("LA ÚLTIMA PÁGINA YA ESTÁ VACÍA · AÑÁDELE UN WIDGET PARA CREAR OTRA.");
+            Status(L.T("pages.lastAlreadyEmpty"));
             Pulse(PageDockSurface);
             return false;
         }
@@ -141,7 +141,7 @@ public partial class MainWindow
     {
         if (CurrentTimerWidget is not null)
         {
-            Status("ESTA PÁGINA YA TIENE UN TEMPORIZADOR.");
+            Status(L.T("pages.timerAlreadyHere"));
             return;
         }
         CurrentPage.TimerWidget = new WidgetConfig { Kind = "timer", Title = "POMODORO" };
@@ -168,6 +168,99 @@ public partial class MainWindow
         CurrentPage.TimerPositionCustomized = false;
         TimerFrame.Visibility = Visibility.Collapsed;
         ArrangeCards();
+        UpdatePageNavigation();
+        SaveState();
+    }
+
+    /// <summary>
+    /// Right-click on a page dot. Confirms first — deleting a page throws its widgets away for
+    /// good, unlike closing one, which keeps every note in its history — then deletes it whether
+    /// it holds anything or not.
+    /// </summary>
+    private void DeleteWorkspacePageClick(int index)
+    {
+        if (IsWorkspaceNavigationBlocked)
+        {
+            CancelNavigationForOpenWindow((Win32.GetAsyncKeyState(0x01) & 0x8000) != 0);
+            return;
+        }
+        if (pageTransitioning || index < 0 || index >= Settings.WorkspacePages.Count) return;
+        if (Settings.WorkspacePages.Count <= 1)
+        {
+            Status(L.T("pages.cannotDeleteOnly"));
+            Pulse(PageDockSurface);
+            return;
+        }
+        var page = Settings.WorkspacePages[index];
+        int count = page.WidgetCount;
+        string suffix = count == 0 ? "" : count == 1 ? L.T("pages.deleteSuffixOne") : L.T("pages.deleteSuffixMany", count);
+        if (Dialogs.Choose(this, L.T("pages.deleteTitle", page.Name.ToUpperInvariant(), suffix), [L.T("pages.deleteConfirm"), L.T("common.cancel")]) != 0) return;
+        DeleteWorkspacePage(index);
+    }
+
+    /// <summary>
+    /// Removes a page outright, live cards and all. A page never seen this session has no cards
+    /// to release, only the configs it was saved with; a note among them still gets archived, the
+    /// same courtesy closing a single note card gives it.
+    /// </summary>
+    private void DeleteWorkspacePage(int index)
+    {
+        var page = Settings.WorkspacePages[index];
+        bool removingCurrent = index == currentPageIndex;
+        SaveState();
+
+        if (pageCards.Remove(page.Id, out var pageWidgetCards))
+        {
+            foreach (var card in pageWidgetCards)
+            {
+                if (card.Config.Kind == "notes") NoteArchiveStore.For(Store).Close(card.Config);
+                HideInteractionOverlay(card); HideOverlay(card);
+                card.Release();
+                WidgetArea.Children.Remove(card);
+                PagePreviewArea.Children.Remove(card);
+            }
+        }
+        else
+        {
+            foreach (var config in page.Widgets.Where(widget => widget.Kind == "notes"))
+                NoteArchiveStore.For(Store).Close(config);
+        }
+
+        if (removingCurrent)
+        {
+            CancelTimerGesture();
+            HideTimerOverlay();
+            TimerFrame.Visibility = Visibility.Collapsed;
+            cards = [];
+        }
+
+        Settings.WorkspacePages.RemoveAt(index);
+
+        if (removingCurrent)
+        {
+            currentPageIndex = Math.Min(index, Settings.WorkspacePages.Count - 1);
+            if (!pageCards.TryGetValue(CurrentPage.Id, out var nextCards))
+            {
+                pageTransitioning = true;
+                cards = [];
+                foreach (var config in CurrentPage.Widgets) AddCard(config, false);
+                pageTransitioning = false;
+                pageCards[CurrentPage.Id] = cards;
+            }
+            else cards = nextCards;
+            foreach (var card in cards)
+            {
+                if (!WidgetArea.Children.Contains(card)) WidgetArea.Children.Add(card);
+                card.SetCarouselTransition(false);
+                card.Visibility = Visibility.Visible;
+            }
+            if (!WidgetArea.Children.Contains(TimerFrame)) WidgetArea.Children.Add(TimerFrame);
+            ArrangeCards();
+            foreach (var card in cards) ShowInteractionOverlay(card);
+        }
+        else if (index < currentPageIndex) currentPageIndex--;
+
+        Settings.ActiveWorkspacePage = currentPageIndex;
         UpdatePageNavigation();
         SaveState();
     }
@@ -280,7 +373,7 @@ public partial class MainWindow
         PagePreviewArea.Visibility = Visibility.Visible;
         if (page is null)
         {
-            AddPreviewPlaceholder("PÁGINA NUEVA");
+            AddPreviewPlaceholder(L.T("pages.newPage"));
             return;
         }
         foreach (var card in CardsForPage(page))
@@ -302,7 +395,7 @@ public partial class MainWindow
             if (CurrentTimerWidget is null) LendTimerToPreview(timer, page.TimerPositionCustomized);
             else AddPreviewCard(timer, true);
         }
-        if (page.Widgets.Count == 0 && page.TimerWidget is null) AddPreviewPlaceholder("PÁGINA VACÍA");
+        if (page.Widgets.Count == 0 && page.TimerWidget is null) AddPreviewPlaceholder(L.T("pages.emptyTitle"));
     }
 
     /// <summary>The widgets of a page, built once and kept for as long as the page exists.</summary>
@@ -398,7 +491,7 @@ public partial class MainWindow
         var header = new Border { Background = (Brush)Application.Current.Resources["Chrome"] };
         header.Child = new TextBlock
         {
-            Text = timer ? "POMODORO" : $"{config.Kind.ToUpperInvariant()} / {config.Title}",
+            Text = timer ? L.T("timer.pomodoro") : $"{config.Kind.ToUpperInvariant()} / {config.Title}",
             Foreground = (Brush)Application.Current.Resources["ChromeInk"], FontSize = 9, FontWeight = FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0), TextTrimming = TextTrimming.CharacterEllipsis
         };
@@ -406,7 +499,7 @@ public partial class MainWindow
         var body = new Grid { Background = timer ? PhaseBrush() : (Brush)Application.Current.Resources["Surface"] };
         body.Children.Add(new TextBlock
         {
-            Text = timer ? ClockText.Text : config.Kind == "window" ? "APP ABIERTA" : config.Title.ToUpperInvariant(),
+            Text = timer ? ClockText.Text : config.Kind == "window" ? L.T("pages.appOpen") : config.Title.ToUpperInvariant(),
             FontFamily = timer ? new FontFamily("Consolas") : new FontFamily("Segoe UI"),
             FontSize = timer ? 54 : 16, FontWeight = FontWeights.Bold, Opacity = .45,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
@@ -639,10 +732,11 @@ public partial class MainWindow
                 Background = active ? (Brush)Application.Current.Resources["Accent"] : Brushes.Transparent,
                 Foreground = active ? (Brush)Application.Current.Resources["AccentInk"] : (Brush)Application.Current.Resources["ChromeInk"],
                 BorderThickness = new Thickness(0),
-                ToolTip = $"Página {i + 1:00} · {page.WidgetCount} {(page.WidgetCount == 1 ? "widget" : "widgets")}",
+                ToolTip = L.T("pages.pageTipDelete", (i + 1).ToString("00", System.Globalization.CultureInfo.InvariantCulture), page.WidgetCount, page.WidgetCount == 1 ? L.T("pages.widgetOne") : L.T("pages.widgetMany")),
             };
-            AutomationProperties.SetName(button, $"Abrir página {i + 1}");
+            AutomationProperties.SetName(button, L.T("pages.openPage", i + 1));
             button.Click += (_, _) => SwitchWorkspacePage(index);
+            button.MouseRightButtonUp += (_, e) => { DeleteWorkspacePageClick(index); e.Handled = true; };
             PageButtonStrip.Children.Add(button);
         }
         bool leftOpen = CanCreateWorkspacePage(-1), rightOpen = CanCreateWorkspacePage(1);
@@ -650,9 +744,9 @@ public partial class MainWindow
         PreviousPageButton.IsEnabled = hasPrevious || leftOpen;
         NextPageButton.IsEnabled = hasNext || rightOpen;
         AddPageButton.IsEnabled = rightOpen;
-        PreviousPageButton.ToolTip = hasPrevious ? "Página anterior · desliza hacia la derecha" : leftOpen ? "Crear página a la izquierda" : "Añade un widget a esta página para crear otra a la izquierda";
-        NextPageButton.ToolTip = hasNext ? "Página siguiente · desliza hacia la izquierda" : rightOpen ? "Crear página a la derecha" : "Añade un widget a esta página para crear otra a la derecha";
-        AddPageButton.ToolTip = rightOpen ? "Añadir una página vacía a la derecha" : "La última página ya está vacía · úsala o añádele un widget";
+        PreviousPageButton.ToolTip = hasPrevious ? L.T("pages.previous") : leftOpen ? L.T("pages.createLeft") : L.T("pages.needWidgetLeft");
+        NextPageButton.ToolTip = hasNext ? L.T("pages.next") : rightOpen ? L.T("pages.createRight") : L.T("pages.needWidgetRight");
+        AddPageButton.ToolTip = rightOpen ? L.T("pages.addRight") : L.T("pages.lastEmptyTip");
         ToolTipService.SetShowOnDisabled(AddPageButton, true);
         ToolTipService.SetShowOnDisabled(PreviousPageButton, true);
         ToolTipService.SetShowOnDisabled(NextPageButton, true);
@@ -662,10 +756,10 @@ public partial class MainWindow
     private void UpdatePageMeta()
     {
         if (!workspacePagesLoaded) return;
-        PageMetaText.Text = $"PÁGINA {currentPageIndex + 1:00} / {Settings.WorkspacePages.Count:00}";
+        PageMetaText.Text = L.T("pages.meta", (currentPageIndex + 1).ToString("00", System.Globalization.CultureInfo.InvariantCulture), Settings.WorkspacePages.Count.ToString("00", System.Globalization.CultureInfo.InvariantCulture));
         PageDockSurface.ToolTip = CurrentPage.HasContent
-            ? $"Página {currentPageIndex + 1} de {Settings.WorkspacePages.Count} · {CurrentPage.WidgetCount} widgets · arrastra el canvas para navegar"
-            : "Página vacía · añade un widget o desliza para volver";
+            ? L.T("pages.metaDetail", currentPageIndex + 1, Settings.WorkspacePages.Count, CurrentPage.WidgetCount)
+            : L.T("pages.metaEmpty");
     }
 
     internal int WorkspacePageCount => Settings.WorkspacePages.Count;

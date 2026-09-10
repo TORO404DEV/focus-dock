@@ -137,17 +137,17 @@ internal sealed class NotesEditor : Grid
     private Border BuildToolbar()
     {
         var tools = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
-        tools.Children.Add(CommandButton("B", "Negrita · Ctrl+B", EditingCommands.ToggleBold, FontWeights.Black));
-        tools.Children.Add(CommandButton("I", "Cursiva · Ctrl+I", EditingCommands.ToggleItalic, fontStyle: FontStyles.Italic));
-        tools.Children.Add(Decorated(CommandButton("U", "Subrayado · Ctrl+U", EditingCommands.ToggleUnderline), TextDecorations.Underline));
-        tools.Children.Add(Decorated(ActionButton("S", "Tachado · Ctrl+Shift+X", ToggleStrikethrough), TextDecorations.Strikethrough));
-        tools.Children.Add(ActionButton("☐", "Casilla de checklist · Ctrl+Shift+C", ToggleChecklist));
-        tools.Children.Add(CommandButton("•", "Lista con viñetas", EditingCommands.ToggleBullets));
+        tools.Children.Add(CommandButton("B", L.T("notes.bold"), EditingCommands.ToggleBold, FontWeights.Black));
+        tools.Children.Add(CommandButton("I", L.T("notes.italic"), EditingCommands.ToggleItalic, fontStyle: FontStyles.Italic));
+        tools.Children.Add(Decorated(CommandButton("U", L.T("notes.underline"), EditingCommands.ToggleUnderline), TextDecorations.Underline));
+        tools.Children.Add(Decorated(ActionButton("S", L.T("notes.strike"), ToggleStrikethrough), TextDecorations.Strikethrough));
+        tools.Children.Add(ActionButton("☐", L.T("notes.checkbox"), ToggleChecklist));
+        tools.Children.Add(CommandButton("•", L.T("notes.bullets"), EditingCommands.ToggleBullets));
         tools.Children.Add(CommandButton("1.", "Lista numerada", EditingCommands.ToggleNumbering));
         tools.Children.Add(ActionButton("Aa", "Quitar formato", () => editor.Selection.ClearAllProperties(), 32));
         tools.Children.Add(ActionButton("＋", "Insertar fecha y hora", InsertTimestamp));
-        tools.Children.Add(CommandButton("↶", "Deshacer · Ctrl+Z", ApplicationCommands.Undo));
-        tools.Children.Add(CommandButton("↷", "Rehacer · Ctrl+Y", ApplicationCommands.Redo));
+        tools.Children.Add(CommandButton("↶", L.T("notes.undo"), ApplicationCommands.Undo));
+        tools.Children.Add(CommandButton("↷", L.T("notes.redo"), ApplicationCommands.Redo));
         return new Border
         {
             BorderBrush = (Brush)Application.Current.Resources["Line"],
@@ -248,7 +248,7 @@ internal sealed class NotesEditor : Grid
 
     private void InsertTimestamp()
     {
-        editor.CaretPosition.InsertTextInRun(DateTime.Now.ToString("dd MMM yyyy · HH:mm"));
+        editor.CaretPosition.InsertTextInRun(DateTime.Now.ToString(L.T("notes.stampFormat"), Strings.Culture));
         QueueSave();
     }
 
@@ -624,7 +624,7 @@ internal sealed class NotesEditor : Grid
     {
         var text = new TextRange(editor.Document.ContentStart, editor.Document.ContentEnd).Text.TrimEnd('\r', '\n');
         var words = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-        status.Text = $"{words:00} PAL · {text.Length:000} CAR · {state}";
+        status.Text = L.T("notes.status", words.ToString("00", System.Globalization.CultureInfo.InvariantCulture), text.Length.ToString("000", System.Globalization.CultureInfo.InvariantCulture), state);
     }
 
     private static NotesWidgetData ReadData(string value, out string? legacyText)

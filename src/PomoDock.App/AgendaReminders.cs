@@ -72,13 +72,13 @@ internal sealed class AgendaReminders
     {
         agenda.Book.Snoozed[cue.Key] = DateTime.Now.AddMinutes(minutes);
         agenda.Track();
-        owner?.Status($"RECORDATORIO POSPUESTO · {cue.Event.Title} vuelve en {minutes} min.");
+        owner?.Status(L.T("agenda.snoozed", cue.Event.Title, minutes));
     }
 
     private void Complete(ReminderCue cue)
     {
         cue.Event.SetDone(cue.Series, true);
         agenda.Save();
-        owner?.Status($"HECHO · {cue.Event.Title}");
+        owner?.Status(L.T("agenda.markedDone", cue.Event.Title));
     }
 }

@@ -35,7 +35,7 @@ internal static class NotesHistory
         intro.Children.Add(Dialogs.Heading("TUS NOTAS"));
         intro.Children.Add(new TextBlock
         {
-            Text = "Todo lo que escribiste, también en las notas que cerraste. Reabre una en esta página o copia su texto.",
+            Text = L.T("notes.historyHelp"),
             FontSize = 11, Foreground = Resource("Muted"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, -8, 0, 12)
         });
         root.Children.Add(intro);
@@ -69,7 +69,7 @@ internal static class NotesHistory
         footer.ColumnDefinitions.Add(new ColumnDefinition());
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var actions = new WrapPanel();
-        var reopen = new Button { Content = "REABRIR AQUÍ", FontSize = 11, Padding = new Thickness(12, 8, 12, 8), Background = Resource("Ink"), Foreground = Resource("Paper"), ToolTip = "Poner la nota cerrada de nuevo en esta página" };
+        var reopen = new Button { Content = L.T("notes.reopenHere"), FontSize = 11, Padding = new Thickness(12, 8, 12, 8), Background = Resource("Ink"), Foreground = Resource("Paper"), ToolTip = L.T("notes.reopenTip") };
         var copy = new Button { Content = "COPIAR TEXTO", FontSize = 11, Padding = new Thickness(12, 8, 12, 8) };
         var forget = new Button { Content = "ELIMINAR", FontSize = 11, Padding = new Thickness(12, 8, 12, 8), ToolTip = "Borrar la nota cerrada del historial para siempre" };
         actions.Children.Add(reopen); actions.Children.Add(copy); actions.Children.Add(forget);
@@ -99,9 +99,9 @@ internal static class NotesHistory
                 if (note.Id == keep) list.SelectedItem = row;
             }
             if (notes.Count == 0)
-                status.Text = search.Text.Trim().Length > 0 ? "Ninguna nota contiene eso." : "Todavía no hay notas en el historial.";
+                status.Text = search.Text.Trim().Length > 0 ? L.T("notes.noMatch") : L.T("notes.historyEmpty");
             else
-                status.Text = $"{notes.Count(note => note.IsOpen):00} EN PÁGINAS · {notes.Count(note => !note.IsOpen):00} CERRADAS";
+                status.Text = L.T("notes.historyCount", notes.Count(note => note.IsOpen).ToString("00", System.Globalization.CultureInfo.InvariantCulture), notes.Count(note => !note.IsOpen).ToString("00", System.Globalization.CultureInfo.InvariantCulture));
             if (list.SelectedItem is null && list.Items.Count > 0) list.SelectedIndex = 0;
             UpdateActions();
         }
@@ -130,7 +130,7 @@ internal static class NotesHistory
         {
             if (Selected() is not { } note) return;
             try { Clipboard.SetText(note.Text); status.Text = "TEXTO COPIADO AL PORTAPAPELES."; }
-            catch (Exception) { status.Text = "El portapapeles está ocupado por otra aplicación. Inténtalo de nuevo."; }
+            catch (Exception) { status.Text = L.T("notes.clipboardBusy"); }
         };
         forget.Click += (_, _) =>
         {
@@ -153,7 +153,7 @@ internal static class NotesHistory
     {
         if (note.IsOpen || owner.Settings.WorkspacePages.SelectMany(page => page.Widgets).Any(widget => widget.Id == note.Id)) return null;
         var card = owner.AddCard(new WidgetConfig { Id = note.Id, Kind = "notes", Title = "NOTAS", Value = note.Payload }, true);
-        owner.Status($"NOTA REABIERTA · {note.Title}");
+        owner.Status(L.T("notes.reopened", note.Title));
         return card;
     }
 
@@ -184,13 +184,13 @@ internal static class NotesHistory
         if (note.Body.Length > 0)
             text.Children.Add(new TextBlock { Text = note.Body, FontSize = 11, Foreground = Resource("Muted"), TextWrapping = TextWrapping.Wrap, MaxHeight = 32, TextTrimming = TextTrimming.WordEllipsis, Margin = new Thickness(0, 2, 0, 0) });
 
-        string when = (note.ClosedUtc ?? note.UpdatedUtc).ToLocalTime().ToString("dd MMM · HH:mm", AgendaVisuals.Spanish).ToUpper(AgendaVisuals.Spanish).Replace(".", "");
+        string when = (note.ClosedUtc ?? note.UpdatedUtc).ToLocalTime().ToString(L.T("notes.editedFormat"), Strings.Culture).ToUpper(Strings.Culture).Replace(".", "");
         string where = note.IsOpen
-            ? (isCurrent ? "ESTA NOTA" : page is null ? "EN UNA PÁGINA" : $"EN {page}") + $"  ·  EDITADA {when}"
+            ? (isCurrent ? L.T("notes.thisNote") : page is null ? L.T("notes.onSomePage") : L.T("notes.onPage", page)) + L.T("notes.editedAt", when)
             : $"CERRADA {when}";
         text.Children.Add(new TextBlock
         {
-            Text = $"{where}  ·  {note.Words} PALABRA{(note.Words == 1 ? "" : "S")}",
+            Text = L.T("notes.wordCount", where, note.Words == 1 ? L.T("notes.wordOne") : L.T("notes.wordMany", note.Words)),
             FontFamily = new FontFamily("Consolas"), FontSize = 9, FontWeight = FontWeights.Bold,
             Foreground = note.IsOpen ? Resource("Ink") : Resource("Muted"), Margin = new Thickness(0, 5, 0, 0)
         });

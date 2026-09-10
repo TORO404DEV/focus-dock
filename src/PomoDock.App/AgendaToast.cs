@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -107,7 +108,7 @@ internal sealed class AgendaToast : Window
         string lead = item.AllDay ? AgendaVisuals.DayLabel(cue.Series) : AgendaVisuals.Countdown(cue.Start, now);
         header.Children.Add(new TextBlock
         {
-            Text = $"RECORDATORIO · {lead}",
+            Text = L.T("agenda.reminderLead", lead),
             FontFamily = new FontFamily("Consolas"),
             FontSize = 10,
             FontWeight = FontWeights.Bold,
@@ -122,7 +123,7 @@ internal sealed class AgendaToast : Window
             Margin = new Thickness(0),
             BorderThickness = new Thickness(0),
             Background = Brushes.Transparent,
-            ToolTip = "Descartar"
+            ToolTip = L.T("agenda.dismiss")
         };
         close.Click += (_, _) => Leave();
         Grid.SetColumn(close, 1);
@@ -140,8 +141,8 @@ internal sealed class AgendaToast : Window
         });
 
         string when = item.AllDay
-            ? $"{AgendaVisuals.LongDayLabel(cue.Series)} · TODO EL DÍA"
-            : $"{AgendaVisuals.DayLabel(cue.Series)} · {cue.Start:HH:mm} – {item.EndOn(cue.Series):HH:mm}";
+            ? L.T("agenda.toastAllDay", AgendaVisuals.LongDayLabel(cue.Series))
+            : L.T("agenda.toastTime", AgendaVisuals.DayLabel(cue.Series), cue.Start.ToString("HH:mm", CultureInfo.InvariantCulture), item.EndOn(cue.Series).ToString("HH:mm", CultureInfo.InvariantCulture));
         stack.Children.Add(new TextBlock { Text = when, FontFamily = new FontFamily("Consolas"), FontSize = 11, FontWeight = FontWeights.Bold });
 
         if (item.Location.Length > 0)
@@ -150,12 +151,12 @@ internal sealed class AgendaToast : Window
             stack.Children.Add(new TextBlock { Text = item.Notes, FontSize = 11, Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(0, 5, 0, 0), TextWrapping = TextWrapping.Wrap, MaxHeight = 48 });
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
-        var done = new Button { Content = "✓  LISTO", FontSize = 11, Padding = new Thickness(12, 7, 12, 7), Background = AgendaVisuals.Resource("Ink"), Foreground = AgendaVisuals.Resource("Paper") };
+        var done = new Button { Content = L.T("agenda.toastDone"), FontSize = 11, Padding = new Thickness(12, 7, 12, 7), Background = AgendaVisuals.Resource("Ink"), Foreground = AgendaVisuals.Resource("Paper") };
         done.Click += (_, _) => { complete(cue); Leave(); };
         actions.Children.Add(done);
         foreach (int minutes in new[] { 5, 15 })
         {
-            var later = new Button { Content = $"+{minutes} MIN", FontSize = 11, Padding = new Thickness(11, 7, 11, 7), ToolTip = $"Volver a avisar en {minutes} minutos" };
+            var later = new Button { Content = L.T("agenda.snoozeButton", minutes), FontSize = 11, Padding = new Thickness(11, 7, 11, 7), ToolTip = L.T("agenda.snoozeTip", minutes) };
             later.Click += (_, _) => { snooze(cue, minutes); Leave(); };
             actions.Children.Add(later);
         }

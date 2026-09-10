@@ -13,7 +13,12 @@ namespace PomoDock.App;
 /// </summary>
 internal static class FocusCard
 {
-    private static readonly string[] DayLetters = ["L", "M", "X", "J", "V", "S", "D"];
+    /// <summary>The weekday initials come from the language, so they are not always L M X J V S D.</summary>
+    private static string[] DayLetters =>
+    [
+        L.T("weekday.short.monday"), L.T("weekday.short.tuesday"), L.T("weekday.short.wednesday"),
+        L.T("weekday.short.thursday"), L.T("weekday.short.friday"), L.T("weekday.short.saturday"), L.T("weekday.short.sunday")
+    ];
 
     /// <summary>Height controls which sections fit; width controls their density and scale.</summary>
     public static int LayoutKey(double width, double height)
@@ -62,12 +67,12 @@ internal static class FocusCard
         var headline = new Grid();
         headline.ColumnDefinitions.Add(new ColumnDefinition());
         headline.ColumnDefinitions.Add(new ColumnDefinition());
-        var todayTile = MetricTile(Hours(minutes), "HORAS HOY", MetricIcon.Clock, metricSize, labelSize, iconSize, false);
+        var todayTile = MetricTile(Hours(minutes), L.T("focus.hoursToday"), MetricIcon.Clock, metricSize, labelSize, iconSize, false);
         todayTile.Margin = new Thickness(0, 0, 4, 0);
         headline.Children.Add(todayTile);
-        var streakTile = MetricTile(streak.ToString(CultureInfo.InvariantCulture), streak == 1 ? "DÍA DE RACHA" : "DÍAS DE RACHA", MetricIcon.Flame, metricSize, labelSize, iconSize, true);
+        var streakTile = MetricTile(streak.ToString(CultureInfo.InvariantCulture), streak == 1 ? L.T("focus.streakDay") : L.T("focus.streakDays"), MetricIcon.Flame, metricSize, labelSize, iconSize, true);
         streakTile.Margin = new Thickness(4, 0, 0, 0);
-        streakTile.ToolTip = streak == 0 ? "Enfócate hoy para encender tu racha" : $"{streak} días seguidos con al menos un minuto de enfoque";
+        streakTile.ToolTip = streak == 0 ? L.T("focus.streakEmpty") : L.T("focus.streakTip", streak);
         Grid.SetColumn(streakTile, 1);
         headline.Children.Add(streakTile);
         root.Children.Add(headline);
@@ -77,8 +82,8 @@ internal static class FocusCard
         progress.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         progress.Children.Add(Meter(minutes / goal, height >= 205 ? 11 : 8));
         var caption = Text(minutes >= goal
-            ? $"META CUMPLIDA  ·  {Hours(minutes - goal)} EXTRA"
-            : $"FALTAN {Hours(goal - minutes)} PARA TU META DE {Hours(goal)}", Math.Clamp(labelSize - 1, 10, 12.5), "Muted", FontWeights.Bold);
+            ? L.T("focus.goalMet", Hours(minutes - goal))
+            : L.T("focus.goalLeft", Hours(goal - minutes), Hours(goal)), Math.Clamp(labelSize - 1, 10, 12.5), "Muted", FontWeights.Bold);
         caption.Margin = new Thickness(1, 6, 0, 0);
         caption.TextTrimming = TextTrimming.CharacterEllipsis;
         Grid.SetRow(caption, 1);
@@ -99,12 +104,12 @@ internal static class FocusCard
             var line = new Grid { Margin = new Thickness(0, 9, 0, 0) };
             line.ColumnDefinitions.Add(new ColumnDefinition());
             line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var total = Text($"ESTA SEMANA  {Hours(weekTotal)}", Math.Clamp(labelSize - .5, 10, 12.5), "Muted", FontWeights.Bold);
+            var total = Text(L.T("focus.week", Hours(weekTotal)), Math.Clamp(labelSize - .5, 10, 12.5), "Muted", FontWeights.Bold);
             total.FontFamily = Mono;
             line.Children.Add(total);
-            var average = Text(counted == 0 ? "SIN DÍAS AÚN" : $"MEDIA  {Hours(weekTotal / counted)}", Math.Clamp(labelSize - .5, 10, 12.5), "Muted");
+            var average = Text(counted == 0 ? L.T("focus.noDays") : L.T("focus.average", Hours(weekTotal / counted)), Math.Clamp(labelSize - .5, 10, 12.5), "Muted");
             average.FontFamily = Mono;
-            average.ToolTip = "Media de los días de esta semana con enfoque";
+            average.ToolTip = L.T("focus.averageTip");
             Grid.SetColumn(average, 1);
             line.Children.Add(average);
             Grid.SetRow(line, 3);
@@ -121,10 +126,10 @@ internal static class FocusCard
         var line = new Grid { VerticalAlignment = VerticalAlignment.Center };
         line.ColumnDefinitions.Add(new ColumnDefinition());
         line.ColumnDefinitions.Add(new ColumnDefinition());
-        var today = MetricTile(Hours(minutes), "HOY", MetricIcon.Clock, font, 10.5, icon, false, true);
+        var today = MetricTile(Hours(minutes), L.T("focus.today"), MetricIcon.Clock, font, 10.5, icon, false, true);
         today.Margin = new Thickness(0, 0, 3, 0);
         line.Children.Add(today);
-        var run = MetricTile(streak.ToString(CultureInfo.InvariantCulture), "RACHA", MetricIcon.Flame, font, 10.5, icon, true, true);
+        var run = MetricTile(streak.ToString(CultureInfo.InvariantCulture), L.T("focus.streak"), MetricIcon.Flame, font, 10.5, icon, true, true);
         run.Margin = new Thickness(3, 0, 0, 0);
         Grid.SetColumn(run, 1);
         line.Children.Add(run);
@@ -260,7 +265,9 @@ internal static class FocusCard
                 column.Children.Add(proportion);
             }
             if (day > today) column.Opacity = .35;
-            column.ToolTip = day > today ? $"{DayLetters[i]} {day:dd/MM} · aún no llega" : $"{DayLetters[i]} {day:dd/MM} · {Hours(value)} de enfoque";
+            column.ToolTip = day > today
+                ? L.T("focus.dayFuture", DayLetters[i], day.ToString("dd/MM", CultureInfo.InvariantCulture))
+                : L.T("focus.dayFocus", DayLetters[i], day.ToString("dd/MM", CultureInfo.InvariantCulture), Hours(value));
             Grid.SetColumn(column, i);
             chart.Children.Add(column);
 

@@ -18,7 +18,13 @@ public sealed class ReportWindow : Window
     private enum PeriodMode { Week, Month, Year }
 
     private static readonly string[] MonthLabels = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
-    private static readonly string[] DayLabels = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"];
+    /// <summary>Sunday first, matching <see cref="DayOfWeek"/>, and named by the chosen language.</summary>
+    private static string[] DayLabels =>
+    [
+        L.T("report.dayShort.sunday"), L.T("report.dayShort.monday"), L.T("report.dayShort.tuesday"),
+        L.T("report.dayShort.wednesday"), L.T("report.dayShort.thursday"), L.T("report.dayShort.friday"),
+        L.T("report.dayShort.saturday")
+    ];
     private static readonly Color[] SeriesPalette =
     [
         Color.FromRgb(232, 93, 93), Color.FromRgb(242, 184, 75), Color.FromRgb(101, 196, 102),
@@ -73,9 +79,9 @@ public sealed class ReportWindow : Window
         title.Children.Add(new TextBlock { Text = "LO QUE MIDES, LO PUEDES MEJORAR.", FontFamily = Mono(), FontSize = 9, Foreground = Resource("Muted") });
         titleRow.Children.Add(title);
         var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        actions.Children.Add(ActionButton("⇩ IMPORTAR", Import, "Importar historial de Pomofocus o PomoDock"));
+        actions.Children.Add(ActionButton(L.T("report.import"), Import, L.T("report.importTip")));
         actions.Children.Add(ActionButton("⇧ CSV", ExportCsv, "Exportar el periodo visible"));
-        actions.Children.Add(ActionButton("□ BACKUP", ExportJson, "Crear respaldo: ajustes, sesiones, hábitos, agenda e historial de notas"));
+        actions.Children.Add(ActionButton(L.T("report.backup"), ExportJson, L.T("report.backupTip")));
         Grid.SetColumn(actions, 1);
         titleRow.Children.Add(actions);
         top.Children.Add(titleRow);
@@ -92,7 +98,7 @@ public sealed class ReportWindow : Window
         var periods = new UniformGrid { Columns = 3, Width = 240 };
         weekTab = NavButton("SEMANA", () => ChangePeriod(PeriodMode.Week));
         monthTab = NavButton("MES", () => ChangePeriod(PeriodMode.Month));
-        yearTab = NavButton("AÑO", () => ChangePeriod(PeriodMode.Year));
+        yearTab = NavButton(L.T("report.year"), () => ChangePeriod(PeriodMode.Year));
         periods.Children.Add(weekTab);
         periods.Children.Add(monthTab);
         periods.Children.Add(yearTab);
@@ -115,7 +121,7 @@ public sealed class ReportWindow : Window
 
     internal FrameworkElement TakeModalContent(Action close, double width, double height)
     {
-        if (Content is not FrameworkElement shell) throw new InvalidOperationException("El reporte ya está abierto.");
+        if (Content is not FrameworkElement shell) throw new InvalidOperationException(L.T("report.alreadyOpen"));
         Content = null;
         var frame = new Border
         {
@@ -186,11 +192,11 @@ public sealed class ReportWindow : Window
         var accessDays = Reports.AccessDays(sessions, TimeZoneInfo.Local);
         var summary = new UniformGrid { Columns = 3, Margin = new Thickness(0, 0, 0, 20) };
         summary.Children.Add(Stat("◷", FormatHoursCompact(totalMinutes), "HORAS ENFOCADO"));
-        summary.Children.Add(Stat("▦", accessDays.ToString("N0"), "DÍAS REGISTRADOS"));
+        summary.Children.Add(Stat("▦", accessDays.ToString("N0"), L.T("report.daysLogged")));
         summary.Children.Add(Stat("♨", Reports.Streak(daily, today).ToString("N0"), "RACHA ACTUAL"));
         content.Children.Add(summary);
 
-        content.Children.Add(Section("HORAS DE ENFOQUE", "TIEMPO REAL CONFIRMADO · SIN DESCANSOS"));
+        content.Children.Add(Section(L.T("report.focusHours"), L.T("report.focusHoursDetail")));
         var range = Range();
         content.Children.Add(PeriodNavigator(range));
 
@@ -224,10 +230,10 @@ public sealed class ReportWindow : Window
         rangeStats.Children.Add(sessionCount);
         content.Children.Add(rangeStats);
 
-        content.Children.Add(Section("PROYECTOS", "DISTRIBUCIÓN DEL PERIODO"));
+        content.Children.Add(Section(L.T("report.projects"), L.T("report.projectsDetail")));
         if (data.ProjectTotals.Count == 0)
         {
-            content.Children.Add(new TextBlock { Text = "Tu actividad aparecerá aquí cuando completes una sesión." });
+            content.Children.Add(new TextBlock { Text = L.T("report.noActivity") });
             return;
         }
         foreach (var item in data.ProjectTotals)
@@ -275,7 +281,7 @@ public sealed class ReportWindow : Window
                 .OrderByDescending(s => s.Started).ToList();
             exportSessions = visible;
             var minutes = visible.Sum(s => Reports.MinutesIn(s, range.Start, range.End, TimeZoneInfo.Local));
-            metadata.Text = $"{visible.Count:N0} SESIONES   ·   {FormatDuration(minutes)}   ·   {PeriodLabel(range)}";
+            metadata.Text = L.T("report.sessionsMeta", visible.Count.ToString("N0", Strings.Culture), FormatDuration(minutes), PeriodLabel(range));
             if (visible.Count == 0)
             {
                 list.Children.Add(new TextBlock { Text = "No hay sesiones que coincidan con estos filtros.", Margin = new Thickness(0, 18, 0, 18) });
@@ -293,7 +299,7 @@ public sealed class ReportWindow : Window
                 list.Children.Add(SessionRow(session, range.Start, range.End));
             }
             if (visible.Count > 500)
-                list.Children.Add(new TextBlock { Text = "Se muestran las 500 sesiones más recientes de este filtro. Exporta CSV para obtenerlas todas.", FontSize = 11, Foreground = Resource("Muted"), Margin = new Thickness(0, 10, 0, 10) });
+                list.Children.Add(new TextBlock { Text = L.T("report.capped"), FontSize = 11, Foreground = Resource("Muted"), Margin = new Thickness(0, 10, 0, 10) });
         }
         search.TextChanged += (_, _) => RefreshList();
         projects.SelectionChanged += (_, _) => RefreshList();
@@ -428,7 +434,7 @@ public sealed class ReportWindow : Window
         row.Children.Add(copy);
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         right.Children.Add(new TextBlock { Text = FormatDuration(Reports.MinutesIn(session, start, end, TimeZoneInfo.Local)), FontFamily = Mono(), FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) });
-        var edit = ActionButton("EDITAR", () => Edit(session), "Editar esta sesión");
+        var edit = ActionButton(L.T("common.edit"), () => Edit(session), L.T("report.editSession"));
         edit.Padding = new Thickness(8, 5, 8, 5);
         right.Children.Add(edit);
         Grid.SetColumn(right, 2);
@@ -494,15 +500,15 @@ public sealed class ReportWindow : Window
 
     private void Edit(Session session)
     {
-        var projectName = Dialogs.Prompt(owner, "CLASIFICAR SESIÓN", "Proyecto", session.Project);
+        var projectName = Dialogs.Prompt(owner, L.T("report.classifyTitle"), L.T("report.classifyProject"), session.Project);
         if (projectName is null) return;
-        var taskName = Dialogs.Prompt(owner, "CLASIFICAR SESIÓN", "Tarea", session.Task);
+        var taskName = Dialogs.Prompt(owner, L.T("report.classifyTitle"), L.T("report.classifyTask"), session.Task);
         if (taskName is null) return;
-        var minutes = Dialogs.Prompt(owner, "CORREGIR DURACIÓN", "Minutos reales (la corrección queda identificada)", (session.Seconds / 60).ToString("0.###", CultureInfo.CurrentCulture));
+        var minutes = Dialogs.Prompt(owner, L.T("report.fixDurationTitle"), L.T("report.fixDurationLabel"), (session.Seconds / 60).ToString("0.###", CultureInfo.CurrentCulture));
         if (minutes is null) return;
         if (!double.TryParse(minutes, NumberStyles.Float, CultureInfo.CurrentCulture, out var value) || !double.IsFinite(value) || value <= 0 || value > 1440)
         {
-            Dialogs.Alert(owner, "DURACIÓN INVÁLIDA", "La duración debe estar entre 0 y 1440 minutos.");
+            Dialogs.Alert(owner, L.T("report.badDurationTitle"), L.T("report.badDurationBody"));
             return;
         }
         session.Project = string.IsNullOrWhiteSpace(projectName) ? "Sin proyecto" : projectName;
@@ -512,7 +518,7 @@ public sealed class ReportWindow : Window
             session.OriginalSeconds ??= session.Seconds;
             session.Segments = [new(session.Ended.AddMinutes(-value), session.Ended)];
             session.Started = session.Segments[0].Start;
-            session.Note = "Duración corregida manualmente. Se asigna un intervalo continuo anterior a la hora de fin.";
+            session.Note = L.T("report.correctedNote");
         }
         session.TaskId = owner.Settings.Tasks.FirstOrDefault(task => task.Name == session.Task && task.Project == session.Project && !task.Template)?.Id;
         owner.Store.Save(session);
@@ -524,7 +530,7 @@ public sealed class ReportWindow : Window
         var dialog = new SaveFileDialog { Filter = "CSV|*.csv", FileName = $"pomodock-{DateTime.Today:yyyy-MM-dd}.csv" };
         if (dialog.ShowDialog(owner) != true) return;
         Store.ExportCsv(dialog.FileName, exportSessions);
-        owner.Status($"CSV EXPORTADO · {exportSessions.Count:N0} sesiones del periodo visible.");
+        owner.Status(L.T("report.csvExported", exportSessions.Count.ToString("N0", Strings.Culture)));
     }
 
     private void ExportJson()
@@ -533,7 +539,7 @@ public sealed class ReportWindow : Window
         if (dialog.ShowDialog(owner) != true) return;
         owner.SaveState();
         owner.Store.ExportJson(dialog.FileName);
-        owner.Status("BACKUP EXPORTADO · Historial y configuración.");
+        owner.Status(L.T("report.backupExported"));
     }
 
     private void Import()
@@ -554,18 +560,18 @@ public sealed class ReportWindow : Window
                 int habits = HabitStore.For(owner.Store).Merge(backup.Habits);
                 int events = AgendaStore.For(owner.Store).Merge(backup.Agenda);
                 int notes = NoteArchiveStore.For(owner.Store).Merge(backup.Notes);
-                owner.Status($"IMPORTADAS {count:N0} SESIONES · {habits:N0} HÁBITOS · {events:N0} EVENTOS · {notes:N0} NOTAS · Se conservaron los existentes.");
+                owner.Status(L.T("report.imported", count.ToString("N0", Strings.Culture), habits.ToString("N0", Strings.Culture), events.ToString("N0", Strings.Culture), notes.ToString("N0", Strings.Culture)));
             }
             else
             {
                 var result = PomofocusCsv.Import(owner.Store, owner.Settings, dialog.FileName);
-                owner.Status($"POMOFOCUS · {result.Imported:N0} IMPORTADAS · {result.Skipped:N0} EXISTENTES · {result.Invalid:N0} OMITIDAS.");
+                owner.Status(L.T("report.importedPomofocus", result.Imported.ToString("N0", Strings.Culture), result.Skipped.ToString("N0", Strings.Culture), result.Invalid.ToString("N0", Strings.Culture)));
             }
             ReloadData();
         }
         catch (Exception ex)
         {
-            Dialogs.Alert(owner, "IMPORTACIÓN FALLIDA", "No se pudo importar: " + ex.Message);
+            Dialogs.Alert(owner, L.T("report.importFailedTitle"), L.T("report.importFailedBody", ex.Message));
         }
     }
 
@@ -686,7 +692,7 @@ public sealed class ReportWindow : Window
             var total = bucket.Values.Values.Sum();
             var rows = bucket.Values.OrderByDescending(pair => pair.Value)
                 .Select(pair => $"{pair.Key}  {FormatDuration(pair.Value)}");
-            return $"{bucket.Label.Replace('\n', ' ')}  ·  TOTAL {FormatDuration(total)}\n{string.Join("\n", rows)}";
+            return L.T("report.bucketTotal", bucket.Label.Replace('\n', ' '), FormatDuration(total)) + "\n" + string.Join("\n", rows);
         }
 
         internal bool ShowFirstPopulatedBucketForDiagnostics()

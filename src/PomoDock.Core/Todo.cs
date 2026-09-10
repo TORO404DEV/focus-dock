@@ -65,17 +65,17 @@ public sealed class TodoTask
     public string DueLabel(DateOnly today)
     {
         if (Due is not { } due) return "";
-        if (due < today) return Done ? due.ToString("dd/MM", CultureInfo.InvariantCulture) : "VENCIDA";
-        if (due == today) return "HOY";
-        if (due == today.AddDays(1)) return "MAÑANA";
+        if (due < today) return Done ? due.ToString("dd/MM", CultureInfo.InvariantCulture) : L.T("todo.overdue");
+        if (due == today) return L.T("common.today");
+        if (due == today.AddDays(1)) return L.T("common.tomorrow");
         return due.ToString("dd/MM", CultureInfo.InvariantCulture);
     }
 
     public string PriorityLabel() => Priority switch
     {
-        TodoPriority.High => "Prioridad alta",
-        TodoPriority.Medium => "Prioridad media",
-        _ => "Sin prioridad"
+        TodoPriority.High => L.T("todo.priorityHigh"),
+        TodoPriority.Medium => L.T("todo.priorityMedium"),
+        _ => L.T("todo.priorityNone")
     };
 
     /// <summary>The colour key each level borrows from the shared palette.</summary>

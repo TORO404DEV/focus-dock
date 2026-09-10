@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
+using PomoDock.Core;
+
 namespace PomoDock.App;
 
 /// <summary>
@@ -160,7 +162,7 @@ internal sealed class NoteSkin
 
         var preview = new Border { BorderThickness = new Thickness(1.5), Padding = new Thickness(16, 14, 16, 14), Margin = new Thickness(0, 0, 0, 16) };
         var previewBox = new StackPanel();
-        var previewTitle = new TextBlock { Text = "ASÍ SE VERÁ LA NOTA", FontSize = 14, FontWeight = FontWeights.Black };
+        var previewTitle = new TextBlock { Text = L.T("notes.skinPreview"), FontSize = 14, FontWeight = FontWeights.Black };
         var previewText = new TextBlock { Text = "El texto, los botones y el marco del widget siguen al color.", FontSize = 12, Margin = new Thickness(0, 6, 0, 10), TextWrapping = TextWrapping.Wrap };
         var previewTools = new StackPanel { Orientation = Orientation.Horizontal };
         var previewButtons = new List<Button>();
@@ -196,7 +198,7 @@ internal sealed class NoteSkin
             previewTitle.Foreground = current.InkBrush;
             previewText.Foreground = current.InkBrush;
             previewNote.Foreground = current.MutedBrush;
-            previewNote.Text = current.IsDark ? "TINTA CLARA · FONDO OSCURO" : "TINTA OSCURA · FONDO CLARO";
+            previewNote.Text = current.IsDark ? L.T("notes.skinDark") : L.T("notes.skinLight");
             foreach (var sample in previewButtons)
             {
                 sample.Background = current.ChromeBrush;

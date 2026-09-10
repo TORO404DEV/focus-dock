@@ -66,9 +66,12 @@ public partial class MainWindow : Window
         DiagnosticMode = diagnostic;
         Store = new(data ?? DataPath);
         Settings = Store.Read<Settings>("settings") ?? new(); Settings.Validate();
+        // The language has to be on before anything draws itself, or the first paint speaks Spanish.
+        Strings.Use(Settings.Language);
         Timer = new(Settings);
         Sounds = new(Settings);
         InitializeComponent();
+        ApplyLanguage();
         appliedTimerAtBottom = Settings.TimerAtBottom;
         BuildTimerHandles();
         TimerMoveHeader.PreviewMouseLeftButtonDown += TimerMoveHeaderDown;
@@ -88,10 +91,10 @@ public partial class MainWindow : Window
         StateChanged += (_, _) => UpdateOverlayPositions();
         PreviewKeyDown += OnKey;
         Closing += OnClosing;
-        Timer.GapDetected += () => Status("PAUSADO · Se detectó suspensión o una interrupción del reloj.");
+        Timer.GapDetected += () => Status(L.T("status.gapDetected"));
         Timer.Finished += OnFinished;
         if (Store.Read<Session>("checkpoint") is { } checkpoint && !Store.Sessions().Any(s => s.Id == checkpoint.Id))
-        { Timer.Restore(checkpoint); Status("SESIÓN RECUPERADA · Reanuda cuando estés listo."); }
+        { Timer.Restore(checkpoint); Status(L.T("status.recovered")); }
         ticker.Tick += (_, _) =>
         {
             Timer.Tick(DateTimeOffset.UtcNow, Monotonic); UpdateTimer();
@@ -133,12 +136,12 @@ public partial class MainWindow : Window
                 start.ArgumentList.Add("--guardian"); start.ArgumentList.Add(Environment.ProcessId.ToString()); start.ArgumentList.Add(Journal);
                 Process.Start(start)?.Dispose();
             }
-            catch (Exception ex) { Status("No se inició la recuperación auxiliar: " + ex.Message); }
+            catch (Exception ex) { Status(L.T("status.recoveryFailed", ex.Message)); }
         }
     }
     private void PowerChanged(object sender, PowerModeChangedEventArgs e)
     {
-        if (e.Mode == PowerModes.Suspend) Dispatcher.Invoke(() => { Timer.Pause(DateTimeOffset.UtcNow, Monotonic); SaveState(); Status("PAUSADO · Equipo suspendido."); });
+        if (e.Mode == PowerModes.Suspend) Dispatcher.Invoke(() => { Timer.Pause(DateTimeOffset.UtcNow, Monotonic); SaveState(); Status(L.T("status.suspended")); });
     }
     public void SaveState()
     {
@@ -153,7 +156,7 @@ public partial class MainWindow : Window
         if (session.Outcome != Outcome.Completed) return;
         Sounds.StopNoise();
         Sounds.Completed(session.Phase);
-        Status(session.Phase == Phase.Focus ? "SESIÓN COMPLETA · Es momento de descansar." : "DESCANSO COMPLETO · Puedes volver a enfocarte.");
+        Status(session.Phase == Phase.Focus ? L.T("status.focusComplete") : L.T("status.breakComplete"));
         var next = Timer.NextPhase();
         Dispatcher.BeginInvoke(() =>
         {
@@ -181,10 +184,10 @@ public partial class MainWindow : Window
         UpdateHeaderClock();
         var remaining = TimeSpan.FromSeconds(Math.Ceiling(Timer.Remaining));
         ClockText.Text = $"{(int)remaining.TotalMinutes:00}:{remaining.Seconds:00}";
-        StartButton.Content = Timer.Running ? "PAUSE Ⅱ" : Timer.Active is null ? "START →" : "RESUME →";
-        var label = Timer.Phase == Phase.Focus ? "TIEMPO DE ENFOQUE" : Timer.Phase == Phase.ShortBreak ? "DESCANSO CORTO" : "DESCANSO LARGO";
+        StartButton.Content = Timer.Running ? L.T("timer.pause") : Timer.Active is null ? L.T("timer.start") : L.T("timer.resume");
+        var label = Timer.Phase == Phase.Focus ? L.T("timer.phaseFocusName") : Timer.Phase == Phase.ShortBreak ? L.T("timer.phaseShort") : L.T("timer.phaseLong");
         PhaseLabel.Text = $"{Timer.CompletedFocus + 1:00} / {label}";
-        CycleText.Text = $"CICLO {Timer.CompletedFocus % Settings.LongInterval + 1} / {Settings.LongInterval}";
+        CycleText.Text = L.T("timer.cycle", Timer.CompletedFocus % Settings.LongInterval + 1, Settings.LongInterval);
         foreach (var button in new[] { FocusButton, ShortButton, LongButton })
         {
             bool active = button.Tag.ToString() == Timer.Phase.ToString();
@@ -192,12 +195,12 @@ public partial class MainWindow : Window
             button.SetResourceReference(ForegroundProperty, active ? "Paper" : "Ink");
         }
         var phaseBrush = PhaseBrush(); TimerFrame.Background = phaseBrush; TimerSurface.Background = phaseBrush;
-        ContextButton.Content = Timer.Active is { } s ? $"●  {s.Project} / {s.Task}" : selectedTask is null ? "○  ENFOQUE LIBRE   /   Elegir tarea" : $"○  {selectedTask.Project} / {selectedTask.Name}";
+        ContextButton.Content = Timer.Active is { } s ? L.T("timer.contextActive", s.Project, s.Task) : selectedTask is null ? L.T("timer.freeFocusButton") : L.T("timer.contextChosen", selectedTask.Project, selectedTask.Name);
     }
     private void StartClick(object sender, RoutedEventArgs e) { Sounds.Button(Timer.Running ? "pause" : "start"); ToggleTimer(); }
     internal void ToggleTimer()
     {
-        if (Timer.Running) { Timer.Pause(DateTimeOffset.UtcNow, Monotonic); Sounds.StopNoise(); Status("PAUSADO · Tu progreso está guardado."); }
+        if (Timer.Running) { Timer.Pause(DateTimeOffset.UtcNow, Monotonic); Sounds.StopNoise(); Status(L.T("status.paused")); }
         else
         {
             // Starting the next phase acknowledges the alarm that announced the previous one.
@@ -205,7 +208,7 @@ public partial class MainWindow : Window
             Sounds.StopAlarm();
             Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask);
             if (Timer.Phase == Phase.Focus) Sounds.StartNoise();
-            Status("EN CURSO · Una cosa a la vez.");
+            Status(L.T("status.running"));
         }
         UpdateTimer(); SaveState();
     }
@@ -215,7 +218,7 @@ public partial class MainWindow : Window
         if (phase == Timer.Phase) return;
         Sounds.Button("phase"); Sounds.StopNoise(); Timer.Select(phase, DateTimeOffset.UtcNow, Monotonic); UpdateTimer(); AnimateTimer(); SaveState();
     }
-    private void ResetClick(object sender, RoutedEventArgs e) { Sounds.Button("reset"); Sounds.StopNoise(); Timer.Select(Timer.Phase, DateTimeOffset.UtcNow, Monotonic); UpdateTimer(); SaveState(); Status("REINICIADO · El tiempo trabajado se guardó como parcial."); }
+    private void ResetClick(object sender, RoutedEventArgs e) { Sounds.Button("reset"); Sounds.StopNoise(); Timer.Select(Timer.Phase, DateTimeOffset.UtcNow, Monotonic); UpdateTimer(); SaveState(); Status(L.T("status.reset")); }
     private void SkipClick(object sender, RoutedEventArgs e) { Sounds.Button("skip"); Sounds.StopNoise(); var next = Timer.NextPhase(); Timer.Select(next, DateTimeOffset.UtcNow, Monotonic); UpdateTimer(); AnimateTimer(); SaveState(); }
     private void AnimateTimer()
     {
@@ -232,18 +235,18 @@ public partial class MainWindow : Window
     private void UpdateHeaderClock()
     {
         var now = DateTime.Now;
-        var culture = CultureInfo.GetCultureInfo("es-MX");
+        var culture = Strings.Culture;
         HeaderDateText.Text = now.ToString("ddd dd MMM yyyy", culture).ToUpper(culture);
         HeaderTimeText.Text = now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
     }
     private void TasksClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new TasksWindow(this); dialog.ShowDialog();
+        var dialog = new TasksWindow(this, selectedTask); dialog.ShowDialog();
         if (dialog.SelectionChanged)
         {
             Sounds.StopNoise();
             Timer.Pause(DateTimeOffset.UtcNow, Monotonic); Timer.Finish(Outcome.Partial, DateTimeOffset.UtcNow);
-            selectedTask = dialog.SelectedTask; Status("CONTEXTO ACTUALIZADO · Inicia la siguiente sesión.");
+            selectedTask = dialog.SelectedTask; Status(L.T("status.contextUpdated"));
         }
         UpdateTimer(); SaveState();
     }
@@ -354,7 +357,37 @@ public partial class MainWindow : Window
     internal void HideReportForDiagnostics() => HideReportModal();
     private void SettingsClick(object sender, RoutedEventArgs e) { new SettingsWindow(this).ShowDialog(); ApplyLiveSettings(); SaveState(); }
     /// <summary>Puts a settings change on screen at once, so the panel shows its effect while it is open.</summary>
-    public void ApplyLiveSettings() { Settings.Validate(); ApplyTimerPosition(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); Sounds.Refresh(); }
+    public void ApplyLiveSettings() { Settings.Validate(); Strings.Use(Settings.Language); ApplyLanguage(); ApplyTimerPosition(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); Sounds.Refresh(); }
+
+    /// <summary>
+    /// The shell's own words. Everything else redraws itself from <see cref="L"/> when it is built,
+    /// but the title bar, the toolbar and the timer frame come from XAML and are only written once,
+    /// so a language change has to reach them here.
+    /// </summary>
+    public void ApplyLanguage()
+    {
+        TitleBarText.Text = L.T("chrome.subtitle");
+        MinimizeButton.ToolTip = L.T("chrome.minimize");
+        MaximizeButton.ToolTip = L.T("chrome.maximize");
+        CloseButton.ToolTip = L.T("chrome.closeRelease");
+        ReportButton.ToolTip = L.T("chrome.report");
+        TasksButton.ToolTip = L.T("chrome.tasks");
+        SettingsButton.ToolTip = L.T("chrome.settings");
+        FullscreenButton.ToolTip = L.T("chrome.fullscreen");
+        AddWidgetButton.ToolTip = L.T("chrome.addWidget");
+        WelcomeTitle.Text = L.T("pages.emptyTitle");
+        WelcomeAddButton.Content = L.T("pages.addFirst");
+        WelcomeHint.Text = L.T("pages.swipeHint");
+        RemoveTimerButton.ToolTip = L.T("timer.removeFromPage");
+        TimerHeaderTitle.Text = L.T("timer.pomodoro");
+        TimerHeaderHint.Text = L.T("timer.dragToMove");
+        FocusButton.Content = L.T("timer.pomodoro");
+        ShortButton.Content = L.T("timer.shortBreak");
+        LongButton.Content = L.T("timer.longBreak");
+        ResetButton.ToolTip = L.T("timer.reset");
+        SkipButton.ToolTip = L.T("timer.skip");
+        UpdateHeaderClock();
+    }
     private void LayoutsClick(object sender, RoutedEventArgs e) { new LayoutsWindow(this).ShowDialog(); }
     private static Color ParseColor(string value, Color fallback)
     {
@@ -586,15 +619,15 @@ public partial class MainWindow : Window
         if (choice == 0) AddWindowClick(sender, e);
         else if (choice == 1)
         {
-            var url = Dialogs.Prompt(this, "PÁGINA WEB", "URL HTTPS", "https://www.youtube.com");
+            var url = Dialogs.Prompt(this, L.T("widgets.webUrlTitle"), L.T("widgets.webUrlLabel"), "https://www.youtube.com");
             if (url is null) return;
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https") { Status("Introduce una URL HTTPS válida."); return; }
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https") { Status(L.T("status.needHttps")); return; }
             AddCard(new() { Kind = "web", Title = uri.Host, Value = uri.AbsoluteUri }, true);
         }
         else if (choice == 2) AddCard(new() { Kind = "notes", Title = "NOTAS" }, true);
         else if (choice == 3) AddCard(new() { Kind = "stats", Title = "MI ENFOQUE" }, true);
         else if (choice == 4) AddCard(new() { Kind = "todo", Title = "TO DO" }, true);
-        else if (choice == 5) AddCard(new() { Kind = "habits", Title = "HÁBITOS" }, true);
+        else if (choice == 5) AddCard(new() { Kind = "habits", Title = L.T("widgets.kindHabits") }, true);
         else if (choice == 6) AddCard(new() { Kind = "calendar", Title = "AGENDA" }, true);
         else if (choice == 7) AddTimerWidget();
     }
@@ -849,7 +882,7 @@ public partial class MainWindow : Window
         foreach (var card in cards.ToArray()) RemoveCard(card);
         var copy = JsonSerializer.Deserialize<List<WidgetConfig>>(JsonSerializer.Serialize(widgets))!;
         foreach (var config in copy) { config.Id = Guid.NewGuid(); AddCard(config, false); }
-        SaveState(); UpdatePageNavigation(); Status("DISTRIBUCIÓN CARGADA · Reconecta las ventanas que quieras usar.");
+        SaveState(); UpdatePageNavigation(); Status(L.T("status.layoutLoaded"));
     }
     public void ToggleFullscreen()
     {

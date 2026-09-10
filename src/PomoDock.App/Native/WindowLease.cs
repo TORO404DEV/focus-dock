@@ -13,7 +13,7 @@ namespace PomoDock.App.Native;
 public record WindowCandidate(nint Handle, string Title, string ProcessName, uint ProcessId)
 {
     public ImageSource? Icon { get; init; }
-    public string AppLabel => string.IsNullOrWhiteSpace(ProcessName) ? "Aplicación" : ProcessName;
+    public string AppLabel => string.IsNullOrWhiteSpace(ProcessName) ? PomoDock.Core.L.T("lease.application") : ProcessName;
     public string ProcessLabel => $"{ProcessName}.exe  ·  PID {ProcessId}";
     public override string ToString() => $"{Title}   [{ProcessName}]";
 }
@@ -82,7 +82,7 @@ public sealed class WindowLease : IDisposable
         this.journal = journal;
         if (!Win32.IsWindow(window)) throw new InvalidOperationException("La ventana ya no existe.");
         Win32.GetWindowThreadProcessId(window, out uint pid);
-        if (pid == Environment.ProcessId) throw new InvalidOperationException("Selecciona una ventana de otra aplicación.");
+        if (pid == Environment.ProcessId) throw new InvalidOperationException(PomoDock.Core.L.T("lease.pickAnother"));
         using var process = Process.GetProcessById((int)pid);
         Win32.GetWindowRect(window, out var rect);
         var placement = new Win32.Placement { Length = Marshal.SizeOf<Win32.Placement>() }; Win32.GetWindowPlacement(window, ref placement);
@@ -114,10 +114,10 @@ public sealed class WindowLease : IDisposable
             Marshal.SetLastPInvokeError(0);
             Win32.SetParent(window, container);
             error = Marshal.GetLastPInvokeError();
-            if (error != 0 || Win32.GetParent(window) != container) throw new Win32Exception(error, "La aplicación no permite incrustar esta ventana.");
+            if (error != 0 || Win32.GetParent(window) != container) throw new Win32Exception(error, PomoDock.Core.L.T("lease.refused"));
             Marshal.SetLastPInvokeError(0);
             Win32.SetWindowPos(window, 0, 0, 0, 300, 300, Win32.SWP_FRAMECHANGED | Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
-            error = Marshal.GetLastPInvokeError(); if (error != 0) throw new Win32Exception(error, "No se pudo ajustar el tamaño de la ventana.");
+            error = Marshal.GetLastPInvokeError(); if (error != 0) throw new Win32Exception(error, PomoDock.Core.L.T("lease.resizeFailed"));
         }
         catch { Dispose(); throw; }
         finally { Win32.TryRestoreThreadDpiAwarenessContext(previousDpi); Win32.TryRestoreThreadDpiHostingBehavior(previousHosting); }
@@ -159,7 +159,7 @@ public sealed class WindowLease : IDisposable
     public void Dispose()
     {
         if (disposed) return;
-        if (!Restore(Snapshot)) throw new InvalidOperationException("No se pudo liberar la ventana. La app permanecerá abierta para que puedas recuperarla.");
+        if (!Restore(Snapshot)) throw new InvalidOperationException(PomoDock.Core.L.T("lease.releaseFailed"));
         disposed = true;
         lock (journalLock) { leased.Remove(Snapshot); Persist(); }
     }
@@ -218,13 +218,13 @@ public sealed class ExternalWindowHost : HwndHost
     }
     public void Attach(nint hwnd, string journal)
     {
-        if (container == 0) throw new InvalidOperationException("Espera a que el panel esté visible.");
+        if (container == 0) throw new InvalidOperationException(PomoDock.Core.L.T("lease.waitVisible"));
         lease?.Dispose(); lease = new WindowLease(hwnd, container, journal); Resize();
     }
     public async Task AttachAsync(nint hwnd, string journal)
     {
-        if (container == 0) throw new InvalidOperationException("Espera a que el panel esté visible.");
-        if (IsConnecting || lease is not null) throw new InvalidOperationException("Este panel ya tiene una conexión en curso.");
+        if (container == 0) throw new InvalidOperationException(PomoDock.Core.L.T("lease.waitVisible"));
+        if (IsConnecting || lease is not null) throw new InvalidOperationException(PomoDock.Core.L.T("lease.busy"));
         var targetContainer = container;
         IsConnecting = true;
         try
