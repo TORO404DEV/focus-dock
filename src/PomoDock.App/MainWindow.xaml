@@ -1,11 +1,11 @@
 <Window x:Class="PomoDock.App.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
  Title="POMODOCK" Width="620" Height="940" MinWidth="460" MinHeight="700" WindowStyle="None" ResizeMode="CanResize" Background="{DynamicResource Paper}">
  <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/></shell:WindowChrome.WindowChrome>
- <Border BorderBrush="{DynamicResource Line}" BorderThickness="2">
+ <Border BorderBrush="{DynamicResource Edge}" BorderThickness="2">
    <Grid x:Name="Root">
    <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="0"/><RowDefinition Height="*"/><RowDefinition Height="52"/></Grid.RowDefinitions>
-   <Grid x:Name="TitleBar" Background="{DynamicResource Ink}" MouseLeftButtonDown="DragTitle">
-    <TextBlock Text="POMODOCK     /     DESKTOP EDITION" Foreground="{DynamicResource Paper}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,110,0"/>
+   <Grid x:Name="TitleBar" Background="{DynamicResource Chrome}" MouseLeftButtonDown="DragTitle">
+    <TextBlock Text="POMODOCK     /     DESKTOP EDITION" Foreground="{DynamicResource ChromeInk}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,110,0"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
      <Button Content="—" Click="MinimizeClick" ToolTip="Minimizar" Padding="10,2" Margin="0"/><Button Content="□" Click="MaximizeClick" ToolTip="Maximizar" Padding="10,2" Margin="0"/><Button Content="×" Click="CloseClick" ToolTip="Cerrar y liberar ventanas" Padding="10,2" Margin="0"/>
     </StackPanel>
@@ -15,7 +15,7 @@
     <TextBlock x:Name="HeaderDateText" Text="MIÉ 09 SEP" FontFamily="Consolas" FontSize="13" FontWeight="Black" VerticalAlignment="Center" TextWrapping="NoWrap"/>
     <TextBlock x:Name="HeaderTimeText" Grid.Column="1" Text="00:00:00" FontFamily="Consolas" FontSize="11" FontWeight="Black" Foreground="{DynamicResource Muted}" Margin="12,1,0,0" VerticalAlignment="Center" TextWrapping="NoWrap"/>
     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-     <Button Content="▥" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="#171916" FontSize="16" Padding="6,3" ToolTip="REPORT · Abrir reportes"/>
+     <Button Content="▥" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="{DynamicResource AccentInk}" FontSize="16" Padding="6,3" ToolTip="REPORT · Abrir reportes"/>
      <Button Content="☷" Click="TasksClick" FontSize="15" Padding="6,3" ToolTip="Tareas y proyectos"/>
      <Button Content="⚙" Click="SettingsClick" FontSize="15" Padding="6,3" ToolTip="Ajustes"/>
      <Button Content="⛶" Click="FullscreenClick" FontSize="15" Padding="6,3" ToolTip="Pantalla completa · F11"/>
@@ -30,18 +30,18 @@
      <Border x:Name="Welcome" BorderThickness="0" Background="Transparent" Canvas.Left="0" Canvas.Top="0">
       <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="26">
        <TextBlock Text="PÁGINA VACÍA" FontFamily="Consolas" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center"/>
-       <Button Content="＋ AÑADIR PRIMER WIDGET" Click="AddWidgetClick" Background="{DynamicResource Accent}" Foreground="#171916" Margin="0,12,0,0" Padding="18,10"/>
+       <Button Content="＋ AÑADIR PRIMER WIDGET" Click="AddWidgetClick" Background="{DynamicResource Accent}" Foreground="{DynamicResource AccentInk}" Margin="0,12,0,0" Padding="18,10"/>
        <TextBlock Text="También puedes deslizar para cambiar de página." FontSize="9" Foreground="{DynamicResource Muted}" Margin="0,10,0,0" HorizontalAlignment="Center"/>
       </StackPanel>
      </Border>
-     <Border x:Name="TimerFrame" Canvas.Left="12" Canvas.Top="12" Width="560" Height="360" MinWidth="360" MinHeight="300" Panel.ZIndex="20" BorderThickness="2" BorderBrush="{DynamicResource Line}" Background="{DynamicResource Surface}">
+     <Border x:Name="TimerFrame" Canvas.Left="12" Canvas.Top="12" Width="560" Height="360" MinWidth="360" MinHeight="300" Panel.ZIndex="20" BorderThickness="2" BorderBrush="{DynamicResource Edge}" Background="{DynamicResource Surface}">
       <Grid x:Name="TimerFrameRoot">
        <Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-       <Border x:Name="TimerMoveHeader" Grid.Row="0" Background="{DynamicResource Ink}" Cursor="SizeAll">
+       <Border x:Name="TimerMoveHeader" Grid.Row="0" Background="{DynamicResource Chrome}" Cursor="SizeAll">
         <DockPanel LastChildFill="True" Margin="10,0,4,0">
-         <Button DockPanel.Dock="Right" Content="×" Click="RemoveTimerClick" Foreground="{DynamicResource Paper}" Background="Transparent" BorderThickness="0" Padding="7,2" Margin="0" FontSize="13" ToolTip="Quitar temporizador de esta página"/>
-         <TextBlock Text="POMODORO" Foreground="{DynamicResource Paper}" FontSize="9" FontWeight="Bold" VerticalAlignment="Center"/>
-         <TextBlock Text="ARRASTRA PARA MOVER" Foreground="{DynamicResource Paper}" Opacity="0.65" FontSize="8" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="NoWrap" Margin="0,0,8,0"/>
+         <Button DockPanel.Dock="Right" Content="×" Click="RemoveTimerClick" Foreground="{DynamicResource ChromeInk}" Background="Transparent" BorderThickness="0" Padding="7,2" Margin="0" FontSize="13" ToolTip="Quitar temporizador de esta página"/>
+         <TextBlock Text="POMODORO" Foreground="{DynamicResource ChromeInk}" FontSize="9" FontWeight="Bold" VerticalAlignment="Center"/>
+         <TextBlock Text="ARRASTRA PARA MOVER" Foreground="{DynamicResource ChromeInk}" Opacity="0.65" FontSize="8" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="NoWrap" Margin="0,0,8,0"/>
         </DockPanel>
        </Border>
        <Grid x:Name="TimerSurface" Grid.Row="1" Margin="16,10,16,12">
@@ -67,17 +67,17 @@
     <Grid.Resources>
      <Style x:Key="PageDockButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="1"/>
-      <Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource Paper}"/>
+      <Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource ChromeInk}"/>
      </Style>
     </Grid.Resources>
-    <Border x:Name="PageDockSurface" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource Ink}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="19" Padding="5,3">
+    <Border x:Name="PageDockSurface" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource Chrome}" BorderBrush="{DynamicResource Edge}" BorderThickness="1" CornerRadius="19" Padding="5,3">
      <StackPanel Orientation="Horizontal">
       <Button x:Name="PreviousPageButton" Style="{StaticResource PageDockButton}" Content="‹" Click="PreviousPageClick" FontSize="19" ToolTip="Página anterior · arrastra hacia la derecha"/>
       <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" VerticalAlignment="Center" MaxWidth="280">
        <StackPanel x:Name="PageButtonStrip" Orientation="Horizontal"/>
       </ScrollViewer>
       <Button x:Name="NextPageButton" Style="{StaticResource PageDockButton}" Content="›" Click="NextPageClick" FontSize="19" ToolTip="Página siguiente · arrastra hacia la izquierda"/>
-      <Border Width="1" Height="20" Background="{DynamicResource Paper}" Opacity="0.28" Margin="5,0"/>
+      <Border Width="1" Height="20" Background="{DynamicResource ChromeInk}" Opacity="0.28" Margin="5,0"/>
       <Button x:Name="AddPageButton" Style="{StaticResource PageDockButton}" Content="＋" Click="AddPageClick" FontSize="16" ToolTip="Añadir una página en blanco"/>
      </StackPanel>
     </Border>

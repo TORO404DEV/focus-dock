@@ -176,7 +176,7 @@ internal static class NotesHistory
         grid.Children.Add(new Border
         {
             Width = 12, Margin = new Thickness(0, 0, 11, 0), Background = skin.PaperBrush,
-            BorderBrush = Resource("Line"), BorderThickness = new Thickness(1)
+            BorderBrush = Resource("Edge"), BorderThickness = new Thickness(1)
         });
 
         var text = new StackPanel();

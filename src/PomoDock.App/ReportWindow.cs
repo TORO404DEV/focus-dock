@@ -53,6 +53,8 @@ public sealed class ReportWindow : Window
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
+        // A window of our own gets no Window style, so its content would inherit black text.
+        SetResourceReference(ForegroundProperty, "Ink");
         ResizeMode = ResizeMode.CanResizeWithGrip;
         ShowInTaskbar = false;
 
@@ -121,17 +123,17 @@ public sealed class ReportWindow : Window
             Height = height,
             ClipToBounds = true,
             Background = Resource("Surface"),
-            BorderBrush = Resource("Line"),
+            BorderBrush = Resource("Edge"),
             BorderThickness = new Thickness(2)
         };
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) });
         root.RowDefinitions.Add(new RowDefinition());
-        var header = new DockPanel { Background = Resource("Ink"), LastChildFill = true };
+        var header = new DockPanel { Background = Resource("Chrome"), LastChildFill = true };
         var dismiss = new Button
         {
             Content = "×", Padding = new Thickness(14, 2, 14, 2), Margin = new Thickness(0),
-            BorderThickness = new Thickness(0), Foreground = Resource("Paper"), Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0), Foreground = Resource("ChromeInk"), Background = Brushes.Transparent,
             FontSize = 18, ToolTip = "Cerrar reporte"
         };
         dismiss.Click += (_, _) => close();
@@ -140,7 +142,7 @@ public sealed class ReportWindow : Window
         header.Children.Add(new TextBlock
         {
             Text = "REPORTE / TU HISTORIAL",
-            Foreground = Resource("Paper"), FontWeight = FontWeights.Bold, FontSize = 11,
+            Foreground = Resource("ChromeInk"), FontWeight = FontWeights.Bold, FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0)
         });
         root.Children.Add(header);
@@ -194,7 +196,7 @@ public sealed class ReportWindow : Window
 
         var data = BuildChart(range.Start, range.End);
         exportSessions = data.Sessions;
-        var chartFrame = new Border { BorderBrush = Resource("Line"), BorderThickness = new Thickness(1.5), Padding = new Thickness(12), Margin = new Thickness(0, 12, 0, 12) };
+        var chartFrame = new Border { BorderBrush = Resource("Edge"), BorderThickness = new Thickness(1.5), Padding = new Thickness(12), Margin = new Thickness(0, 12, 0, 12) };
         if (data.TotalMinutes <= 0)
         {
             chartFrame.Child = new TextBlock
@@ -400,7 +402,7 @@ public sealed class ReportWindow : Window
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(18) });
         row.ColumnDefinitions.Add(new ColumnDefinition());
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var swatch = new Border { Width = 11, Height = 11, Background = color, BorderBrush = Resource("Line"), BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
+        var swatch = new Border { Width = 11, Height = 11, Background = color, BorderBrush = Resource("Edge"), BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
         row.Children.Add(swatch);
         var label = new TextBlock { Text = name, FontWeight = FontWeights.SemiBold, FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) };
         Grid.SetColumn(label, 1);
@@ -442,7 +444,7 @@ public sealed class ReportWindow : Window
         line.Children.Add(new TextBlock { Text = value, FontFamily = Mono(), FontSize = 29, FontWeight = FontWeights.Black });
         stack.Children.Add(line);
         stack.Children.Add(new TextBlock { Text = label, FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Resource("Muted"), Margin = new Thickness(0, 4, 0, 0) });
-        return new Border { BorderBrush = Resource("Line"), BorderThickness = new Thickness(1.5), Background = Resource("Surface"), Margin = new Thickness(0, 0, 8, 0), Child = stack };
+        return new Border { BorderBrush = Resource("Edge"), BorderThickness = new Thickness(1.5), Background = Resource("Surface"), Margin = new Thickness(0, 0, 8, 0), Child = stack };
     }
 
     private static FrameworkElement Section(string title, string subtitle)

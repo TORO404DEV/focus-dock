@@ -11,6 +11,8 @@ public sealed class TasksWindow : Window
     public TasksWindow(MainWindow owner)
     {
         Owner = owner; Title = "POMODOCK / Tareas y proyectos"; Width = 640; Height = 700; MinWidth = 440; MinHeight = 480; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
+        // A window of our own gets no Window style, so its content would inherit black text.
+        SetResourceReference(ForegroundProperty, "Ink");
         var panel = new DockPanel { Margin = new Thickness(22) }; Content = panel;
         var heading = Dialogs.Heading("QUÉ VAS A HACER."); DockPanel.SetDock(heading, Dock.Top); panel.Children.Add(heading);
         var tabs = new TabControl(); panel.Children.Add(tabs);

@@ -15,7 +15,7 @@ namespace PomoDock.App;
 /// events. The events themselves live in the database, so two calendars on two pages always
 /// show the same appointments and reminders keep ringing when the card is not on screen.
 /// </summary>
-internal sealed class CalendarWidget : Grid
+internal sealed class CalendarWidget : Grid, IReskinnable
 {
     /// <summary>What this particular card remembers between sessions.</summary>
     private sealed class CardState
@@ -332,6 +332,9 @@ internal sealed class CalendarWidget : Grid
     }
 
     // ---------------------------------------------------------------- render
+
+    /// <summary>Draws again after a theme change, for the colours it mixed itself.</summary>
+    public void Reskin() => Render();
 
     private void Render()
     {

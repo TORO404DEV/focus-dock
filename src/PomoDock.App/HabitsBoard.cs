@@ -14,7 +14,7 @@ namespace PomoDock.App;
 /// widget, and it re-lays itself out for every size the card can be dragged to: from a
 /// single strip of squares to a full week grid with level, streaks and awards.
 /// </summary>
-internal sealed class HabitsBoard : Grid
+internal sealed class HabitsBoard : Grid, IReskinnable
 {
     /// <summary>What fits at the current size. Two equal shapes always draw the same board.</summary>
     private sealed record Shape(bool Strip, bool Stats, bool Level, bool Nav, bool Week, bool Streak, bool Rate,
@@ -111,6 +111,9 @@ internal sealed class HabitsBoard : Grid
             NameFont: Math.Clamp(cell * .4 + 3.4, 10, 13),
             DayFont: Math.Clamp(cell * .34 + 1, 7.5, 10.5));
     }
+
+    /// <summary>Draws again after a theme change, for the colours it mixed itself.</summary>
+    public void Reskin() => Render();
 
     private void Render()
     {
@@ -288,8 +291,7 @@ internal sealed class HabitsBoard : Grid
         for (int i = 0; i < slots; i++)
         {
             var block = new Border { Margin = new Thickness(0, 0, i == slots - 1 ? 0 : 2, 0) };
-            block.SetResourceReference(Border.BackgroundProperty, i < stats.DoneToday ? "Ink" : "Muted");
-            if (i >= stats.DoneToday) block.Opacity = .22;
+            block.SetResourceReference(Border.BackgroundProperty, i < stats.DoneToday ? "Ink" : "Raised");
             strip.Children.Add(block);
         }
         strip.ToolTip = $"{stats.DoneToday} de {stats.DueToday} hábitos de hoy";
@@ -903,7 +905,7 @@ internal sealed class HabitsBoard : Grid
         })
         {
             var tile = new Border { BorderThickness = new Thickness(1.5), Padding = new Thickness(12, 10, 12, 10), Margin = new Thickness(0, 0, 8, 0) };
-            tile.SetResourceReference(Border.BorderBrushProperty, "Line");
+            tile.SetResourceReference(Border.BorderBrushProperty, "Edge");
             var box = new StackPanel();
             var number = Text(text, 22, "Ink", FontWeights.Black);
             number.FontFamily = Mono;
@@ -1142,8 +1144,7 @@ internal sealed class HabitsBoard : Grid
         track.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(.0001, share), GridUnitType.Star) });
         track.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(.0001, 1 - share), GridUnitType.Star) });
         var back = new Border();
-        back.SetResourceReference(Border.BackgroundProperty, "Muted");
-        back.Opacity = .2;
+        back.SetResourceReference(Border.BackgroundProperty, "Raised");
         SetColumnSpan(back, 2);
         track.Children.Add(back);
         var fill = new Border();

@@ -21,6 +21,8 @@ internal static class Dialogs
             WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false, Topmost = true, WindowStyle = WindowStyle.None,
             AllowsTransparency = true, Background = Brushes.Transparent, ResizeMode = ResizeMode.CanResizeWithGrip
         };
+        // A transparent window keeps its default black foreground, which its content inherits.
+        window.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, "Ink");
         // Embedded applications and widget cards can have their own native
         // HWND surfaces. WPF ownership alone may leave a modal below one of
         // those surfaces, so lift every PomoDock modal when its HWND exists
@@ -44,11 +46,11 @@ internal static class Dialogs
     {
         if (window.Content is not FrameworkElement content || content is ModalSurface) return;
         window.Content = null;
-        var frame = new ModalSurface(); frame.SetResourceReference(Border.BackgroundProperty, "Surface"); frame.SetResourceReference(Border.BorderBrushProperty, "Line");
+        var frame = new ModalSurface(); frame.SetResourceReference(Border.BackgroundProperty, "Surface"); frame.SetResourceReference(Border.BorderBrushProperty, "Edge");
         var root = new Grid(); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(42) }); root.RowDefinitions.Add(new RowDefinition());
-        var header = new DockPanel { Background = (Brush)Application.Current.Resources["Ink"], LastChildFill = true, Cursor = Cursors.SizeAll };
-        var close = new Button { Content = "×", Padding = new Thickness(14, 2, 14, 2), Margin = new Thickness(0), BorderThickness = new Thickness(0), Foreground = (Brush)Application.Current.Resources["Paper"], Background = Brushes.Transparent, FontSize = 18 }; DockPanel.SetDock(close, Dock.Right); header.Children.Add(close);
-        var heading = new TextBlock { Text = window.Title, Foreground = (Brush)Application.Current.Resources["Paper"], FontWeight = FontWeights.Bold, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) }; header.Children.Add(heading);
+        var header = new DockPanel { Background = (Brush)Application.Current.Resources["Chrome"], LastChildFill = true, Cursor = Cursors.SizeAll };
+        var close = new Button { Content = "×", Padding = new Thickness(14, 2, 14, 2), Margin = new Thickness(0), BorderThickness = new Thickness(0), Foreground = (Brush)Application.Current.Resources["ChromeInk"], Background = Brushes.Transparent, FontSize = 18 }; DockPanel.SetDock(close, Dock.Right); header.Children.Add(close);
+        var heading = new TextBlock { Text = window.Title, Foreground = (Brush)Application.Current.Resources["ChromeInk"], FontWeight = FontWeights.Bold, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) }; header.Children.Add(heading);
         header.MouseLeftButtonDown += (_, e) => { if (e.OriginalSource is not System.Windows.Controls.Button) window.DragMove(); }; close.Click += (_, _) => window.Close();
         root.Children.Add(header); Grid.SetRow(content, 1); root.Children.Add(content); frame.Child = root; window.Content = frame;
     }
@@ -153,7 +155,7 @@ internal static class Dialogs
         summary = new TextBlock { FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 7) }; Grid.SetRow(summary, 2); grid.Children.Add(summary);
         list = new ListBox { BorderThickness = new Thickness(1), Padding = new Thickness(6), SelectionMode = SelectionMode.Single, ItemTemplate = CandidateTemplate() };
         var selectedStyle = new Style(typeof(ListBoxItem)); selectedStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0))); selectedStyle.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0, 0, 0, 6))); selectedStyle.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
-        var selectedTrigger = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true }; selectedTrigger.Setters.Add(new Setter(Control.BorderBrushProperty, (Brush)Application.Current.Resources["Ink"])); selectedTrigger.Setters.Add(new Setter(Control.BackgroundProperty, (Brush)Application.Current.Resources["Accent"])); selectedStyle.Triggers.Add(selectedTrigger); list.ItemContainerStyle = selectedStyle;
+        var selectedTrigger = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true }; selectedTrigger.Setters.Add(new Setter(Control.BorderBrushProperty, (Brush)Application.Current.Resources["Ink"])); selectedTrigger.Setters.Add(new Setter(Control.BackgroundProperty, (Brush)Application.Current.Resources["Accent"])); selectedTrigger.Setters.Add(new Setter(Control.ForegroundProperty, (Brush)Application.Current.Resources["AccentInk"])); selectedStyle.Triggers.Add(selectedTrigger); list.ItemContainerStyle = selectedStyle;
         Grid.SetRow(list, 3); grid.Children.Add(list);
 
         var hint = new TextBlock { Text = "La ventana seguirá perteneciendo a su aplicación. Al liberarla volverá al escritorio. Para mejores resultados, usa apps con permisos de administrador iguales a PomoDock.", FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 12, 0, 12), TextWrapping = TextWrapping.Wrap }; Grid.SetRow(hint, 4); grid.Children.Add(hint);
@@ -192,7 +194,7 @@ internal static class Dialogs
     private static DataTemplate CandidateTemplate()
     {
         var template = new DataTemplate(typeof(WindowCandidate));
-        var card = new FrameworkElementFactory(typeof(Border)); card.SetValue(Border.BorderBrushProperty, (Brush)Application.Current.Resources["Line"]); card.SetValue(Border.BorderThicknessProperty, new Thickness(1)); card.SetValue(Border.BackgroundProperty, (Brush)Application.Current.Resources["Surface"]); card.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8));
+        var card = new FrameworkElementFactory(typeof(Border)); card.SetValue(Border.BorderBrushProperty, (Brush)Application.Current.Resources["Edge"]); card.SetValue(Border.BorderThicknessProperty, new Thickness(1)); card.SetValue(Border.BackgroundProperty, (Brush)Application.Current.Resources["Surface"]); card.SetValue(Border.PaddingProperty, new Thickness(10, 8, 10, 8));
         var row = new FrameworkElementFactory(typeof(StackPanel)); row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal); row.SetValue(StackPanel.MinHeightProperty, 52d);
         var icon = new FrameworkElementFactory(typeof(Border)); icon.SetValue(Border.WidthProperty, 36d); icon.SetValue(Border.HeightProperty, 36d); icon.SetValue(Border.BackgroundProperty, (Brush)Application.Current.Resources["Accent"]); icon.SetValue(Border.HorizontalAlignmentProperty, HorizontalAlignment.Left); icon.SetValue(Border.VerticalAlignmentProperty, VerticalAlignment.Center);
         var image = new FrameworkElementFactory(typeof(Image)); image.SetValue(Image.WidthProperty, 26d); image.SetValue(Image.HeightProperty, 26d); image.SetValue(Image.StretchProperty, Stretch.Uniform); image.SetBinding(Image.SourceProperty, new Binding(nameof(WindowCandidate.Icon))); icon.AppendChild(image); row.AppendChild(icon);

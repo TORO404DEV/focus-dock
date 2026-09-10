@@ -32,7 +32,7 @@ public sealed class WidgetCard : Border
     public WidgetCard(MainWindow owner, WidgetConfig config)
     {
         this.owner = owner; Config = config;
-        BorderThickness = new Thickness(1.5); SetResourceReference(BorderBrushProperty, "Line"); SetResourceReference(BackgroundProperty, "Surface");
+        BorderThickness = new Thickness(1.5); SetResourceReference(BorderBrushProperty, "Edge"); SetResourceReference(BackgroundProperty, "Surface");
         shell.RowDefinitions.Add(new() { Height = new GridLength(38) }); shell.RowDefinitions.Add(new()); Child = shell;
         body.Margin = new Thickness(8, 0, 8, 8);
         var header = new DockPanel { LastChildFill = true, Margin = new Thickness(9, 0, 2, 0), Cursor = Cursors.SizeAll };
@@ -198,7 +198,7 @@ public sealed class WidgetCard : Border
         if (surface is null || ink is null || line is null)
         {
             SetResourceReference(BackgroundProperty, "Surface");
-            SetResourceReference(BorderBrushProperty, "Line");
+            SetResourceReference(BorderBrushProperty, "Edge");
             title.SetResourceReference(TextBlock.ForegroundProperty, "Ink");
             foreach (var button in headerButtons)
             {
@@ -349,6 +349,12 @@ public sealed class WidgetCard : Border
             else if (choice == 3) { Config.KeepAlive = !Config.KeepAlive; if (Config.KeepAlive) web?.CoreWebView2?.Resume(); }
         }
         owner.SaveState();
+    }
+    /// <summary>Puts the card in the skin that is on now, board and all.</summary>
+    internal void Reskin()
+    {
+        foreach (var board in body.Children.OfType<IReskinnable>().ToArray()) board.Reskin();
+        Refresh();
     }
     public void Refresh()
     {

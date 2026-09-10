@@ -129,8 +129,7 @@ internal static class FocusCard
 
             var column = new Grid { Margin = new Thickness(4, 0, 4, 0), MinHeight = 24 };
             var track = new Border { VerticalAlignment = VerticalAlignment.Stretch };
-            track.SetResourceReference(Border.BackgroundProperty, "Muted");
-            track.Opacity = .12;
+            track.SetResourceReference(Border.BackgroundProperty, "Raised");
             column.Children.Add(track);
             if (value > 0)
             {
@@ -183,8 +182,7 @@ internal static class FocusCard
         track.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(.0001, share), GridUnitType.Star) });
         track.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(.0001, 1 - share), GridUnitType.Star) });
         var back = new Border();
-        back.SetResourceReference(Border.BackgroundProperty, "Muted");
-        back.Opacity = .2;
+        back.SetResourceReference(Border.BackgroundProperty, "Raised");
         Grid.SetColumnSpan(back, 2);
         track.Children.Add(back);
         if (share > 0)

@@ -51,6 +51,8 @@ internal sealed class AgendaToast : Window
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
+        // A window of our own gets no Window style, so its content would inherit black text.
+        SetResourceReference(ForegroundProperty, "Ink");
         ShowInTaskbar = false;
         ShowActivated = false;
         Topmost = true;
@@ -87,7 +89,7 @@ internal sealed class AgendaToast : Window
         var item = cue.Event;
         var frame = new Border
         {
-            BorderBrush = AgendaVisuals.Resource("Line"),
+            BorderBrush = AgendaVisuals.Resource("Edge"),
             BorderThickness = new Thickness(2),
             Background = AgendaVisuals.Resource("Surface")
         };

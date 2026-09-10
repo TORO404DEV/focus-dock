@@ -361,11 +361,11 @@ public partial class MainWindow
         var shell = new Grid();
         shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(30) });
         shell.RowDefinitions.Add(new RowDefinition());
-        var header = new Border { Background = (Brush)Application.Current.Resources["Ink"] };
+        var header = new Border { Background = (Brush)Application.Current.Resources["Chrome"] };
         header.Child = new TextBlock
         {
             Text = timer ? "POMODORO" : $"{config.Kind.ToUpperInvariant()} / {config.Title}",
-            Foreground = (Brush)Application.Current.Resources["Paper"], FontSize = 9, FontWeight = FontWeights.Bold,
+            Foreground = (Brush)Application.Current.Resources["ChromeInk"], FontSize = 9, FontWeight = FontWeights.Bold,
             VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 10, 0), TextTrimming = TextTrimming.CharacterEllipsis
         };
         shell.Children.Add(header);
@@ -589,7 +589,7 @@ public partial class MainWindow
                 Content = active ? "●" : "•", Width = 22, Height = 26, Padding = new Thickness(0), Margin = new Thickness(1, 0, 1, 0),
                 FontFamily = new FontFamily("Consolas"), FontSize = active ? 12 : 9, FontWeight = FontWeights.Bold,
                 Background = active ? (Brush)Application.Current.Resources["Accent"] : Brushes.Transparent,
-                Foreground = active ? (Brush)Application.Current.Resources["Ink"] : (Brush)Application.Current.Resources["Paper"],
+                Foreground = active ? (Brush)Application.Current.Resources["AccentInk"] : (Brush)Application.Current.Resources["ChromeInk"],
                 BorderThickness = new Thickness(0),
                 ToolTip = $"Página {i + 1:00} · {page.WidgetCount} {(page.WidgetCount == 1 ? "widget" : "widgets")}",
             };

@@ -12,7 +12,7 @@ namespace PomoDock.App;
 /// The To Do card: what is left today, what is overdue, and the order the user chose. Tasks live
 /// in the shared list, so closing a card never loses one; each card keeps only its own filter.
 /// </summary>
-internal sealed class TodoBoard : Grid
+internal sealed class TodoBoard : Grid, IReskinnable
 {
     private readonly MainWindow owner;
     private readonly WidgetConfig config;
@@ -180,6 +180,9 @@ internal sealed class TodoBoard : Grid
     private void PaintProgress() => progressFill.Width = Math.Max(0, progressTrack.ActualWidth * share);
 
     // ---------------------------------------------------------------- render
+
+    /// <summary>Draws again after a theme change, for the colours it mixed itself.</summary>
+    public void Reskin() => Render();
 
     private void Render()
     {

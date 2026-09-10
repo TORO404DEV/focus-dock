@@ -81,6 +81,8 @@ public sealed class SettingsWindow : Window
         Width = 660; Height = 780; MinWidth = 460; MinHeight = 480;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None;
         AllowsTransparency = true; Background = Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
+        // A window of our own gets no Window style, so its content would inherit black text.
+        SetResourceReference(ForegroundProperty, "Ink");
         // Embedded app windows own native surfaces; a panel below one of them is unusable.
         Topmost = true; ShowInTaskbar = false;
 
@@ -612,6 +614,8 @@ public sealed class LayoutsWindow : Window
     public LayoutsWindow(MainWindow owner)
     {
         Owner = owner; Title = "POMODOCK / Distribuciones"; Width = 500; Height = 460; WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
+        // A window of our own gets no Window style, so its content would inherit black text.
+        SetResourceReference(ForegroundProperty, "Ink");
         var stack = new StackPanel { Margin = new Thickness(22) }; Content = stack; stack.Children.Add(Dialogs.Heading("GUARDA TU ESPACIO."));
         stack.Children.Add(new TextBlock { Text = "Guarda widgets y proporciones. Al cargar otra distribución se liberan las ventanas actuales; podrás reconectarlas." });
         var input = new TextBox { Text = "Mi escritorio" }; stack.Children.Add(input);

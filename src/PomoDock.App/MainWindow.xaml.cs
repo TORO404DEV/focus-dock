@@ -166,7 +166,16 @@ public partial class MainWindow : Window
             AnimateTimer(); UpdateTimer(); SaveState();
         });
     }
-    private Brush PhaseBrush() => new SolidColorBrush(ParseColor(Timer.Phase == Phase.Focus ? Settings.FocusColor : Timer.Phase == Phase.ShortBreak ? Settings.ShortBreakColor : Settings.LongBreakColor, Colors.Transparent));
+    /// <summary>
+    /// The colour of the phase the timer is in. The three colours are pastels picked for paper, so
+    /// in the dark they are laid over the card instead of painted onto it: the phase still reads as
+    /// a colour, and the clock stays light on dark instead of light on a pale slab.
+    /// </summary>
+    private Brush PhaseBrush()
+    {
+        var phase = Theme.Parse(Timer.Phase == Phase.Focus ? Settings.FocusColor : Timer.Phase == Phase.ShortBreak ? Settings.ShortBreakColor : Settings.LongBreakColor, Colors.Transparent);
+        return new SolidColorBrush(Settings.Dark ? Theme.Mix(phase, Theme.Of("Surface"), .13) : phase);
+    }
     private void UpdateTimer()
     {
         UpdateHeaderClock();
@@ -345,11 +354,14 @@ public partial class MainWindow : Window
     }
     public void ApplyTheme()
     {
-        var resources = Application.Current.Resources;
-        string[] keys = ["Paper", "Ink", "Muted", "Surface", "Line", "Accent"];
-        string[] colors = Settings.Dark ? ["#191B18", "#EEEEE5", "#AFB3A4", "#252822", "#C2C6B8", Settings.AccentColor] : ["#F1F0E9", "#171916", "#66695E", "#FAF9F3", "#171916", Settings.AccentColor];
-        for (int i = 0; i < keys.Length; i++) resources[keys[i]] = new SolidColorBrush(ParseColor(colors[i], Colors.Transparent));
+        Theme.Apply(Application.Current.Resources, Settings.Dark, Settings.AccentColor);
+        // A window's own foreground is not covered by the Window style, so without this the date,
+        // the card titles and everything else that inherits its colour stay black on a dark page.
+        SetResourceReference(ForegroundProperty, "Ink");
         var phaseBrush = PhaseBrush(); TimerFrame.Background = phaseBrush; TimerSurface.Background = phaseBrush;
+        // Widgets take a copy of the brush when they draw, so they only wear the new skin once
+        // they are drawn again. Changing theme has to reach them now, not at the next tick.
+        foreach (var card in cards.ToArray()) card.Reskin();
         UpdatePageNavigation();
     }
     private void ApplyTimerPosition()
