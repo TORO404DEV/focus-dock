@@ -31,6 +31,7 @@ public partial class MainWindow
     private int? swipeTargetIndex;
     private bool swipeCreatesPage;
     private bool swipeDestinationAvailable;
+    private bool navigationWasBlocked;
 
     private WorkspacePage CurrentPage => Settings.WorkspacePages[currentPageIndex];
     private WidgetConfig? CurrentTimerWidget => CurrentPage.TimerWidget;
@@ -45,6 +46,23 @@ public partial class MainWindow
         var pages = Settings.WorkspacePages;
         if (pages.Count == 0) return true;
         return (direction < 0 ? pages[0] : pages[^1]).HasContent;
+    }
+
+    /// <summary>
+    /// A dialog owns the workspace while it is visible. Keep every navigation entry point
+    /// behind the same gate so wheel, swipe, keyboard, arrows and page dots behave alike.
+    /// Reminder toasts and embedded third-party windows are intentionally not owner windows.
+    /// </summary>
+    private bool IsWorkspaceNavigationBlocked =>
+        IsReportModalOpen || !IsEnabled || OwnedWindows.Cast<Window>().Any(window => window.IsVisible);
+
+    private void CancelNavigationForOpenWindow(bool pointerDown)
+    {
+        pointerWasDown = pointerDown;
+        swipeCandidate = false;
+        if (!swipeActive && !pageTransitioning) return;
+        swipeActive = false;
+        ResetCarousel(true);
     }
 
     private void InitializeWorkspacePages()
@@ -89,6 +107,11 @@ public partial class MainWindow
 
     private void NavigateWorkspace(int direction)
     {
+        if (IsWorkspaceNavigationBlocked)
+        {
+            CancelNavigationForOpenWindow((Win32.GetAsyncKeyState(0x01) & 0x8000) != 0);
+            return;
+        }
         int target = currentPageIndex + direction;
         if (target >= 0 && target < Settings.WorkspacePages.Count) SwitchWorkspacePage(target);
         else if (CanCreateWorkspacePage(direction)) BeginCarouselTransition(direction, null, true, 0);
@@ -97,6 +120,11 @@ public partial class MainWindow
 
     private bool AddBlankWorkspacePage()
     {
+        if (IsWorkspaceNavigationBlocked)
+        {
+            CancelNavigationForOpenWindow((Win32.GetAsyncKeyState(0x01) & 0x8000) != 0);
+            return false;
+        }
         if (pageTransitioning) return false;
         SaveState();
         if (!CanCreateWorkspacePage(1))
@@ -146,12 +174,18 @@ public partial class MainWindow
 
     private void SwitchWorkspacePage(int target)
     {
+        if (IsWorkspaceNavigationBlocked)
+        {
+            CancelNavigationForOpenWindow((Win32.GetAsyncKeyState(0x01) & 0x8000) != 0);
+            return;
+        }
         if (pageTransitioning || target < 0 || target >= Settings.WorkspacePages.Count || target == currentPageIndex) return;
         BeginCarouselTransition(target > currentPageIndex ? 1 : -1, target, false, 0);
     }
 
     private void BeginCarouselTransition(int direction, int? target, bool createPage, double initialOffset)
     {
+        if (IsWorkspaceNavigationBlocked) return;
         if (pageTransitioning) return;
         PrepareCarousel(direction, target, createPage);
         swipeOffset = initialOffset;
@@ -389,8 +423,22 @@ public partial class MainWindow
 
     private void PageSwipePollTick(object? sender, EventArgs e)
     {
-        if (!workspacePagesLoaded || exiting || !IsEnabled || WindowState == WindowState.Minimized) return;
         bool down = (Win32.GetAsyncKeyState(0x01) & 0x8000) != 0;
+        if (!workspacePagesLoaded || exiting || WindowState == WindowState.Minimized) return;
+        if (IsWorkspaceNavigationBlocked)
+        {
+            navigationWasBlocked = true;
+            CancelNavigationForOpenWindow(down);
+            return;
+        }
+        if (navigationWasBlocked)
+        {
+            // Do not inherit the click that closed the dialog as the beginning of a swipe.
+            navigationWasBlocked = false;
+            pointerWasDown = down;
+            swipeCandidate = false;
+            return;
+        }
         if (!TryGetCanvasPointer(out var point))
         {
             if (!down && pointerWasDown) EndPointerSwipe();
@@ -435,7 +483,7 @@ public partial class MainWindow
 
     private bool CanBeginSwipe(Point point)
     {
-        if (pageTransitioning || IsReportModalOpen || timerResizing || cards.Any(card => card.IsGestureActive)) return false;
+        if (IsWorkspaceNavigationBlocked || pageTransitioning || timerResizing || cards.Any(card => card.IsGestureActive)) return false;
         return !IsInteractiveSwipeSource(WidgetArea.InputHitTest(point) as DependencyObject);
     }
 
@@ -621,6 +669,8 @@ public partial class MainWindow
     }
 
     internal int WorkspacePageCount => Settings.WorkspacePages.Count;
+    internal int CurrentWorkspacePageIndex => currentPageIndex;
+    internal bool WorkspaceNavigationIsBlocked => IsWorkspaceNavigationBlocked;
     internal WorkspacePage CurrentWorkspacePageForDiagnostics => CurrentPage;
     internal bool CurrentWorkspacePageIsBlank => !CurrentPage.HasContent;
     internal bool FirstWorkspacePageIsBlank => !Settings.WorkspacePages[0].HasContent;

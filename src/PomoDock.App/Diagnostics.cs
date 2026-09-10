@@ -184,6 +184,10 @@ internal static class Diagnostics
             Assert(main.IsReportModalOpen, "report opens inside the main window modal layer");
             Assert(main.ReportModalFitsVisibleScreen, "report modal is fully visible and is not clipped by the popup surface");
             Assert(main.ReportVisibleSessionCount >= 14, "report summary loads persisted focus history");
+            int pagesBehindReport = main.WorkspacePageCount;
+            main.NavigatePageForDiagnostics(1);
+            await Task.Delay(80);
+            Assert(main.WorkspacePageCount == pagesBehindReport, "report modal blocks background page navigation");
             Render(main.ReportModalSurface!, Path.Combine(directory, "report.png"));
             Assert(main.ShowReportChartHoverForDiagnostics(), "report chart exposes period and project values on hover");
             Render(main.ReportModalSurface!, Path.Combine(directory, "report-hover.png"));
@@ -200,6 +204,12 @@ internal static class Diagnostics
             main.Settings.Sound = true; main.Settings.WhiteNoise = true;
             settingsPanel = new SettingsWindow(main);
             settingsPanel.Show(); await Task.Delay(250);
+            int pageBehindWindow = main.CurrentWorkspacePageIndex;
+            Assert(main.WorkspaceNavigationIsBlocked, "a visible PomoDock owner window locks workspace navigation");
+            main.NavigatePageForDiagnostics(1);
+            await Task.Delay(80);
+            Assert(main.CurrentWorkspacePageIndex == pageBehindWindow && main.WorkspacePageCount == pagesBehindReport,
+                "wheel, swipe and navigation commands cannot change pages behind an open window");
             foreach (var room in new[] { "rhythm", "sound", "look", "space" })
             {
                 settingsPanel.ShowSection(room); await Task.Delay(150);
