@@ -157,18 +157,33 @@ internal static class Diagnostics
             await Task.Delay(320);
             Assert(main.WorkspacePageCount == initialPages + 1 && main.CurrentWorkspacePageIsBlank && !main.CurrentWorkspacePageHasTimer,
                 "new workspace pages start completely blank");
+            Assert(main.EmptyPageIsFrameless, "empty workspace page has no surrounding placeholder border");
             Render(main, Path.Combine(directory, "page-blank.png"));
             Assert(!main.AddPageForDiagnostics(), "a blank workspace prevents adding another page");
             main.AddTimerForDiagnostics();
             Assert(main.CurrentWorkspacePageHasTimer && !main.CurrentWorkspacePageIsBlank, "timer can be added as the first widget on a blank page");
+            main.RemoveTimerForDiagnostics();
+            Assert(!main.CurrentWorkspacePageHasTimer && main.CurrentWorkspacePageIsBlank, "timer widget can be removed from its page");
+            main.AddTimerForDiagnostics();
             Render(main, Path.Combine(directory, "page-timer.png"));
+            Assert(main.ShowSwipeMidpointForDiagnostics(-1), "mouse carousel exposes both canvases while a slow swipe is in progress");
+            Render(main, Path.Combine(directory, "page-swipe.png"));
+            main.CancelSwipeForDiagnostics();
             Assert(main.AddPageForDiagnostics(), "adding a widget unlocks the following page");
             await Task.Delay(320);
             Assert(main.CurrentWorkspacePageIsBlank, "each subsequently created page is blank too");
+            main.AddCard(new() { Kind = "notes", Title = "EDGE PAGE" }, true);
             main.SwitchPageForDiagnostics(0);
             await Task.Delay(320);
             Assert(!main.CurrentWorkspacePageIsBlank, "page navigation restores the original canvas automatically");
             Assert(retainedWindow.IsExternalAttached, "page navigation preserves embedded external windows");
+            int pagesBeforeEdgeGesture = main.WorkspacePageCount;
+            main.NavigatePageForDiagnostics(-1);
+            await Task.Delay(320);
+            Assert(main.WorkspacePageCount == pagesBeforeEdgeGesture + 1 && main.CurrentWorkspacePageIsBlank,
+                "navigating beyond a populated edge creates a blank canvas in that direction");
+            main.SwitchPageForDiagnostics(1);
+            await Task.Delay(320);
             main.RemoveCard(retainedWindow);
             main.SaveState();
             var persistedWidgets = main.Store.Read<Settings>("settings")!.Widgets;

@@ -91,7 +91,13 @@ public sealed class WidgetCard : Border
         }
     }
     internal bool IsExternalAttached => host?.Alive == true;
+    internal bool IsGestureActive => resizing || moveSurface.IsMouseCaptured || gestureHandles.Any(handle => handle.IsDragging);
     internal void BringExternalToFront() => host?.BringToFront();
+    internal void SetCarouselTransition(bool active)
+    {
+        if (host is not null) host.Visibility = active ? Visibility.Hidden : Visibility.Visible;
+        if (web is not null) web.Visibility = active ? Visibility.Hidden : Visibility.Visible;
+    }
     private static bool IsGestureSource(object source)
     {
         // A click inside a rich note reports a FlowDocument, which is a content element and

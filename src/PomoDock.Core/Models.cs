@@ -126,7 +126,7 @@ public sealed class Settings
     public bool ReduceMotion { get; set; }
     public bool AlwaysOnTop { get; set; }
     public bool TimerAtBottom { get; set; }
-    // The timer is a permanent widget: it can move and resize, but cannot be removed.
+    // Legacy single-page timer retained for backward-compatible backup migration.
     public WidgetConfig TimerWidget { get; set; } = new() { Kind = "timer", Title = "POMODORO" };
     public bool TimerPositionCustomized { get; set; }
     public double WindowLeft { get; set; } = 120;
