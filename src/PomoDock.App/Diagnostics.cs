@@ -187,8 +187,8 @@ internal static class Diagnostics
             }
             // The stats card has its own layout at monitor-widget sizes and expands its type and
             // week when there is room. Width-only changes used to leave the original small scale.
-            var responsiveStats = new WidgetCard(main, new WidgetConfig { Kind = "stats", Title = "MI ENFOQUE", Width = 340, Height = 230 });
-            statsHarness = new Window { Title = "PomoDock responsive stats test", Content = responsiveStats, Width = 360, Height = 270, ShowInTaskbar = false };
+            var responsiveStats = new WidgetCard(main, new WidgetConfig { Kind = "stats", Title = "MI ENFOQUE", Width = 310, Height = 190 });
+            statsHarness = new Window { Title = "PomoDock responsive stats test", Content = responsiveStats, Width = 330, Height = 230, ShowInTaskbar = false };
             statsHarness.Show(); await Task.Delay(200);
             int compactStatsKey = responsiveStats.StatsLayoutKeyForDiagnostics;
             Render(responsiveStats, Path.Combine(directory, "stats-compact.png"));

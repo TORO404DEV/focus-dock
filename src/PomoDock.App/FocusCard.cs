@@ -18,7 +18,7 @@ internal static class FocusCard
     /// <summary>Height controls which sections fit; width controls their density and scale.</summary>
     public static int LayoutKey(double width, double height)
     {
-        int heightTier = height < 76 ? 0 : height < 158 ? 1 : height < 238 ? 2 : 3;
+        int heightTier = height < 76 ? 0 : height < 218 ? 1 : height < 310 ? 2 : 3;
         int widthTier = width < 275 ? 0 : width < 390 ? 1 : width < 560 ? 2 : 3;
         // The small buckets let type grow while dragging without rebuilding on every pixel.
         int widthScale = Math.Clamp((int)Math.Floor(Math.Max(0, width) / 36), 0, 31);
@@ -46,8 +46,10 @@ internal static class FocusCard
             return root;
         }
 
-        bool showWeek = height >= 158;
-        bool showFooter = height >= 238;
+        // A week needs real vertical room. Showing it in a short card used to squeeze the
+        // primary numbers until both their values and captions were clipped.
+        bool showWeek = height >= 218;
+        bool showFooter = height >= 310;
         double metricSize = Math.Clamp(Math.Min(width * .105, height * (showWeek ? .19 : .26)), 27, 58);
         double labelSize = Math.Clamp(metricSize * .34, 10.5, 14);
         double iconSize = Math.Clamp(metricSize * .9, 26, 48);
@@ -141,24 +143,47 @@ internal static class FocusCard
 
         string ink = inverse ? "ChromeInk" : "Ink";
         var row = new Grid();
+        row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition());
         var badge = IconBadge(icon, iconSize, inverse);
         badge.Margin = new Thickness(0, 0, compact ? 6 : 9, 0);
         row.Children.Add(badge);
 
-        var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        // The number owns the remaining first row. Viewbox only scales down, so values such as
+        // 10:25 remain whole at narrow widths instead of being clipped to "10:".
         var number = Text(value, numberSize, ink, FontWeights.Black);
         number.FontFamily = Mono;
         number.LineHeight = numberSize;
-        words.Children.Add(number);
+        var numberBox = new Viewbox
+        {
+            Child = number,
+            Stretch = Stretch.Uniform,
+            StretchDirection = StretchDirection.DownOnly,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Center,
+            MaxHeight = numberSize
+        };
+        Grid.SetColumn(numberBox, 1);
+        row.Children.Add(numberBox);
+
+        // Give the caption the full tile width rather than the small remainder beside the icon.
         var label = Text(caption, labelSize, inverse ? "ChromeInk" : "Muted", FontWeights.Bold);
         label.Opacity = inverse ? .78 : 1;
-        label.Margin = new Thickness(1, compact ? 0 : 2, 0, 0);
-        label.TextTrimming = TextTrimming.CharacterEllipsis;
-        words.Children.Add(label);
-        Grid.SetColumn(words, 1);
-        row.Children.Add(words);
+        label.Margin = new Thickness(1, compact ? 2 : 5, 0, 0);
+        label.HorizontalAlignment = HorizontalAlignment.Center;
+        var labelBox = new Viewbox
+        {
+            Child = label,
+            Stretch = Stretch.Uniform,
+            StretchDirection = StretchDirection.DownOnly,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MaxHeight = labelSize + 2
+        };
+        Grid.SetRow(labelBox, 1);
+        Grid.SetColumnSpan(labelBox, 2);
+        row.Children.Add(labelBox);
         tile.Child = row;
         return tile;
     }
