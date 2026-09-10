@@ -23,10 +23,15 @@ public sealed class TodoTask
     public DateOnly? Due { get; set; }
     /// <summary>Position inside the list. The board keeps it dense and starting at zero.</summary>
     public int Order { get; set; }
+    /// <summary>Time of day for a timed task. Null means any time on the due day.</summary>
+    public TimeOnly? At { get; set; }
+    /// <summary>The calendar entry that carries this task, so it shows there and rings.</summary>
+    public Guid? EventId { get; set; }
 
     public void Normalize()
     {
         Title = (Title ?? "").Trim();
+        if (Due is null) At = null;
         if (!Done) DoneUtc = null;
         else DoneUtc ??= DateTime.UtcNow;
     }
@@ -83,26 +88,25 @@ public sealed class TodoTask
 }
 
 /// <summary>
-/// A card's task list. It stays inside the widget on purpose: two To Do cards are two different
-/// lists, which is how people use them — one per page, one per project.
+/// The task list. It lives in the database, not inside a card, so closing a To Do widget never
+/// takes a task with it, and every To Do card shows the same list. A dated task is also carried
+/// by a calendar entry, which is how it reaches the calendar and its reminders.
 /// </summary>
 public sealed class TodoBook
 {
     private static readonly Regex Bang = new(@"(?<![^\s])(!{1,3})(?![^\s])", RegexOptions.CultureInvariant);
-    private static readonly Regex DayAfterTomorrow = new(@"\bpasado\s+ma[ñn]ana\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex Tomorrow = new(@"\bma[ñn]ana\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex Today = new(@"\bhoy\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex NumericDate = new(@"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b", RegexOptions.CultureInvariant);
-    private static readonly Regex TrailingFiller = new(@"\s+(?:el|la|los|las|de|del|a|al|en|para|este|esta)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public int Version { get; set; } = 1;
     public List<TodoTask> Items { get; set; } = [];
     /// <summary>Which slice the card is showing: all, open, today or done.</summary>
     public string Filter { get; set; } = "all";
+    /// <summary>Cards whose old, card-held list was already folded in.</summary>
+    public List<string> Imported { get; set; } = [];
 
     public void Normalize()
     {
         Items ??= [];
+        Imported ??= [];
         foreach (var task in Items) task.Normalize();
         Items.RemoveAll(task => task.Title.Length == 0);
         if (string.IsNullOrWhiteSpace(Filter) || !Filters.Contains(Filter)) Filter = "all";
@@ -118,7 +122,10 @@ public sealed class TodoBook
         .ThenBy(task => task.Order)
         .ToList();
 
-    public List<TodoTask> Visible(DateOnly today) => Filter switch
+    public List<TodoTask> Visible(DateOnly today) => Visible(today, Filter);
+
+    /// <summary>The slice one card shows. Each card keeps its own filter over the shared list.</summary>
+    public List<TodoTask> Visible(DateOnly today, string filter) => filter switch
     {
         "open" => Ordered().Where(task => !task.Done).ToList(),
         "today" => Ordered().Where(task => task.IsDueToday(today) || task.IsOverdue(today)).ToList(),
@@ -171,62 +178,44 @@ public sealed class TodoBook
     public TodoTask? Add(string text, DateOnly today)
     {
         var task = Parse(text, today);
-        if (task is null) return null;
+        return task is null ? null : Insert(task);
+    }
+
+    /// <summary>Puts a task at the top of the list, where it can be seen.</summary>
+    public TodoTask Insert(TodoTask task)
+    {
         task.Order = Items.Count == 0 ? 0 : Items.Min(item => item.Order) - 1;
         Items.Add(task);
         Normalize();
         return task;
     }
 
+    /// <summary>A task read from one line, and the calendar draft behind it when it has a day.</summary>
+    public sealed record TodoReading(TodoTask Task, AgendaEvent? Draft);
+
+    /// <summary>Reads a line against the start of a day, for callers that only know the date.</summary>
+    public static TodoTask? Parse(string text, DateOnly today) => Read(text, today.ToDateTime(TimeOnly.MinValue))?.Task;
+
     /// <summary>
-    /// Reads the shorthand a task list actually needs: "!" marks urgency and "hoy", "mañana" or
-    /// a date put it on the calendar. Everything else stays in the title.
+    /// Reads a task the way the calendar reads an event — "Ir por madera antes de 2pm", "Pagar
+    /// luz el viernes 18", "Sacar la basura todos los martes" — plus "!" and "!!" for urgency.
+    /// Everything the reader does not consume stays in the title.
     /// </summary>
-    public static TodoTask? Parse(string text, DateOnly today)
+    public static TodoReading? Read(string text, DateTime now)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
-        string rest = text;
-
         var priority = TodoPriority.None;
-        foreach (Match match in Bang.Matches(rest))
+        foreach (Match match in Bang.Matches(text))
             if (match.Groups[1].Value.Length >= 2) priority = TodoPriority.High;
             else if (priority == TodoPriority.None) priority = TodoPriority.Medium;
-        rest = Bang.Replace(rest, " ");
 
-        DateOnly? due = null;
-        if (Take(ref rest, DayAfterTomorrow) is not null) due = today.AddDays(2);
-        else if (Take(ref rest, Tomorrow) is not null) due = today.AddDays(1);
-        else if (Take(ref rest, Today) is not null) due = today;
-        else if (Take(ref rest, NumericDate) is { } date) due = FromParts(date, today);
-
-        string title = Clean(rest);
-        return title.Length == 0 ? null : new TodoTask { Title = title, Priority = priority, Due = due };
-    }
-
-    private static Match? Take(ref string text, Regex pattern)
-    {
-        var match = pattern.Match(text);
-        if (!match.Success) return null;
-        text = string.Concat(text.AsSpan(0, match.Index), " ", text.AsSpan(match.Index + match.Length));
-        return match;
-    }
-
-    private static DateOnly? FromParts(Match match, DateOnly today)
-    {
-        if (!int.TryParse(match.Groups[1].Value, out int day) || !int.TryParse(match.Groups[2].Value, out int month)) return null;
-        if (month is < 1 or > 12) return null;
-        int year = int.TryParse(match.Groups[3].Value, out int typed) ? (typed < 100 ? typed + 2000 : typed) : today.Year;
-        if (day < 1 || day > DateTime.DaysInMonth(year, month)) return null;
-        var date = new DateOnly(year, month, day);
-        // A bare day and month that already went by means the next time it comes round.
-        if (!match.Groups[3].Success && date < today) date = date.AddYears(1);
-        return date;
-    }
-
-    private static string Clean(string text)
-    {
-        string title = Regex.Replace(text, @"\s+", " ").Trim(' ', '-', '–', ':', ',', ';');
-        for (int guard = 0; guard < 4 && TrailingFiller.IsMatch(title); guard++) title = TrailingFiller.Replace(title, "", 1).Trim();
-        return title.Length == 0 ? "" : char.ToUpper(title[0], CultureInfo.CurrentCulture) + title[1..];
+        var reading = AgendaQuickAdd.Read(Bang.Replace(text, " "), now);
+        if (reading is null) return null;
+        var draft = reading.Event;
+        var task = new TodoTask { Title = draft.Title, Priority = priority };
+        if (!reading.Scheduled) return new TodoReading(task, null);
+        task.Due = DateOnly.FromDateTime(draft.Start);
+        task.At = draft.AllDay ? null : TimeOnly.FromDateTime(draft.Start);
+        return new TodoReading(task, draft);
     }
 }

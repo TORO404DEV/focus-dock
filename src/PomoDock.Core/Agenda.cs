@@ -58,6 +58,8 @@ public sealed class AgendaEvent
     public List<string> Done { get; set; } = [];
     /// <summary>ISO first-days removed from the series without deleting the rest.</summary>
     public List<string> Cancelled { get; set; } = [];
+    /// <summary>The To Do task this entry carries, when it came from a dated task.</summary>
+    public Guid? TaskId { get; set; }
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
     public static string Key(DateOnly day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

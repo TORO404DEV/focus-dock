@@ -3,6 +3,13 @@ using System.Text.RegularExpressions;
 
 namespace PomoDock.Core;
 
+/// <summary>A read line plus what the reader actually found in it, beyond the title.</summary>
+public sealed record QuickAddReading(AgendaEvent Event, bool Dated, bool Timed, bool Repeats)
+{
+    /// <summary>The line named a day, an hour or a rhythm: something a calendar can hold.</summary>
+    public bool Scheduled => Dated || Timed || Repeats;
+}
+
 /// <summary>
 /// Turns one typed line into an event: "Dentista el viernes 18 a las 4 y media avísame 1 h antes".
 /// Whatever it cannot read stays in the title, so a fast note never loses words.
@@ -117,7 +124,7 @@ public static class AgendaQuickAdd
     private static readonly Regex DurationHoursWord = R(@"\b(?:durante\s+|por\s+)?(?<h>" + Num + @")(?:[.,](?<t>\d))?\s*horas\b(?<half>\s+y\s+media)?");
     private static readonly Regex DurationShortHours = R(@"(?<!\bla\s)(?<!\blas\s)\b(?<h>[1-4])\s*h\b(?!\s*\d)");
 
-    private static readonly Regex TimeSpoken = R(@"\b(?:a|para|desde|sobre|como\s+a)\s+las?\s+" + Clock("t") + @"(?!\d)");
+    private static readonly Regex TimeSpoken = R(@"\b(?:a|para|desde|sobre|como\s+a|antes\s+de)\s+las?\s+" + Clock("t") + @"(?!\d)");
     private static readonly Regex Noon = R(@"\b(?:al|a|en\s+el|para\s+el)\s+mediodia\b");
     private static readonly Regex Midnight = R(@"\b(?:a\s+(?:la\s+)?)?medianoche\b");
     private static readonly Regex TimeColon = R(
@@ -128,6 +135,10 @@ public static class AgendaQuickAdd
 
     private static readonly Regex ThisPeriod = R(@"\besta\s+(?<p>manana|tarde|noche)\b");
     private static readonly Regex Period = R(@"\b(?:por|en|de|a)\s+la\s+(?<p>manana|tarde|noche|madrugada)\b");
+    /// <summary>"antes de 2pm", "antes del viernes": a deadline reads as the moment itself.</summary>
+    private static readonly Regex DeadlineWords = R(
+        @"\b(?:para\s+)?antes\s+del?(?=\s+(?:\d{1,2}\s*(?:[:.]\s*\d{2})?\s*(?:a\.?\s?m\b|p\.?\s?m\b|h\b|hrs\b)|" + Weekday +
+        @"|el\s|\d{1,2}\s+de\s|\d{1,2}[/-]|fin\s|manana\b|hoy\b|pasado\b))");
 
     private static readonly Regex PlaceAfterEn = new(@"(?:^|\s)en\s+(?<p>\S.*)$", RegexOptions.CultureInvariant | RegexOptions.RightToLeft | RegexOptions.ExplicitCapture);
     private static readonly string[] PlaceWords =
@@ -141,7 +152,7 @@ public static class AgendaQuickAdd
     private static readonly HashSet<string> Fillers = new(StringComparer.Ordinal)
     {
         "el", "la", "los", "las", "de", "del", "a", "al", "en", "para", "este", "esta", "y", "e", "con", "desde",
-        "hasta", "que", "viene", "proximo", "proxima", "por", "sobre", "como", "dia", "siguiente", "el dia"
+        "hasta", "que", "viene", "proximo", "proxima", "por", "sobre", "como", "dia", "siguiente", "el dia", "antes"
     };
 
     // ------------------------------------------------------------------ dates
@@ -190,7 +201,10 @@ public static class AgendaQuickAdd
     /// Reads a line into a draft event. Returns null when nothing is left to call it, so the caller
     /// can fall back to the full editor instead of saving a nameless entry.
     /// </summary>
-    public static AgendaEvent? Parse(string text, DateTime now)
+    public static AgendaEvent? Parse(string text, DateTime now) => Read(text, now)?.Event;
+
+    /// <summary>Like <see cref="Parse"/>, and also says whether a day or an hour was really written.</summary>
+    public static QuickAddReading? Read(string text, DateTime now)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
         var line = new Line(text);
@@ -213,6 +227,7 @@ public static class AgendaQuickAdd
         }
 
         bool allDayWords = line.Take(AllDayWords) is not null;
+        line.Take(DeadlineWords);
 
         bool silent = line.Take(Silent) is not null;
         int? reminder = null;
@@ -358,7 +373,7 @@ public static class AgendaQuickAdd
         // A place written as "en …" is copied, never cut: the title keeps its own words.
         if (location.Length == 0) location = PlaceIn(line);
 
-        string title = Title(line.Text);
+        string title = Title(line.Text, untouched: line.Text == text);
         if (title.Length == 0) return null;
 
         bool allDay = allDayWords || time is null;
@@ -411,7 +426,7 @@ public static class AgendaQuickAdd
             Reminders = silent ? [] : [reminder ?? (allDay ? 0 : 10)]
         };
         draft.Normalize();
-        return draft;
+        return new QuickAddReading(draft, spanStart is not null || date is not null || exact is not null, !allDay, repeat != RepeatKind.None);
     }
 
     // ------------------------------------------------------------------ the line
@@ -742,13 +757,17 @@ public static class AgendaQuickAdd
         return named || known ? place : "";
     }
 
-    private static string Title(string rest)
+    private static string Title(string rest, bool untouched = false)
     {
         var words = Regex.Split(rest.Trim(), @"\s+").Where(word => word.Length > 0 && !Regex.IsMatch(word, @"^[\-–—:,.;·|]+$")).ToList();
         static string Plain(string word) => new Line(word.Trim(',', '.', ';', ':')).Folded;
-        while (words.Count > 0 && Fillers.Contains(Plain(words[0]))) words.RemoveAt(0);
-        while (words.Count > 0 && Fillers.Contains(Plain(words[^1]))) words.RemoveAt(words.Count - 1);
-        string text = string.Join(' ', words).Trim(' ', '-', '–', '—', ':', ',', '.', ';');
+        var kept = new List<string>(words);
+        while (kept.Count > 0 && Fillers.Contains(Plain(kept[0]))) kept.RemoveAt(0);
+        while (kept.Count > 0 && Fillers.Contains(Plain(kept[^1]))) kept.RemoveAt(kept.Count - 1);
+        // Connectors are only trimmed around something the reader took out. A line it recognised
+        // nothing in is a title made of small words — "Del día" — and stays whole.
+        if (kept.Count == 0 && untouched) kept = words;
+        string text = string.Join(' ', kept).Trim(' ', '-', '–', '—', ':', ',', '.', ';');
         return text.Length == 0 ? "" : char.ToUpper(text[0], CultureInfo.CurrentCulture) + text[1..];
     }
 }

@@ -68,6 +68,7 @@ Test("todo and habit widgets preserve completion state", () => {
 });
 HabitTests.Run(Test, Equal, Assert);
 AgendaQuickAddTests.Run(Test, Equal, Assert);
+TodoSyncTests.Run(Test, Equal, Assert);
 TodoTests.Run(Test, Equal, Assert);
 Test("rich note metadata preserves color, document, and checklists", () => {
  var note = new NotesWidgetData { Color = "mint", DocumentXaml = "<Section><Paragraph>Idea</Paragraph></Section>", Checklists = [new() { ParagraphIndex = 0, IsChecked = true }], UpdatedUtc = utc.UtcDateTime };

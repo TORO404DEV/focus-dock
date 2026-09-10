@@ -87,11 +87,11 @@ internal static class TodoTests
         {
             var book = new TodoBook();
             var loose = book.Add("Suelta", Today)!;
-            var soon = book.Add("En dos días", Today)!; soon.Due = Today.AddDays(2);
+            var soon = book.Add("Revisar", Today)!; soon.Due = Today.AddDays(2);
             var late = book.Add("Atrasada", Today)!; late.Due = Today.AddDays(-1);
             var urgent = book.Add("Urgente", Today)!; urgent.Due = Today; urgent.Priority = TodoPriority.High;
             book.SortByUrgency(Today);
-            assert(book.Ordered().Select(task => task.Title).SequenceEqual(["Atrasada", "Urgente", "En dos días", "Suelta"]), "urgency decides the order");
+            assert(book.Ordered().Select(task => task.Title).SequenceEqual(["Atrasada", "Urgente", "Revisar", "Suelta"]), "urgency decides the order");
             assert(book.Ordered().Select(task => task.Order).SequenceEqual([0, 1, 2, 3]), "the order stays dense");
             assert(loose.Due is null, "sorting never invents a date");
         });

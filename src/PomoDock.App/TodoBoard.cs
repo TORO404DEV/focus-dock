@@ -9,14 +9,18 @@ using PomoDock.Core;
 namespace PomoDock.App;
 
 /// <summary>
-/// The To Do card: what is left today, what is overdue, and the order the user chose. Tasks stay
-/// inside the widget, so two cards are two independent lists — one per page, one per project.
+/// The To Do card: what is left today, what is overdue, and the order the user chose. Tasks live
+/// in the shared list, so closing a card never loses one; each card keeps only its own filter.
 /// </summary>
 internal sealed class TodoBoard : Grid
 {
     private readonly MainWindow owner;
     private readonly WidgetConfig config;
+    private readonly TodoStore store;
     private readonly TodoBook book;
+    private string filter;
+    private readonly TextBlock hint;
+    private bool listening;
     private readonly TextBlock counter;
     private readonly TextBlock meta;
     private readonly Grid progressTrack;
@@ -33,7 +37,9 @@ internal sealed class TodoBoard : Grid
     {
         this.owner = owner;
         this.config = config;
-        book = Read(config.Value);
+        store = TodoStore.For(owner.Store);
+        filter = store.Adopt(config);
+        book = store.Book;
 
         for (int row = 0; row < 4; row++) RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition());
@@ -63,7 +69,7 @@ internal sealed class TodoBoard : Grid
         {
             Height = 32, Margin = new Thickness(0), Padding = new Thickness(9, 0, 9, 0), MinWidth = 0, FontSize = 12,
             TextWrapping = TextWrapping.NoWrap, VerticalContentAlignment = VerticalAlignment.Center,
-            ToolTip = "Escribe la tarea. Añade ! para prioridad y hoy, mañana o 12/09 para ponerle fecha."
+            ToolTip = "Escribe como hablas: «Pagar luz el viernes 18», «Ir por madera antes de 2pm», «Llamar a Ana mañana a las 5 avísame 30 min antes». ! o !! para la prioridad."
         };
         input.SetValue(AutomationProperties.NameProperty, "Nueva tarea");
         ScrollViewer.SetHorizontalScrollBarVisibility(input, ScrollBarVisibility.Hidden);
@@ -78,8 +84,18 @@ internal sealed class TodoBoard : Grid
         add.Click += (_, _) => Commit();
         Grid.SetColumn(add, 1);
         addRow.Children.Add(field); addRow.Children.Add(add);
-        Grid.SetRow(addRow, 2);
-        Children.Add(addRow);
+        // What the line will become, read before it is added: day, hour, rhythm and reminder.
+        hint = new TextBlock
+        {
+            FontSize = 9.5, Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(2, -2, 0, 6),
+            TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap, Visibility = Visibility.Collapsed
+        };
+        input.TextChanged += (_, _) => UpdateHint();
+        var entry = new StackPanel();
+        entry.Children.Add(addRow);
+        entry.Children.Add(hint);
+        Grid.SetRow(entry, 2);
+        Children.Add(entry);
 
         var bar = new Grid { Margin = new Thickness(0, 0, 0, 6) };
         bar.ColumnDefinitions.Add(new ColumnDefinition());
@@ -96,7 +112,22 @@ internal sealed class TodoBoard : Grid
         Grid.SetRow(scroller, 4);
         Children.Add(scroller);
 
+        Loaded += (_, _) =>
+        {
+            if (!listening) { store.Changed += OnChanged; listening = true; }
+            Render();
+        };
+        Unloaded += (_, _) =>
+        {
+            if (listening) { store.Changed -= OnChanged; listening = false; }
+        };
         Render();
+    }
+
+    /// <summary>Another card or the calendar changed the list. A rename in progress is left alone.</summary>
+    private void OnChanged()
+    {
+        if (editing == Guid.Empty) Render();
     }
 
     /// <summary>Rows currently drawn. The self test uses it to prove a stored list really renders.</summary>
@@ -104,34 +135,45 @@ internal sealed class TodoBoard : Grid
 
     // ---------------------------------------------------------------- storage
 
-    private static TodoBook Read(string payload)
+    private void Save() => store.Save();
+
+    /// <summary>The filter belongs to the card, not to the list: two cards can look at different slices.</summary>
+    private void SaveView()
     {
-        // Older cards stored the same field names with fewer fields, so they load straight in.
-        if (string.IsNullOrWhiteSpace(payload)) return new TodoBook();
-        TodoBook? stored = null;
-        try { stored = JsonSerializer.Deserialize<TodoBook>(payload); }
-        catch (JsonException) { }
-        var book = stored ?? new TodoBook();
-        book.Normalize();
-        return book;
+        config.Value = TodoStore.View(filter);
+        owner.SaveState();
     }
 
-    private void Save()
+    private void UpdateHint()
     {
-        book.Normalize();
-        config.Value = JsonSerializer.Serialize(book);
-        owner.SaveState();
+        string text = input.Text.Trim();
+        var reading = text.Length == 0 ? null : TodoBook.Read(text, DateTime.Now);
+        if (reading?.Draft is not { } draft) { hint.Visibility = Visibility.Collapsed; return; }
+        var day = DateOnly.FromDateTime(draft.Start);
+        string when = draft.AllDay ? AgendaVisuals.DayLabel(day) : $"{AgendaVisuals.DayLabel(day)} · {draft.Start:HH:mm}";
+        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToLower(AgendaVisuals.Spanish);
+        string alert = draft.Reminders.Count == 0 ? " · sin aviso"
+            : draft.AllDay ? $" · aviso a las {AgendaEvent.AllDayHour}:00"
+            : draft.Reminders[0] >= 60 && draft.Reminders[0] % 60 == 0 ? $" · aviso {draft.Reminders[0] / 60} h antes"
+            : $" · aviso {draft.Reminders[0]} min antes";
+        hint.Text = $"↵  {reading.Task.Title}  ·  {when}{repeat}{alert}  ·  también en el calendario";
+        hint.Visibility = Visibility.Visible;
     }
 
     private void Commit()
     {
         var today = DateOnly.FromDateTime(DateTime.Now);
-        var task = book.Add(input.Text, today);
+        var task = store.Add(input.Text, DateTime.Now);
         if (task is null) { input.SelectAll(); return; }
         input.Clear();
         // A task typed while looking at another slice would vanish; show where it landed.
-        if (book.Filter == "done" || (book.Filter == "today" && !task.IsDueToday(today) && !task.IsOverdue(today))) book.Filter = "all";
-        Save();
+        if (filter == "done" || (filter == "today" && !task.IsDueToday(today) && !task.IsOverdue(today)))
+        {
+            filter = "all";
+            SaveView();
+        }
+        if (task.Due is { } due)
+            owner.Status($"TAREA AÑADIDA · {task.Title} · {AgendaVisuals.DayLabel(due)}{(task.At is { } at ? $" {at:HH:mm}" : "")} · también en el calendario");
         Render();
     }
 
@@ -163,14 +205,14 @@ internal sealed class TodoBoard : Grid
         filters.Children.Clear();
         foreach (var (key, label) in new[] { ("all", "TODAS"), ("open", "PENDIENTES"), ("today", "HOY"), ("done", "HECHAS") })
         {
-            bool active = book.Filter == key;
+            bool active = filter == key;
             var chip = new Button
             {
                 Content = label, FontSize = 9, Padding = new Thickness(7, 5, 7, 5), Margin = new Thickness(0, 0, 4, 0),
                 Background = active ? AgendaVisuals.Resource("Ink") : AgendaVisuals.Resource("Surface"),
                 Foreground = active ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Ink")
             };
-            chip.Click += (_, _) => { book.Filter = key; Save(); Render(); };
+            chip.Click += (_, _) => { filter = key; SaveView(); Render(); };
             filters.Children.Add(chip);
         }
 
@@ -194,14 +236,14 @@ internal sealed class TodoBoard : Grid
         }
 
         list.Children.Clear();
-        var visible = book.Visible(today);
+        var visible = book.Visible(today, filter);
         foreach (var task in visible) list.Children.Add(Row(task, today));
         if (visible.Count == 0) list.Children.Add(Empty(counts));
     }
 
     private UIElement Empty((int Total, int Done, int Open, int Overdue, int Today) counts) => new TextBlock
     {
-        Text = book.Filter switch
+        Text = filter switch
         {
             "done" => "Nada terminado todavía. Marca una tarea y aparecerá aquí.",
             "today" => counts.Open > 0 ? "Nada con fecha para hoy. Ponle fecha a una tarea con el botón ◷." : "Nada para hoy.",
@@ -244,7 +286,7 @@ internal sealed class TodoBoard : Grid
             ToolTip = task.Done ? "Marcar como pendiente" : "Completar tarea"
         };
         check.SetValue(AutomationProperties.NameProperty, (task.Done ? "Marcar pendiente: " : "Completar: ") + task.Title);
-        check.Click += (_, _) => { task.SetDone(!task.Done); Save(); Render(); };
+        check.Click += (_, _) => { store.SetDone(task, !task.Done); Render(); };
         Grid.SetColumn(check, 1);
         line.Children.Add(new Border { Background = task.Priority == TodoPriority.None ? Brushes.Transparent : accent });
         line.Children.Add(check);
@@ -298,7 +340,7 @@ internal sealed class TodoBoard : Grid
             line.Children.Add(title);
         }
 
-        string due = task.DueLabel(today);
+        string due = task.DueLabel(today) + (task.Due is not null && task.At is { } at ? " " + at.ToString("HH:mm") : "");
         var date = new Button
         {
             Content = due.Length > 0 ? due : "◷",
@@ -341,7 +383,8 @@ internal sealed class TodoBoard : Grid
     private static string Tooltip(TodoTask task, DateOnly today)
     {
         var lines = new List<string> { task.Title, task.PriorityLabel() };
-        if (task.Due is { } due) lines.Add(task.IsOverdue(today) ? $"Venció el {due:dd/MM/yyyy}" : $"Vence el {due:dd/MM/yyyy}");
+        if (task.Due is { } due) lines.Add((task.IsOverdue(today) ? $"Venció el {due:dd/MM/yyyy}" : $"Vence el {due:dd/MM/yyyy}") + (task.At is { } at ? $" a las {at:HH:mm}" : ""));
+        if (task.EventId is not null) lines.Add("En el calendario · suena con sus avisos");
         lines.Add(task.Done ? "Hecha · doble clic para renombrar" : "Doble clic para renombrar");
         return string.Join("\n", lines);
     }
@@ -357,10 +400,15 @@ internal sealed class TodoBoard : Grid
                 Render();
                 return;
             case 1:
-                var typed = Dialogs.Prompt(owner, "FECHA DE LA TAREA", "Día en formato dd/mm/aaaa", task.Due?.ToString("dd/MM/yyyy") ?? today.ToString("dd/MM/yyyy"));
+                var typed = Dialogs.Prompt(owner, "FECHA DE LA TAREA", "Cuándo: «mañana a las 5», «el viernes 18», «25/12»…", task.Due?.ToString("dd/MM/yyyy") ?? "hoy");
                 if (typed is null) return;
-                if (DateOnly.TryParseExact(typed.Trim(), ["dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d/M/yy"], AgendaVisuals.Spanish, System.Globalization.DateTimeStyles.None, out var parsed)) task.Due = parsed;
-                else { owner.Status("FECHA NO RECONOCIDA · Usa el formato dd/mm/aaaa."); return; }
+                // The same reader as the entry line, so a date can be written the same way here.
+                if (AgendaQuickAdd.Read("tarea " + typed, DateTime.Now) is { Scheduled: true } when)
+                {
+                    task.Due = DateOnly.FromDateTime(when.Event.Start);
+                    task.At = when.Event.AllDay ? null : TimeOnly.FromDateTime(when.Event.Start);
+                }
+                else { owner.Status("FECHA NO RECONOCIDA · Prueba «mañana», «el viernes 18» o «25/12 a las 9»."); return; }
                 break;
             case 2:
                 task.Due = null;
