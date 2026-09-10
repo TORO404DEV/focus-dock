@@ -25,7 +25,7 @@ internal static class Diagnostics
         Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         Directory.CreateDirectory(directory);
         var results = new List<string>();
-        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null; Window? notesHarness = null; SettingsWindow? settingsPanel = null;
+        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null; Window? notesHarness = null; Window? statsHarness = null; SettingsWindow? settingsPanel = null;
         void Assert(bool condition, string label) { if (!condition) throw new Exception(label); results.Add("PASS " + label); }
         try
         {
@@ -180,6 +180,17 @@ internal static class Diagnostics
                 var end = DateTimeOffset.Now.AddDays(-d).AddHours(-1);
                 main.Store.Save(new() { Started = end.AddMinutes(-25), Ended = end, PlannedSeconds = 1500, Outcome = Outcome.Completed, Project = d % 2 == 0 ? "Demo / producto" : "Demo / aprender", Task = "Sesión de demostración", Segments = [new(end.AddMinutes(-25), end)] });
             }
+            // The stats card has its own layout at monitor-widget sizes and expands its type and
+            // week when there is room. Width-only changes used to leave the original small scale.
+            var responsiveStats = new WidgetCard(main, new WidgetConfig { Kind = "stats", Title = "MI ENFOQUE", Width = 340, Height = 230 });
+            statsHarness = new Window { Title = "PomoDock responsive stats test", Content = responsiveStats, Width = 360, Height = 270, ShowInTaskbar = false };
+            statsHarness.Show(); await Task.Delay(200);
+            int compactStatsKey = responsiveStats.StatsLayoutKeyForDiagnostics;
+            Render(responsiveStats, Path.Combine(directory, "stats-compact.png"));
+            statsHarness.Width = 680; statsHarness.Height = 440; await Task.Delay(250);
+            Assert(responsiveStats.StatsLayoutKeyForDiagnostics != compactStatsKey, "focus stats rebuilds when only its available width changes");
+            Render(responsiveStats, Path.Combine(directory, "stats-wide.png"));
+            responsiveStats.Release(); statsHarness.Close(); statsHarness = null;
             main.ShowReportForDiagnostics(); await Task.Delay(100);
             Assert(main.IsReportModalOpen, "report opens inside the main window modal layer");
             Assert(main.ReportModalFitsVisibleScreen, "report modal is fully visible and is not clipped by the popup surface");
@@ -288,7 +299,7 @@ internal static class Diagnostics
         finally
         {
             AgendaToast.CloseAll();
-            settingsPanel?.Close(); notesHarness?.Close(); todoHarness?.Close(); calendarHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
+            settingsPanel?.Close(); statsHarness?.Close(); notesHarness?.Close(); todoHarness?.Close(); calendarHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
             if (fixture is not null) { if (!fixture.HasExited) fixture.CloseMainWindow(); fixture.Dispose(); }
             if (fixture2 is not null) { if (!fixture2.HasExited) fixture2.CloseMainWindow(); fixture2.Dispose(); }
             Application.Current.Shutdown(Environment.ExitCode);

@@ -86,13 +86,18 @@ public sealed class WidgetCard : Border
         else if (config.Kind == "calendar") BuildCalendar();
         else
         {
-            // The focus card redraws itself only when its size crosses into another shape.
-            if (config.Kind == "stats") body.SizeChanged += (_, _) => { if (FocusCard.Tier(body.ActualHeight) != statsTier) Refresh(); };
+            // Width changes the type scale just as much as height. Rebuild in small buckets so
+            // the card follows both resize axes without repainting on every pointer pixel.
+            if (config.Kind == "stats") body.SizeChanged += (_, _) =>
+            {
+                if (FocusCard.LayoutKey(body.ActualWidth, body.ActualHeight) != statsLayoutKey) Refresh();
+            };
             Refresh();
         }
     }
     internal bool IsExternalAttached => host?.Alive == true;
     internal bool IsGestureActive => resizing || moveSurface.IsMouseCaptured || gestureHandles.Any(handle => handle.IsDragging);
+    internal int StatsLayoutKeyForDiagnostics => statsLayoutKey;
     internal void BringExternalToFront() => host?.BringToFront();
     internal void SetCarouselTransition(bool active)
     {
@@ -362,11 +367,11 @@ public sealed class WidgetCard : Border
         if (Config.Kind != "stats") return;
         double statsWidth = body.ActualWidth > 4 ? body.ActualWidth : Math.Max(120, Config.Width - 22);
         double statsHeight = body.ActualHeight > 4 ? body.ActualHeight : Math.Max(60, Config.Height - 46);
-        statsTier = FocusCard.Tier(statsHeight);
+        statsLayoutKey = FocusCard.LayoutKey(statsWidth, statsHeight);
         body.Children.Clear();
         body.Children.Add(FocusCard.Build(owner, statsWidth, statsHeight));
     }
-    private int statsTier = -1;
+    private int statsLayoutKey = -1;
     public void Release()
     {
         CancelGesture(this, EventArgs.Empty); owner.Deactivated -= CancelGesture;
