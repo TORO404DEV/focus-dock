@@ -118,6 +118,8 @@ public partial class MainWindow : Window
         var source = HwndSource.FromHwnd(hwnd); source?.AddHook(WindowMessages);
         focusHook = Win32.SetWinEventHook(3, 3, 0, foregroundCallback, 0, 0, 0);
         InitializeWorkspacePages(); ticker.Start(); UpdateHotkey();
+        // Calendar reminders ring on their own clock: they never depend on a widget being visible.
+        AgendaReminders.For(Store).Attach(this);
         if (Settings.Fullscreen) ToggleFullscreen();
         if (!DiagnosticMode)
         {
@@ -565,7 +567,8 @@ public partial class MainWindow : Window
         else if (choice == 3) AddCard(new() { Kind = "stats", Title = "MI ENFOQUE" }, true);
         else if (choice == 4) AddCard(new() { Kind = "todo", Title = "TO DO" }, true);
         else if (choice == 5) AddCard(new() { Kind = "habits", Title = "HÁBITOS" }, true);
-        else if (choice == 6) AddTimerWidget();
+        else if (choice == 6) AddCard(new() { Kind = "calendar", Title = "AGENDA" }, true);
+        else if (choice == 7) AddTimerWidget();
     }
     private void AddWindowClick(object sender, RoutedEventArgs e)
     {
@@ -586,8 +589,10 @@ public partial class MainWindow : Window
         if (config.Height <= 0) config.Height = config.Kind switch
         {
             "stats" => 260,
-            "todo" => 340,
+            "notes" => 360,
+            "todo" => 400,
             "habits" => 390,
+            "calendar" => 520,
             _ => 300
         };
         if (newPlacement)
@@ -856,7 +861,7 @@ public partial class MainWindow : Window
     }
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        CancelTimerGesture(); HideReportModal(); HideTimerOverlay();
+        CancelTimerGesture(); HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         try

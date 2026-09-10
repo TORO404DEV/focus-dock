@@ -25,7 +25,7 @@ internal static class Diagnostics
         Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         Directory.CreateDirectory(directory);
         var results = new List<string>();
-        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null;
+        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null;
         void Assert(bool condition, string label) { if (!condition) throw new Exception(label); results.Add("PASS " + label); }
         try
         {
@@ -88,9 +88,50 @@ internal static class Diagnostics
             main.RemoveCard(embeddedCard);
             main.AddCard(new() { Kind = "notes", Title = "MI SIGUIENTE PASO", Value = "Una cosa a la vez.\n\n1. Elegir el siguiente resultado\n2. Iniciar una sesión\n3. Revisar lo aprendido" }, true);
             main.AddCard(new() { Kind = "stats", Title = "MI ENFOQUE" }, true);
-            main.AddCard(new() { Kind = "todo", Title = "TO DO" }, true);
+            var todoCard = main.AddCard(new() { Kind = "todo", Title = "TO DO", Value = SeedTasks() }, true);
             main.AddCard(new() { Kind = "habits", Title = "HÁBITOS" }, true);
+            SeedAgenda(main.Store);
+            main.AddCard(new() { Kind = "calendar", Title = "AGENDA" }, true);
             await Task.Delay(100); Render(main, Path.Combine(directory, "widgets.png"));
+
+            var todo = Descendant<TodoBoard>(todoCard);
+            Assert(todo is not null && todo.RowCount == 5, "the To Do card rebuilds a stored list into rows");
+            // A card sits at its canvas offset, so it is photographed in a harness of its own size.
+            todoHarness = new Window { Title = "PomoDock To Do integration test", Content = new TodoBoard(main, new WidgetConfig { Kind = "todo", Title = "TO DO", Value = todoCard.Config.Value }), Width = 430, Height = 500, ShowInTaskbar = false };
+            todoHarness.Show(); await Task.Delay(200);
+            Render(todoHarness, Path.Combine(directory, "todo.png"));
+            todoHarness.Close(); todoHarness = null;
+
+            // The calendar: three views over the same events, and a reminder that really rings.
+            var agenda = AgendaStore.For(main.Store);
+            var todayKey = DateOnly.FromDateTime(DateTime.Now);
+            Assert(agenda.Book.OnDay(todayKey).Count >= 3, "calendar resolves every event landing on today");
+            var calendar = new CalendarWidget(main, new WidgetConfig { Kind = "calendar", Title = "AGENDA" });
+            calendarHarness = new Window { Title = "PomoDock calendar integration test", Content = calendar, Width = 600, Height = 660, ShowInTaskbar = false };
+            calendarHarness.Show(); await Task.Delay(250);
+            Render(calendarHarness, Path.Combine(directory, "calendar-month.png"));
+            calendar.ShowView("week"); await Task.Delay(250);
+            Render(calendarHarness, Path.Combine(directory, "calendar-week.png"));
+            calendar.ShowView("agenda"); await Task.Delay(250);
+            Render(calendarHarness, Path.Combine(directory, "calendar-agenda.png"));
+            calendarHarness.Close(); calendarHarness = null;
+
+            var soon = new AgendaEvent { Title = "Llamada de prueba", Start = DateTime.Now.AddMinutes(2), Minutes = 30, Color = "violet", Reminders = [10] };
+            agenda.Book.Events.Add(soon); agenda.Save();
+            var reminders = AgendaReminders.For(main.Store);
+            reminders.Pulse(); await Task.Delay(200);
+            Assert(AgendaToast.OpenCount == 1, "a reminder that came due raises a notification card");
+            Render(AgendaToast.Newest!, Path.Combine(directory, "calendar-reminder.png"));
+            int delivered = agenda.Book.Delivered.Count;
+            reminders.Pulse(); await Task.Delay(100);
+            Assert(AgendaToast.OpenCount == 1 && agenda.Book.Delivered.Count == delivered, "a delivered reminder never rings twice");
+            var cue = agenda.Book.Cues(DateTime.Now.AddHours(-1), DateTime.Now).First(entry => entry.Event.Id == soon.Id);
+            agenda.Book.Snoozed[cue.Key] = DateTime.Now.AddSeconds(-1);
+            reminders.Pulse(); await Task.Delay(200);
+            Assert(AgendaToast.OpenCount == 2 && !agenda.Book.Snoozed.ContainsKey(cue.Key), "a postponed reminder rings again when its time arrives");
+            AgendaToast.CloseAll(); await Task.Delay(100);
+            Assert(AgendaToast.OpenCount == 0, "notification cards close with the app");
+            agenda.Remove(soon);
             for (int d = 0; d < 14; d++)
             {
                 var end = DateTimeOffset.Now.AddDays(-d).AddHours(-1);
@@ -145,12 +186,56 @@ internal static class Diagnostics
         }
         finally
         {
-            dualHarness?.Close(); harness?.Close(); main?.Close();
+            AgendaToast.CloseAll();
+            todoHarness?.Close(); calendarHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
             if (fixture is not null) { if (!fixture.HasExited) fixture.CloseMainWindow(); fixture.Dispose(); }
             if (fixture2 is not null) { if (!fixture2.HasExited) fixture2.CloseMainWindow(); fixture2.Dispose(); }
             Application.Current.Shutdown(Environment.ExitCode);
         }
     }
+    /// <summary>A task list with every state the card can show: overdue, urgent, dated and done.</summary>
+    private static string SeedTasks()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var book = new TodoBook();
+        var late = book.Add("Enviar la propuesta al cliente", today)!;
+        late.Due = today.AddDays(-1); late.Priority = TodoPriority.High;
+        var review = book.Add("Revisar el informe trimestral", today)!;
+        review.Due = today; review.Priority = TodoPriority.Medium;
+        book.Add("Comprar café para la oficina", today)!.Due = today.AddDays(1);
+        book.Add("Actualizar el currículum", today);
+        book.Add("Responder los correos pendientes", today)!.SetDone(true);
+        book.SortByUrgency(today);
+        return JsonSerializer.Serialize(book);
+    }
+
+    /// <summary>First element of a kind inside a visual tree, used to reach a widget's own board.</summary>
+    private static T? Descendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        if (root is T match) return match;
+        for (int index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+            if (Descendant<T>(VisualTreeHelper.GetChild(root, index)) is { } found) return found;
+        return null;
+    }
+
+    /// <summary>A believable week so the calendar screenshots show real shapes, not an empty grid.</summary>
+    private static void SeedAgenda(Store store)
+    {
+        var agenda = AgendaStore.For(store);
+        var today = DateTime.Now.Date;
+        agenda.Book.Events.Clear();
+        agenda.Book.Events.AddRange(
+        [
+            new AgendaEvent { Title = "Revisión de producto", Start = today.AddHours(10), Minutes = 60, Color = "blue", Location = "Sala 2", Reminders = [10] },
+            new AgendaEvent { Title = "Bloque de enfoque", Start = today.AddHours(12), Minutes = 90, Color = "green", Repeat = RepeatKind.Weekly, Days = [DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday], Reminders = [5] },
+            new AgendaEvent { Title = "Comida con el equipo", Start = today.AddHours(14).AddMinutes(30), Minutes = 60, Color = "amber" },
+            new AgendaEvent { Title = "Gimnasio", Start = today.AddHours(19), Minutes = 60, Color = "teal", Repeat = RepeatKind.Daily, Reminders = [30] },
+            new AgendaEvent { Title = "Entrega del informe", AllDay = true, Start = today.AddDays(1), Color = "red", Reminders = [1440] },
+            new AgendaEvent { Title = "Pago del alquiler", AllDay = true, Start = today.AddDays(3), Color = "violet", Repeat = RepeatKind.Monthly, Reminders = [1440] }
+        ]);
+        agenda.Save();
+    }
+
     internal static void Render(FrameworkElement element, string file)
     {
         element.UpdateLayout();

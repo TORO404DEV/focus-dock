@@ -87,7 +87,7 @@ internal static class Dialogs
         var window = Window(owner, "AÑADIR WIDGET", 700, 680); window.MinWidth = 600; window.MinHeight = 620;
         var root = new Grid { Margin = new Thickness(28, 22, 28, 24) }; root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); window.Content = root;
         var intro = new StackPanel(); intro.Children.Add(Heading("AÑADIR WIDGET")); intro.Children.Add(new TextBlock { Text = "Elige qué quieres tener a la vista en tu monitor.", FontSize = 12, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, -8, 0, 20) }); Grid.SetRow(intro, 0); root.Children.Add(intro);
-        var guide = new TextBlock { Text = "LANZADOR DE ESPACIO   ·   7 OPCIONES", FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 8) }; Grid.SetRow(guide, 1); root.Children.Add(guide);
+        var guide = new TextBlock { Text = "LANZADOR DE ESPACIO   ·   8 OPCIONES", FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 8) }; Grid.SetRow(guide, 1); root.Children.Add(guide);
         var launcher = new UniformGrid { Columns = 2, Rows = 4 };
         var entries = new[]
         {
@@ -97,7 +97,8 @@ internal static class Dialogs
             ("◒", "MÉTRICAS DE ENFOQUE", "Minutos, racha diaria, nivel y progreso semanal.", "4"),
             ("☑", "TO DO", "Tareas accionables que puedes completar sin salir del canvas.", "5"),
             ("↻", "HÁBITOS", "Seguimiento diario, rachas y constancia visible.", "6"),
-            ("◷", "TEMPORIZADOR", "El Pomodoro compartido, colocado libremente en esta página.", "7")
+            ("▦", "CALENDARIO / AGENDA", "Eventos, repeticiones y recordatorios que suenan y avisan.", "7"),
+            ("◷", "TEMPORIZADOR", "El Pomodoro compartido, colocado libremente en esta página.", "8")
         };
         int selected = -1;
         for (int i = 0; i < entries.Length; i++)
@@ -108,7 +109,7 @@ internal static class Dialogs
             content.Children.Add(new TextBlock { Text = entry.Item2, FontSize = 13, FontWeight = FontWeights.Black, TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = entry.Item3, FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 7, 0, 0), TextWrapping = TextWrapping.Wrap });
             var launch = new Button { Content = content, Tag = entry.Item4, MinHeight = 108, Margin = new Thickness(0, 0, 10, 10), Padding = new Thickness(16), HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Top, Background = (Brush)Application.Current.Resources["Surface"] };
-            if (index == 6 && !owner.CanAddTimerWidget)
+            if (index == entries.Length - 1 && !owner.CanAddTimerWidget)
             {
                 launch.IsEnabled = false;
                 launch.ToolTip = "Esta página ya tiene un temporizador";
@@ -117,7 +118,7 @@ internal static class Dialogs
             launch.SetValue(AutomationProperties.NameProperty, entry.Item2); launch.Click += (_, _) => { selected = index; window.DialogResult = true; }; launcher.Children.Add(launch);
         }
         Grid.SetRow(launcher, 2); root.Children.Add(launcher);
-        window.PreviewKeyDown += (_, e) => { if (e.Key is >= Key.D1 and <= Key.D7) { selected = (int)e.Key - (int)Key.D1; if (selected != 6 || owner.CanAddTimerWidget) window.DialogResult = true; e.Handled = true; } };
+        window.PreviewKeyDown += (_, e) => { if (e.Key is >= Key.D1 and <= Key.D8) { selected = (int)e.Key - (int)Key.D1; if (selected != entries.Length - 1 || owner.CanAddTimerWidget) window.DialogResult = true; e.Handled = true; } };
         window.Loaded += (_, _) => { Modalize(window); Keyboard.Focus(launcher.Children[0]); }; window.ShowDialog(); return selected;
     }
     public static WindowCandidate? PickWindow(Window owner)

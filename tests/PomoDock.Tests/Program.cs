@@ -66,6 +66,13 @@ Test("todo and habit widgets preserve completion state", () => {
  Assert(copy.Items[0].IsCompleteOn(today.AddDays(-1))); Equal(2, copy.Items[0].CurrentStreak(today)); Assert(data.Items[0].Done);
  copy.Items[0].SetComplete(today, true); Equal(3, copy.Items[0].CurrentStreak(today)); copy.Items[0].SetComplete(today, false); Equal(2, copy.Items[0].CurrentStreak(today));
 });
+HabitTests.Run(Test, Equal, Assert);
+TodoTests.Run(Test, Equal, Assert);
+Test("rich note metadata preserves color, document, and checklists", () => {
+ var note = new NotesWidgetData { Color = "mint", DocumentXaml = "<Section><Paragraph>Idea</Paragraph></Section>", Checklists = [new() { ParagraphIndex = 0, IsChecked = true }], UpdatedUtc = utc.UtcDateTime };
+ var copy = JsonSerializer.Deserialize<NotesWidgetData>(JsonSerializer.Serialize(note))!;
+ Assert(copy.Version == 1 && copy.Color == "mint" && copy.DocumentXaml.Contains("Idea") && copy.Checklists.Single().IsChecked);
+});
 Test("legacy canvas migrates to a first workspace page", () => {
  var note = new WidgetConfig { Kind = "notes", Title = "Ideas" };
  var settings = new Settings { Widgets = [note], TimerPositionCustomized = true };
@@ -74,6 +81,101 @@ Test("legacy canvas migrates to a first workspace page", () => {
  Assert(settings.WorkspacePages[0].Widgets.Single() == note && settings.WorkspacePages[0].TimerWidget is not null);
  Assert(settings.WorkspacePages[0].HasContent && settings.WorkspacePages[0].WidgetCount == 2);
  var blank = new WorkspacePage { Name = "PÁGINA 02" }; Assert(!blank.HasContent && blank.WidgetCount == 0);
+});
+Test("weekly agenda series lands only on its own weekdays", () => {
+ var monday = new DateTime(2026, 9, 7, 9, 0, 0);
+ var meeting = new AgendaEvent { Title = "Daily", Start = monday, Minutes = 30, Repeat = RepeatKind.Weekly, Days = [DayOfWeek.Monday, DayOfWeek.Wednesday] };
+ meeting.Normalize();
+ var days = meeting.Starts(new(2026, 9, 7), new(2026, 9, 20)).ToList();
+ Equal(4, days.Count); Assert(days[0] == new DateOnly(2026, 9, 7) && days[3] == new DateOnly(2026, 9, 16));
+ var fortnight = meeting.Copy(); fortnight.Interval = 2;
+ Equal(2, fortnight.Starts(new(2026, 9, 7), new(2026, 9, 20)).Count());
+ // A window far from the first day must fast-forward without losing the rhythm.
+ var november = meeting.Starts(new(2026, 11, 1), new(2026, 11, 30)).ToList();
+ Equal(9, november.Count); Assert(november.All(day => day.DayOfWeek is DayOfWeek.Monday or DayOfWeek.Wednesday));
+ var limited = meeting.Copy(); limited.Count = 3;
+ Equal(3, limited.Starts(new(2026, 9, 1), new(2026, 12, 31)).Count());
+ var closing = meeting.Copy(); closing.Until = new(2026, 9, 14);
+ Equal(3, closing.Starts(new(2026, 9, 1), new(2026, 12, 31)).Count());
+});
+Test("monthly and yearly series clamp to shorter months", () => {
+ var rent = new AgendaEvent { Title = "Alquiler", Start = new DateTime(2026, 1, 31, 10, 0, 0), Repeat = RepeatKind.Monthly };
+ rent.Normalize();
+ var days = rent.Starts(new(2026, 1, 1), new(2026, 4, 30)).ToList();
+ Equal(4, days.Count); Assert(days[1] == new DateOnly(2026, 2, 28) && days[3] == new DateOnly(2026, 4, 30));
+ var leap = new AgendaEvent { Title = "Aniversario", Start = new DateTime(2024, 2, 29, 10, 0, 0), Repeat = RepeatKind.Yearly };
+ leap.Normalize();
+ Assert(leap.Starts(new(2026, 1, 1), new(2026, 12, 31)).Single() == new DateOnly(2026, 2, 28));
+});
+Test("an event crossing midnight shows on both days", () => {
+ var shift = new AgendaEvent { Title = "Turno", Start = new DateTime(2026, 9, 9, 23, 0, 0), Minutes = 120 };
+ shift.Normalize();
+ Equal(2, shift.SpanDays);
+ var book = new AgendaBook { Events = [shift] };
+ var next = book.OnDay(new(2026, 9, 10)).Single();
+ Assert(next.Continuation); Equal(0, next.DayStartMinutes); Equal(60, next.DayEndMinutes);
+ Assert(book.OnDay(new(2026, 9, 9)).Single().TimeLabel().StartsWith("23:00"));
+});
+Test("reminders ring once per offset and never for a cancelled or finished day", () => {
+ var call = new AgendaEvent { Title = "Llamada", Start = new DateTime(2026, 9, 9, 10, 0, 0), Reminders = [10, 60] };
+ call.Normalize();
+ var book = new AgendaBook { Events = [call] };
+ var window = book.Cues(new DateTime(2026, 9, 9, 8, 0, 0), new DateTime(2026, 9, 9, 10, 0, 0)).ToList();
+ Equal(2, window.Count); Assert(window.Any(cue => cue.FireAt == new DateTime(2026, 9, 9, 9, 0, 0)));
+ Assert(window[0].Key != window[1].Key);
+ call.SetDone(new(2026, 9, 9), true);
+ Equal(0, book.Cues(new DateTime(2026, 9, 9, 8, 0, 0), new DateTime(2026, 9, 9, 10, 0, 0)).Count());
+ call.SetDone(new(2026, 9, 9), false); call.Cancel(new(2026, 9, 9));
+ Equal(0, book.Cues(new DateTime(2026, 9, 9, 8, 0, 0), new DateTime(2026, 9, 9, 10, 0, 0)).Count());
+ var birthday = new AgendaEvent { Title = "Cumple", AllDay = true, Start = new DateTime(2026, 9, 10), Reminders = [1440] };
+ birthday.Normalize();
+ var early = new AgendaBook { Events = [birthday] }.Cues(new DateTime(2026, 9, 9, 0, 0, 0), new DateTime(2026, 9, 9, 23, 0, 0)).Single();
+ Assert(early.FireAt == new DateTime(2026, 9, 9, 9, 0, 0));
+});
+Test("a cancelled or postponed cue can be rebuilt from its stored key", () => {
+ var call = new AgendaEvent { Title = "Llamada", Start = new DateTime(2026, 9, 9, 10, 0, 0), Reminders = [15] };
+ call.Normalize();
+ var book = new AgendaBook { Events = [call] };
+ var cue = book.Cues(new DateTime(2026, 9, 9, 9, 0, 0), new DateTime(2026, 9, 9, 10, 0, 0)).Single();
+ var restored = book.CueFor(cue.Key)!;
+ Assert(restored.Event.Id == call.Id && restored.Series == cue.Series && restored.Minutes == 15);
+ Assert(book.CueFor("no-es-una-clave") is null);
+});
+Test("quick add reads Spanish dates, times, duration and repetition", () => {
+ var now = new DateTime(2026, 9, 9, 12, 0, 0);
+ var dentist = AgendaQuickAdd.Parse("Dentista mañana a las 17:30 durante 45m", now)!;
+ Assert(dentist.Title == "Dentista"); Assert(dentist.Start == new DateTime(2026, 9, 10, 17, 30, 0)); Equal(45, dentist.Minutes); Assert(!dentist.AllDay);
+ var gym = AgendaQuickAdd.Parse("Gimnasio todos los martes a las 7", now)!;
+ Assert(gym.Repeat == RepeatKind.Weekly && gym.Days.Single() == DayOfWeek.Tuesday);
+ Assert(gym.Start == new DateTime(2026, 9, 15, 7, 0, 0) && gym.Title == "Gimnasio");
+ var rent = AgendaQuickAdd.Parse("Pagar alquiler el 1 de octubre", now)!;
+ Assert(rent.AllDay && rent.Start == new DateTime(2026, 10, 1) && rent.Title == "Pagar alquiler");
+ // A bare afternoon hour means the afternoon, and a time already gone belongs to tomorrow.
+ var call = AgendaQuickAdd.Parse("Llamar a Ana a las 4", now)!;
+ Assert(call.Start == new DateTime(2026, 9, 9, 16, 0, 0) && call.Title == "Llamar a Ana");
+ Assert(AgendaQuickAdd.Parse("Repaso a las 9:00", now)!.Start == new DateTime(2026, 9, 10, 9, 0, 0));
+ var review = AgendaQuickAdd.Parse("Revisión cada mes avisar 2 h antes", now)!;
+ Assert(review.Repeat == RepeatKind.Monthly && review.Reminders.Single() == 120 && review.Title == "Revisión");
+ Assert(AgendaQuickAdd.Parse("mañana a las 10", now) is null);
+ Assert(AgendaQuickAdd.Parse("   ", now) is null);
+});
+Test("the agenda survives a round trip and counts the day", () => {
+ var now = new DateTime(2026, 9, 9, 12, 0, 0);
+ var book = new AgendaBook { Events = [
+  new() { Title = "Standup", Start = new DateTime(2026, 9, 9, 9, 30, 0), Minutes = 15, Repeat = RepeatKind.Daily, Color = "blue" },
+  new() { Title = "Entrega", AllDay = true, Start = new DateTime(2026, 9, 9), Color = "red" } ] };
+ book.Normalize();
+ var copy = JsonSerializer.Deserialize<AgendaBook>(JsonSerializer.Serialize(book))!;
+ copy.Normalize();
+ var today = copy.OnDay(new(2026, 9, 9));
+ Equal(2, today.Count); Assert(today[0].AllDay && today[0].Title == "Entrega");
+ Assert(copy.Events.First(item => item.Title == "Standup").Repeat == RepeatKind.Daily);
+ copy.Events[0].SetDone(new(2026, 9, 9), true);
+ var counts = copy.Today(now);
+ Equal(2, counts.Total); Equal(1, counts.Done); Equal(1, counts.Left);
+ // The standup at 9:30 is already over at noon, so only the all-day entry is still ahead.
+ Equal(1, copy.Upcoming(now, 1).Count(item => !item.AllDay) + counts.Left - 1);
+ Assert(AgendaPalette.Of("red").Hex == "#B5493C" && AgendaPalette.Of("desconocido").Key == "ink");
 });
 var directory = Path.Combine(Path.GetTempPath(), "PomoDock-tests-" + Guid.NewGuid());
 Directory.CreateDirectory(directory);

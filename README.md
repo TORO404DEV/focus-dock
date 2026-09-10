@@ -15,7 +15,8 @@ The main shell is native WPF. External windows are hosted as real Win32 HWNDs, s
 - A canvas-style widget grid with free drag-and-drop placement and per-widget resizing from all four sides and corners. Every widget, including the Pomodoro timer, can be moved and resized; the timer can be added once per workspace page.
 - Launcher-style workspace pages with instant persistence, animated navigation, keyboard shortcuts, and a compact page dock. A new page is available after every existing page has content and always starts completely blank.
 - The Pomodoro surface can stay above the workspace or move below it from Settings; its full frame follows the active phase color.
-- Widget layouts with notes, native To Do lists, daily habit tracking with streaks, gamified focus stats, HTTPS web panels, and external app windows. To Do and habit data live inside each widget and persist in the local PomoDock store.
+- Widget layouts with color-customizable rich post-it notes (formatting, lists and interactive checklists), To Do lists with priorities, due dates, filters and manual order, a gamified habit tracker, focus stats, HTTPS web panels, and external app windows. Notes and To Do data live inside their card; habits and events live in the PomoDock store and are shared by every widget that shows them.
+- A calendar and agenda widget with month, week, and list views over one shared event book: timed, all-day, and multi-day entries, daily/weekly/monthly/yearly repetition with an end date or a fixed number of occurrences, per-event color, place and notes, plain-language quick add, and reminders that raise a notification card with sound even while POMODOCK is minimized.
 - External window widgets can be resized, collapsed, released, and cropped at the top or bottom while preserving the source app session. Cross-DPI Windows content, including Telegram Mini App windows, uses mixed hosting when the OS permits it, and connection work runs off the UI thread.
 - Generated button sounds, optional filtered white noise during focus, and configurable completion alarms. Sound is self-contained and requires no bundled audio files.
 - Brutalist light/dark themes with editable focus, short-break, long-break, and accent colors. Settings, reports, task editing, and confirmations use borderless in-app modal surfaces.
@@ -26,6 +27,34 @@ The main shell is native WPF. External windows are hosted as real Win32 HWNDs, s
 Open the target application first, then choose `+ INCRUSTAR UNA VENTANA` and select its top-level window. The external app remains the owner of its content and is returned to the desktop when the widget is removed or POMODOCK closes.
 
 The Windows API requires compatible DPI awareness modes for cross-process reparenting. If the app rejects the operation, POMODOCK leaves the source untouched and reports the reason. Applications running elevated may also require POMODOCK to run at the same integrity level. Telegram Portable and its Mini App windows are listed by their visible title; the exact behavior depends on that Telegram build and its DPI mode.
+
+## To Do
+
+Add it with `+ WIDGET` → `TO DO`. Unlike habits and events, tasks stay inside their own card, so two To Do widgets are two independent lists — one per page, one per project. A list written by an earlier version is read as it is and simply gains the new fields.
+
+Typing accepts a little shorthand: `!` marks a task as important and `!!` as urgent, while `hoy`, `mañana` or `12/09` give it a date. Everything the reader does not consume stays in the title. On each row, `!` cycles the priority and the date button cycles between no date, today and tomorrow; a double click renames in place, and `⋯` opens the rest — an exact date, moving the task up or down, and deleting it.
+
+The header counts what is done and calls out what is overdue. `TODAS`, `PENDIENTES`, `HOY` and `HECHAS` filter the list, `⇅` reorders once by what is late and closest, and `LIMPIAR` removes everything already finished.
+
+## Habits
+
+Add it with `+ WIDGET` → `HÁBITOS`. Habits live in the PomoDock database instead of inside the card, so every habit widget on every workspace page shows the same book and closing a card never loses a day. Habits saved by older versions inside a widget are absorbed into that book the first time the card is opened.
+
+The week runs Monday to Sunday with today highlighted. A click marks a day, another click clears it, and a right-click steps back one repetition. Past days can be corrected at any time and `‹ ›` walks through earlier weeks.
+
+Each habit carries its own cadence — every day, chosen weekdays, or a number of free days per week — plus a daily target for practices counted more than once. Streaks only judge the days a habit is actually due, a day still in progress never breaks one, and a habit measured by week counts weeks instead of days. `⋯` renames, changes cadence and target, reorders, archives, or deletes; the habit name opens a detail window with its numbers and a clickable heat map of the last months.
+
+Marked days earn experience — ten points plus a bonus that grows with the streak — which becomes levels and awards. The header shows today's progress, the level, and the run of days where everything due was done.
+
+The widget relays itself out at every size it can be dragged to: a single strip of squares for today when it is tiny, then the week grid, streaks, week navigation, the 30-day rate, and a consistency map of the last weeks as it grows.
+
+## Calendar and reminders
+
+Add it with `+ WIDGET` → `CALENDARIO / AGENDA`. Events live in the PomoDock database instead of inside the card, so every calendar widget on every workspace page shows the same agenda and closing a card never loses an appointment.
+
+Type an entry in plain language and press Enter: `Dentista mañana a las 17:30 durante 45m`, `Gimnasio todos los martes a las 7`, `Pagar alquiler el 1 de octubre`. Whatever the reader cannot interpret stays in the title, and `⋯` opens the full form with repetition, end date, reminders, color, place, and notes. An entry without a time becomes an all-day event.
+
+Reminders run on their own clock while POMODOCK is open, so they ring when the calendar is on another workspace page or the window is minimized. Each one raises a card in the corner of the screen with a chime, `+5 MIN`, `+15 MIN`, and `✓ LISTO`. A reminder is never delivered twice, and one that came due while the app was closed only appears if its event has not already passed.
 
 For a web panel, use `+ WIDGET` and an HTTPS URL. Web panels are isolated from the native host and can be suspended when collapsed. Use “Mantener activo” for music or a dashboard that must continue running while collapsed.
 
@@ -50,7 +79,7 @@ The app stores its data under `%LOCALAPPDATA%\PomoDock`. Export a JSON backup be
 
 ## Native smoke test
 
-The app includes a disposable integration fixture that opens a temporary Win32 window, embeds it into a WPF host, resizes it, crops it, releases it, and verifies restoration. It also renders screenshots for light mode, dark mode, widgets, and reports:
+The app includes a disposable integration fixture that opens a temporary Win32 window, embeds it into a WPF host, resizes it, crops it, releases it, and verifies restoration. It also drives the calendar through its three views and rings a real reminder, and renders screenshots for light mode, dark mode, widgets, reports, and the calendar:
 
 ```powershell
 PomoDock.exe --self-test C:\temp\pomo-dock-native-test

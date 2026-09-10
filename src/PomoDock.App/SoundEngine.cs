@@ -36,6 +36,13 @@ public sealed class SoundEngine : IDisposable
         int repeats = Math.Clamp(settings.AlarmRepeats, 1, 8);
         for (int i = 0; i < repeats; i++) Tone(phase == Phase.Focus ? 880 : 620, 180, .27, i * 210);
     }
+    /// <summary>A two-note chime for a calendar reminder, distinct from the pomodoro alarm.</summary>
+    public void Reminder()
+    {
+        if (!settings.Sound) return;
+        Tone(784, 150, .24);
+        Tone(1046, 240, .22, 165);
+    }
     public void StartNoise()
     {
         if (!settings.WhiteNoise || settings.WhiteNoiseVolume <= 0 || noisePlayer is not null) return;

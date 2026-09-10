@@ -37,6 +37,19 @@ public sealed class TodoWidgetData
 {
     public List<TodoItem> Items { get; set; } = [];
 }
+public sealed class NotesWidgetData
+{
+    public int Version { get; set; } = 1;
+    public string Color { get; set; } = "paper";
+    public string DocumentXaml { get; set; } = "";
+    public List<NotesChecklistState> Checklists { get; set; } = [];
+    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+}
+public sealed class NotesChecklistState
+{
+    public int ParagraphIndex { get; set; }
+    public bool IsChecked { get; set; }
+}
 public sealed class TodoItem
 {
     public Guid Id { get; set; } = Guid.NewGuid();
