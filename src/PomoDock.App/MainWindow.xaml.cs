@@ -546,8 +546,12 @@ public partial class MainWindow : Window
         }
         else
         {
-            dx = Math.Clamp(dx, -timerStartX, Math.Max(0, maxX - timerStartX));
-            dy = Math.Clamp(dy, -timerStartY, Math.Max(0, maxY - timerStartY));
+            // Only the edge that owns the canvas origin needs its delta floored so it cannot push
+            // past 0 — the opposite edge shrinks freely, limited only by minWidth/minHeight below.
+            // Flooring both from a single shared clamp used to choke the far edge whenever the
+            // widget sat close to the left or top, letting it shrink only a few pixels from there.
+            if (timerResizeEdge.Contains('W')) dx = Math.Max(dx, -timerStartX);
+            if (timerResizeEdge.Contains('N')) dy = Math.Max(dy, -timerStartY);
             if (timerResizeEdge.Contains('W')) { width = Math.Max(minWidth, timerStartWidth - dx); x = timerStartX + timerStartWidth - width; }
             if (timerResizeEdge.Contains('E')) width = Math.Max(minWidth, timerStartWidth + dx);
             if (timerResizeEdge.Contains('N')) { height = Math.Max(minHeight, timerStartHeight - dy); y = timerStartY + timerStartHeight - height; }

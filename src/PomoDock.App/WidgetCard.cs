@@ -165,8 +165,12 @@ public sealed class WidgetCard : Border
         }
         else
         {
-        dx = Math.Clamp(dx, -elementStartX, Math.Max(0, maxX - elementStartX));
-        dy = Math.Clamp(dy, -elementStartY, Math.Max(0, maxY - elementStartY));
+        // Only the edge that owns the canvas origin needs its delta floored so it cannot push
+        // past 0 — the opposite edge shrinks freely, limited only by minWidth/minHeight below.
+        // Flooring both from a single shared clamp used to choke the far edge whenever the
+        // widget sat close to the left or top, letting it shrink only a few pixels from there.
+        if (edge.Contains('W')) dx = Math.Max(dx, -elementStartX);
+        if (edge.Contains('N')) dy = Math.Max(dy, -elementStartY);
         if (edge.Contains('W')) { width = Math.Max(minWidth, elementStartWidth - dx); x = elementStartX + elementStartWidth - width; }
         if (edge.Contains('E')) width = Math.Max(minWidth, elementStartWidth + dx);
         if (edge.Contains('N')) { height = Math.Max(minHeight, elementStartHeight - dy); y = elementStartY + elementStartHeight - height; }
