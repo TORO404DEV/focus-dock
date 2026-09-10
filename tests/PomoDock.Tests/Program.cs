@@ -67,6 +67,7 @@ Test("todo and habit widgets preserve completion state", () => {
  copy.Items[0].SetComplete(today, true); Equal(3, copy.Items[0].CurrentStreak(today)); copy.Items[0].SetComplete(today, false); Equal(2, copy.Items[0].CurrentStreak(today));
 });
 HabitTests.Run(Test, Equal, Assert);
+AgendaQuickAddTests.Run(Test, Equal, Assert);
 TodoTests.Run(Test, Equal, Assert);
 Test("rich note metadata preserves color, document, and checklists", () => {
  var note = new NotesWidgetData { Color = "mint", DocumentXaml = "<Section><Paragraph>Idea</Paragraph></Section>", Checklists = [new() { ParagraphIndex = 0, IsChecked = true }], UpdatedUtc = utc.UtcDateTime };
@@ -190,6 +191,29 @@ Test("the focus rank counts only real work and knows what comes next", () => {
  Assert(top.IsHighest && top.Name == "LEYENDA", "the ladder ends at the highest rank"); Equal(0, top.ToNext); Equal(1, top.Share);
  Assert(FocusProfile.At(-5).Level == 1, "a negative history cannot drop below the first rank");
 });
+Test("a restored backup adds missing habits and never loses a habit day", () => {
+ var day = new DateOnly(2026, 9, 9);
+ var reading = new Habit { Name = "Leer" }; reading.Log[Habit.Key(day.AddDays(-1))] = 1;
+ var local = new HabitBook { Habits = [reading] };
+ var backup = JsonSerializer.Deserialize<HabitBook>(JsonSerializer.Serialize(local))!;
+ backup.Habits[0].Log[Habit.Key(day)] = 1;
+ backup.Habits.Add(new Habit { Name = "Correr" });
+ backup.Awards.Add("first");
+ Equal(1, local.MergeFrom(backup));
+ Assert(local.Habits.Count == 2 && local.Habits.First(habit => habit.Name == "Leer").Log.Count == 2, "a day known only to the backup is kept");
+ Assert(local.Awards.Contains("first"), "awards travel with the backup");
+ Equal(0, local.MergeFrom(backup)); Equal(0, local.MergeFrom(null));
+});
+Test("a restored backup brings back missing events and leaves existing ones alone", () => {
+ var local = new AgendaBook { Events = [new() { Title = "Dentista", Start = new DateTime(2026, 9, 10, 17, 30, 0) }] };
+ local.Normalize();
+ var backup = JsonSerializer.Deserialize<AgendaBook>(JsonSerializer.Serialize(local))!;
+ backup.Events[0].Title = "Cambiado en la copia";
+ backup.Events.Add(new() { Title = "Revisión", Start = new DateTime(2026, 9, 12, 9, 0, 0) });
+ Equal(1, local.MergeFrom(backup));
+ Assert(local.Events.Count == 2 && local.Events.Any(item => item.Title == "Dentista"), "the local event keeps its own version");
+ Equal(0, local.MergeFrom(backup));
+});
 var directory = Path.Combine(Path.GetTempPath(), "PomoDock-tests-" + Guid.NewGuid());
 Directory.CreateDirectory(directory);
 try
@@ -201,6 +225,19 @@ try
  Test("export and import preserve history and deduplicate stable IDs", () => {
   using var store = new Store(directory); string path = Path.Combine(directory, "export.json"); store.ExportJson(path); Equal(0, store.ImportJson(path));
   using var second = new Store(Path.Combine(directory, "second")); Equal(1, second.ImportJson(path)); Equal(0, second.ImportJson(path)); Equal(60, second.Sessions()[0].Seconds);
+ });
+ Test("the JSON backup carries habits and calendar events, and old backups still load", () => {
+  using var store = new Store(Path.Combine(directory, "full-backup"));
+  var habit = new Habit { Name = "Meditar" }; habit.Log[Habit.Key(new DateOnly(2026, 9, 9))] = 1;
+  store.Write(Store.HabitsKey, new HabitBook { Habits = [habit] });
+  store.Write(Store.AgendaKey, new AgendaBook { Events = [new() { Title = "Entrega", AllDay = true, Start = new DateTime(2026, 9, 11) }] });
+  string path = Path.Combine(directory, "full-backup.json"); store.ExportJson(path);
+  var backup = Store.ReadBackup(path);
+  Assert(backup.Habits!.Habits.Single().Name == "Meditar" && backup.Agenda!.Events.Single().Title == "Entrega", "habits and events are in the file");
+  string legacy = Path.Combine(directory, "legacy-backup.json");
+  File.WriteAllText(legacy, "{\"Version\":1,\"Settings\":{},\"Sessions\":[]}");
+  var old = Store.ReadBackup(legacy);
+  Assert(old.Habits is null && old.Agenda is null && old.Sessions.Count == 0, "a backup from before habits and events still reads");
  });
  Test("CSV quotes text and neutralizes formulas", () => {
   string path = Path.Combine(directory, "export.csv"); Store.ExportCsv(path, [new() { Project = "=HYPERLINK(\"evil\")", Task = "comma, and \"quote\"" }]);

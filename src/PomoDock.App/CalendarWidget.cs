@@ -272,11 +272,24 @@ internal sealed class CalendarWidget : Grid
         if (draft is null) { quickHint.Text = "Escribe también un nombre para el evento."; return; }
         var day = DateOnly.FromDateTime(draft.Start);
         string when = draft.AllDay
-            ? $"{AgendaVisuals.DayLabel(day)} · todo el día"
+            ? draft.SpanDays > 1
+                ? $"{AgendaVisuals.DayLabel(day)} – {AgendaVisuals.DayLabel(day.AddDays(draft.SpanDays - 1))} · todo el día"
+                : $"{AgendaVisuals.DayLabel(day)} · todo el día"
             : $"{AgendaVisuals.DayLabel(day)} · {draft.Start:HH:mm} – {draft.EndOn(day):HH:mm}";
-        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToLower(AgendaVisuals.Spanish);
-        quickHint.Text = $"↵  {draft.Title}   ·   {when}{repeat}";
+        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToLower(AgendaVisuals.Spanish)
+            + (draft.Until is { } until ? $" hasta {AgendaVisuals.DayLabel(until)}" : draft.Count > 0 ? $", {draft.Count} veces" : "");
+        string place = draft.Location.Length > 0 ? $"   ·   en {draft.Location}" : "";
+        // Only a reminder the reader changed is worth a word; the default one is implied.
+        int usual = draft.AllDay ? 0 : 10;
+        string alert = draft.Reminders.Count == 0 ? "   ·   sin aviso"
+            : draft.Reminders[0] != usual ? $"   ·   aviso {Before(draft.Reminders[0])}" : "";
+        quickHint.Text = $"↵  {draft.Title}   ·   {when}{repeat}{place}{alert}";
     }
+
+    private static string Before(int minutes) =>
+        minutes % 1440 == 0 ? $"{minutes / 1440} d antes"
+        : minutes % 60 == 0 ? $"{minutes / 60} h antes"
+        : $"{minutes} min antes";
 
     private void Commit()
     {
