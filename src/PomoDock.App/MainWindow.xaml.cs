@@ -101,8 +101,8 @@ public partial class MainWindow : Window
         statusReset.Tick += (_, _) => { statusReset.Stop(); UpdatePageMeta(); };
         PageDock.PreviewMouseWheel += (_, e) =>
         {
-            if (e.Delta < 0) SwitchWorkspacePage(currentPageIndex + 1);
-            else if (e.Delta > 0) SwitchWorkspacePage(currentPageIndex - 1);
+            if (e.Delta < 0) NavigateWorkspace(1);
+            else if (e.Delta > 0) NavigateWorkspace(-1);
             e.Handled = true;
         };
         SystemEvents.PowerModeChanged += PowerChanged;
@@ -420,6 +420,8 @@ public partial class MainWindow : Window
 
     private void TimerMoveHeaderDown(object sender, MouseButtonEventArgs e)
     {
+        for (var current = e.OriginalSource as DependencyObject; current is not null && current != TimerMoveHeader; current = VisualTreeHelper.GetParent(current))
+            if (current is ButtonBase) return;
         BeginTimerGesture("MOVE");
         if (TimerMoveHeader.CaptureMouse()) e.Handled = true;
     }
@@ -850,12 +852,13 @@ public partial class MainWindow : Window
         if (e.Key == Key.Escape && reportPopup is { IsOpen: true }) { HideReportModal(); e.Handled = true; return; }
         if (e.Key == Key.F11 && !hotkeyRegistered) { ToggleFullscreen(); e.Handled = true; }
         if (e.Key == Key.Escape && fullscreen) { ToggleFullscreen(); e.Handled = true; }
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Left) { SwitchWorkspacePage(currentPageIndex - 1); e.Handled = true; return; }
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Right) { SwitchWorkspacePage(currentPageIndex + 1); e.Handled = true; return; }
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Left) { NavigateWorkspace(-1); e.Handled = true; return; }
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Right) { NavigateWorkspace(1); e.Handled = true; return; }
         if (e.Key == Key.Space && CurrentTimerWidget is not null && e.OriginalSource is not TextBox && e.OriginalSource is not Button) { ToggleTimer(); e.Handled = true; }
     }
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        pageSwipePoll.Stop();
         CancelTimerGesture(); HideReportModal(); HideTimerOverlay();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);

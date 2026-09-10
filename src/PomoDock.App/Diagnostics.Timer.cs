@@ -19,6 +19,7 @@ public partial class MainWindow
             => element.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = routedEvent });
         Width = 900; Height = 940; UpdateLayout(); Activate();
         Sounds.StopNoise(); Settings.Sound = false; Settings.WhiteNoise = false;
+        if (!CurrentWorkspacePageHasTimer) AddTimerForDiagnostics();
         CurrentWorkspacePageForDiagnostics.TimerPositionCustomized = true;
         var timerWidget = CurrentWorkspacePageForDiagnostics.TimerWidget!;
         timerWidget.X = 30; timerWidget.Y = 40;

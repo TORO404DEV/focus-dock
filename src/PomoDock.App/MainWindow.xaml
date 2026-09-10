@@ -3,7 +3,7 @@
  <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/></shell:WindowChrome.WindowChrome>
  <Border BorderBrush="{DynamicResource Line}" BorderThickness="2">
    <Grid x:Name="Root">
-   <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="0"/><RowDefinition Height="*"/><RowDefinition Height="44"/></Grid.RowDefinitions>
+   <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="0"/><RowDefinition Height="*"/><RowDefinition Height="52"/></Grid.RowDefinitions>
    <Grid x:Name="TitleBar" Background="{DynamicResource Ink}" MouseLeftButtonDown="DragTitle">
     <TextBlock Text="POMODOCK     /     DESKTOP EDITION" Foreground="{DynamicResource Paper}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,110,0"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -22,15 +22,16 @@
      <Button Content="+ WIDGET" Click="AddWidgetClick" FontSize="9" Padding="7,6" Margin="0" ToolTip="Añadir widget"/>
     </StackPanel>
    </Grid>
-   <Grid x:Name="Workspace" Grid.Row="3" Margin="20,0,20,10">
+   <Grid x:Name="Workspace" Grid.Row="3" Margin="20,0,20,0">
     <Grid.RowDefinitions><RowDefinition Height="0"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-    <Canvas Grid.Row="1" x:Name="WidgetArea" Background="Transparent" ClipToBounds="True" SizeChanged="WidgetAreaSizeChanged" RenderTransformOrigin="0.5,0.5">
-     <Border x:Name="Welcome" BorderBrush="{DynamicResource Muted}" BorderThickness="1" Background="{DynamicResource Surface}" Canvas.Left="0" Canvas.Top="0">
+    <Grid Grid.Row="1" x:Name="CarouselViewport" ClipToBounds="True" Background="Transparent">
+    <Canvas x:Name="PagePreviewArea" Background="{DynamicResource Paper}" IsHitTestVisible="False" Visibility="Collapsed"/>
+    <Canvas x:Name="WidgetArea" Background="Transparent" ClipToBounds="True" SizeChanged="WidgetAreaSizeChanged" RenderTransformOrigin="0.5,0.5">
+     <Border x:Name="Welcome" BorderThickness="0" Background="Transparent" Canvas.Left="0" Canvas.Top="0">
       <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="26">
-       <TextBlock Text="UN MONITOR.&#10;TU UNIVERSO." FontSize="32" FontWeight="Black" LineHeight="34"/>
-       <TextBlock Text="Tu música, tu mini app, tus herramientas.&#10;Dales un lugar junto a tu enfoque." FontSize="13" Foreground="{DynamicResource Muted}" Margin="0,18,0,22"/>
-       <Button Content="+ INCRUSTAR UNA VENTANA" Click="AddWindowClick" Background="{DynamicResource Accent}" Foreground="#171916" HorizontalAlignment="Left"/>
-       <TextBlock Text="También puedes añadir una web, notas o métricas." FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,12,0,0"/>
+       <TextBlock Text="PÁGINA VACÍA" FontFamily="Consolas" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center"/>
+       <Button Content="＋ AÑADIR PRIMER WIDGET" Click="AddWidgetClick" Background="{DynamicResource Accent}" Foreground="#171916" Margin="0,12,0,0" Padding="18,10"/>
+       <TextBlock Text="También puedes deslizar para cambiar de página." FontSize="9" Foreground="{DynamicResource Muted}" Margin="0,10,0,0" HorizontalAlignment="Center"/>
       </StackPanel>
      </Border>
      <Border x:Name="TimerFrame" Canvas.Left="12" Canvas.Top="12" Width="560" Height="360" MinWidth="360" MinHeight="300" Panel.ZIndex="20" BorderThickness="2" BorderBrush="{DynamicResource Line}" Background="{DynamicResource Surface}">
@@ -38,8 +39,9 @@
        <Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/></Grid.RowDefinitions>
        <Border x:Name="TimerMoveHeader" Grid.Row="0" Background="{DynamicResource Ink}" Cursor="SizeAll">
         <DockPanel LastChildFill="True" Margin="10,0,4,0">
+         <Button DockPanel.Dock="Right" Content="×" Click="RemoveTimerClick" Foreground="{DynamicResource Paper}" Background="Transparent" BorderThickness="0" Padding="7,2" Margin="0" FontSize="13" ToolTip="Quitar temporizador de esta página"/>
          <TextBlock Text="POMODORO" Foreground="{DynamicResource Paper}" FontSize="9" FontWeight="Bold" VerticalAlignment="Center"/>
-         <TextBlock Text="FIJO · ARRASTRA PARA MOVER" Foreground="{DynamicResource Paper}" Opacity="0.65" FontSize="8" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+         <TextBlock Text="ARRASTRA PARA MOVER" Foreground="{DynamicResource Paper}" Opacity="0.65" FontSize="8" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="NoWrap" Margin="0,0,8,0"/>
         </DockPanel>
        </Border>
        <Grid x:Name="TimerSurface" Grid.Row="1" Margin="16,10,16,12">
@@ -59,20 +61,27 @@
       </Grid>
      </Border>
     </Canvas>
+    </Grid>
    </Grid>
-   <Grid Grid.Row="4" x:Name="PageDock" Background="{DynamicResource Ink}">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
-     <Button x:Name="PreviousPageButton" Content="←" Click="PreviousPageClick" Width="34" Height="30" Padding="0" Margin="0,0,7,0" ToolTip="Página anterior"/>
-     <TextBlock x:Name="PageMetaText" Foreground="{DynamicResource Paper}" FontFamily="Consolas" FontSize="9" FontWeight="Bold" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxWidth="210"/>
-    </StackPanel>
-    <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" HorizontalAlignment="Center" VerticalAlignment="Center">
-     <StackPanel x:Name="PageButtonStrip" Orientation="Horizontal"/>
-    </ScrollViewer>
-    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
-     <Button x:Name="NextPageButton" Content="→" Click="NextPageClick" Width="34" Height="30" Padding="0" Margin="0,0,7,0" ToolTip="Página siguiente"/>
-     <Button x:Name="AddPageButton" Content="＋" Click="AddPageClick" Width="34" Height="30" Padding="0" Margin="0" FontSize="17" ToolTip="Añadir una página en blanco"/>
-    </StackPanel>
+   <Grid Grid.Row="4" x:Name="PageDock" Background="{DynamicResource Paper}">
+    <Grid.Resources>
+     <Style x:Key="PageDockButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="1"/>
+      <Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource Paper}"/>
+     </Style>
+    </Grid.Resources>
+    <Border x:Name="PageDockSurface" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource Ink}" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="19" Padding="5,3">
+     <StackPanel Orientation="Horizontal">
+      <Button x:Name="PreviousPageButton" Style="{StaticResource PageDockButton}" Content="‹" Click="PreviousPageClick" FontSize="19" ToolTip="Página anterior · arrastra hacia la derecha"/>
+      <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" VerticalAlignment="Center" MaxWidth="280">
+       <StackPanel x:Name="PageButtonStrip" Orientation="Horizontal"/>
+      </ScrollViewer>
+      <Button x:Name="NextPageButton" Style="{StaticResource PageDockButton}" Content="›" Click="NextPageClick" FontSize="19" ToolTip="Página siguiente · arrastra hacia la izquierda"/>
+      <Border Width="1" Height="20" Background="{DynamicResource Paper}" Opacity="0.28" Margin="5,0"/>
+      <Button x:Name="AddPageButton" Style="{StaticResource PageDockButton}" Content="＋" Click="AddPageClick" FontSize="16" ToolTip="Añadir una página en blanco"/>
+     </StackPanel>
+    </Border>
+    <TextBlock x:Name="PageMetaText" Visibility="Collapsed"/>
    </Grid>
   </Grid>
  </Border>
