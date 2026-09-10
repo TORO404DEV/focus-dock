@@ -206,8 +206,12 @@ public partial class MainWindow
             pageCards[CurrentPage.Id] = cards;
         }
         else cards = nextCards;
+        // The widgets that were sliding in are the ones that stay: moving the very same
+        // instances onto the canvas is what keeps the landing free of a rebuild.
         foreach (var card in cards)
         {
+            if (PagePreviewArea.Children.Contains(card)) PagePreviewArea.Children.Remove(card);
+            if (!WidgetArea.Children.Contains(card)) WidgetArea.Children.Add(card);
             card.SetCarouselTransition(false);
             card.Visibility = Visibility.Visible;
         }
@@ -219,15 +223,83 @@ public partial class MainWindow
         UpdateOverlayPositions();
     }
 
+    /// <summary>
+    /// The page sliding in shows its real widgets, not a mock of them. Building them here
+    /// and handing the same instances over on commit is what removes the flash that used to
+    /// happen when the drawn placeholders were replaced by the widgets themselves.
+    /// </summary>
     private void RenderPagePreview(WorkspacePage? page)
     {
-        PagePreviewArea.Children.Clear();
+        DetachPreviewCards();
         PagePreviewArea.Width = Math.Max(1, CarouselViewport.ActualWidth);
         PagePreviewArea.Height = Math.Max(1, CarouselViewport.ActualHeight);
         PagePreviewArea.Visibility = Visibility.Visible;
-        if (page is null) return;
-        foreach (var config in page.Widgets) AddPreviewCard(config, false);
+        if (page is null)
+        {
+            AddPreviewPlaceholder("PÁGINA NUEVA");
+            return;
+        }
+        foreach (var card in CardsForPage(page))
+        {
+            // A page that was visited before left its widgets parked on the workspace
+            // canvas, collapsed. They have to come off it before they can slide in.
+            if (WidgetArea.Children.Contains(card)) WidgetArea.Children.Remove(card);
+            card.Visibility = Visibility.Visible;
+            // Hosted windows and web panels own native surfaces that cannot ride a
+            // sliding canvas, so their content stays hidden until the page lands.
+            card.SetCarouselTransition(true);
+            PagePreviewArea.Children.Add(card);
+        }
+        ArrangePreviewCards();
+        // The timer is a single live surface: it cannot be in two places, so it is drawn.
         if (page.TimerWidget is { } timer) AddPreviewCard(timer, true);
+        if (page.Widgets.Count == 0 && page.TimerWidget is null) AddPreviewPlaceholder("PÁGINA VACÍA");
+    }
+
+    /// <summary>The widgets of a page, built once and kept for as long as the page exists.</summary>
+    private List<WidgetCard> CardsForPage(WorkspacePage page)
+    {
+        if (pageCards.TryGetValue(page.Id, out var existing)) return existing;
+        var built = page.Widgets.Select(config => new WidgetCard(this, config)).ToList();
+        pageCards[page.Id] = built;
+        return built;
+    }
+
+    private void ArrangePreviewCards()
+    {
+        double width = Math.Max(1, PagePreviewArea.Width);
+        double height = Math.Max(1, PagePreviewArea.Height);
+        foreach (var card in PagePreviewArea.Children.OfType<WidgetCard>())
+        {
+            card.Width = Math.Clamp(card.Config.Width, 220, Math.Max(220, width));
+            card.Height = Math.Clamp(card.Config.Collapsed ? 42 : card.Config.Height, 42, Math.Max(42, height));
+            Canvas.SetLeft(card, Math.Clamp(card.Config.X, 0, Math.Max(0, width - card.Width)));
+            Canvas.SetTop(card, Math.Clamp(card.Config.Y, 0, Math.Max(0, height - card.Height)));
+        }
+    }
+
+    /// <summary>Takes the previewed widgets off the preview canvas without discarding them.</summary>
+    private void DetachPreviewCards()
+    {
+        foreach (var card in PagePreviewArea.Children.OfType<WidgetCard>().ToArray()) PagePreviewArea.Children.Remove(card);
+        PagePreviewArea.Children.Clear();
+    }
+
+    private void AddPreviewPlaceholder(string text)
+    {
+        var label = new TextBlock
+        {
+            Text = text,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 12,
+            FontWeight = FontWeights.Bold,
+            Foreground = (Brush)Application.Current.Resources["Muted"],
+            Width = Math.Max(1, PagePreviewArea.Width),
+            TextAlignment = TextAlignment.Center
+        };
+        Canvas.SetLeft(label, 0);
+        Canvas.SetTop(label, Math.Max(0, PagePreviewArea.Height / 2 - 10));
+        PagePreviewArea.Children.Add(label);
     }
 
     private void AddPreviewCard(WidgetConfig config, bool timer)
@@ -422,7 +494,7 @@ public partial class MainWindow
         pageSlide.X = 0;
         previewSlide.X = 0;
         PagePreviewArea.Visibility = Visibility.Collapsed;
-        PagePreviewArea.Children.Clear();
+        DetachPreviewCards();
         pageTransitioning = false;
         swipeDestinationAvailable = false;
         swipeTargetIndex = null;

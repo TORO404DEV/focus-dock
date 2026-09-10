@@ -2,5 +2,6 @@ System.NullReferenceException: Object reference not set to an instance of an obj
    at PomoDock.App.NotesEditor..ctor(MainWindow owner, WidgetConfig config, WidgetCard card) in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\NotesEditor.cs:line 56
    at PomoDock.App.WidgetCard.BuildNotes() in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\WidgetCard.cs:line 197
    at PomoDock.App.WidgetCard..ctor(MainWindow owner, WidgetConfig config) in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\WidgetCard.cs:line 83
-   at NotesPreview.Program.Capture() in C:\Users\crstp\AppData\Local\Temp\claude\c--Users-crstp-Documents-GitHub-focus-dock\bfcaeed7-4295-43b8-bc1e-7f161aa995cf\scratchpad\notes\Program.cs:line 70
-   at NotesPreview.Program.<>c__DisplayClass1_0.<<Main>b__0>d.MoveNext() in C:\Users\crstp\AppData\Local\Temp\claude\c--Users-crstp-Documents-GitHub-focus-dock\bfcaeed7-4295-43b8-bc1e-7f161aa995cf\scratchpad\notes\Program.cs:line 33
+   at PomoDock.App.MainWindow.AddCard(WidgetConfig config, Boolean save) in C:\Users\crstp\Documents\GitHub\focus-dock\src\PomoDock.App\MainWindow.xaml.cs:line 611
+   at NotesPreview.Program.Capture() in C:\Users\crstp\AppData\Local\Temp\claude\c--Users-crstp-Documents-GitHub-focus-dock\bfcaeed7-4295-43b8-bc1e-7f161aa995cf\scratchpad\notes\Program.cs:line 53
+   at NotesPreview.Program.<>c__DisplayClass1_0.<<Main>b__0>d.MoveNext() in C:\Users\crstp\AppData\Local\Temp\claude\c--Users-crstp-Documents-GitHub-focus-dock\bfcaeed7-4295-43b8-bc1e-7f161aa995cf\scratchpad\notes\Program.cs:line 31
