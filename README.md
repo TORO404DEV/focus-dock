@@ -21,7 +21,7 @@ notes, calendar and stats beside the real apps you already use.
 </div>
 
 <p align="center">
-  <img src="./docs/media/hero-workspace.png" width="620" alt="PomoDock running on a vertical workspace with a timer and calendar">
+  <img src="./docs/media/hero-workspace.png" width="620" alt="A real PomoDock workspace with the Pomodoro timer, focus stats, To Do and Habits stacked on one page">
 </p>
 
 <!-- GIF SLOT 1: replace hero-workspace.png above with docs/media/hero-workspace.gif. -->
@@ -34,7 +34,7 @@ desktop apps keep their own session and controls; PomoDock simply gives the wind
 place beside your focus tools.
 
 <p align="center">
-  <img src="./docs/media/window-to-widget.png" width="620" alt="Two live application windows embedded as PomoDock widgets">
+  <img src="./docs/media/window-to-widget.png" width="420" alt="PomoDock's Add Widget picker, including Window of another app and Web page / YouTube">
 </p>
 
 <!-- GIF SLOT 2: replace window-to-widget.png above with docs/media/window-to-widget.gif. -->
@@ -71,6 +71,8 @@ need PomoDock to run at the same permission level, or may refuse re-parenting.
   </tr>
 </table>
 
+<!-- tasks-projects.png is still the old mock-up: no real screenshot of that window yet. -->
+
 ## Pages that move like a launcher
 
 Every page is a separate free canvas. Drag empty space sideways, use the floating
@@ -82,6 +84,7 @@ alive and creates a blank page when you move beyond a filled edge.
 </p>
 
 <!-- GIF SLOT 3: replace canvas-pages.png above with docs/media/canvas-pages.gif. -->
+<!-- canvas-pages.png is also still the old mock-up: this one needs motion to show anyway. -->
 
 Widgets can move freely, resize from every edge and corner, overlap, collapse, rename
 or close. Layout, page, size, content and visual order persist automatically. PomoDock
@@ -168,6 +171,10 @@ Four included rhythms provide quick starting points: Classic `25·5·15`, Deep
 `50·10·20`, Sprint `15·3·10`, and Marathon `90·20·30`. Durations and cycle length can
 also be changed independently.
 
+<p align="center">
+  <img src="./docs/media/settings-rhythm.png" width="480" alt="The rhythm presets in PomoDock's control panel: Classic, Deep, Sprint and Marathon">
+</p>
+
 <details>
 <summary><strong>Sound, reminders and appearance</strong></summary>
 
@@ -183,6 +190,10 @@ page or the app is minimized. Notifications support done and 5/15-minute snooze.
 The control panel groups rhythm, sound, appearance and workspace settings. It includes
 light/dark themes, phase colours, live previews and one-click undo for the current visit.
 The interface ships in English and Spanish and can follow the Windows language.
+
+<p align="center">
+  <img src="./docs/media/settings-look.png" width="480" alt="Dark mode and the English/Spanish language choice in PomoDock's control panel">
+</p>
 
 </details>
 
