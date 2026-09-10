@@ -20,6 +20,7 @@ The main shell is native WPF. External windows are hosted as real Win32 HWNDs, s
 - External window widgets can be resized, collapsed, released, and cropped at the top or bottom while preserving the source app session. Cross-DPI Windows content, including Telegram Mini App windows, uses mixed hosting when the OS permits it, and connection work runs off the UI thread.
 - Generated button sounds, optional filtered white noise during focus, and configurable completion alarms. Sound is self-contained and requires no bundled audio files.
 - Brutalist light/dark themes with editable focus, short-break, long-break, and accent colors. Settings, reports, task editing, and confirmations use borderless in-app modal surfaces.
+- A control panel grouped into rhythm, sound, appearance, and space, with named pomodoro rhythms, live changes, one-click undo, sound previews, a color palette instead of hexadecimal fields, and a focus rank earned by hours of real work.
 - A guardian process records hosted window state before reparenting and restores it if POMODOCK exits unexpectedly.
 
 ## External application windows
@@ -27,6 +28,14 @@ The main shell is native WPF. External windows are hosted as real Win32 HWNDs, s
 Open the target application first, then choose `+ INCRUSTAR UNA VENTANA` and select its top-level window. The external app remains the owner of its content and is returned to the desktop when the widget is removed or POMODOCK closes.
 
 The Windows API requires compatible DPI awareness modes for cross-process reparenting. If the app rejects the operation, POMODOCK leaves the source untouched and reports the reason. Applications running elevated may also require POMODOCK to run at the same integrity level. Telegram Portable and its Mini App windows are listed by their visible title; the exact behavior depends on that Telegram build and its DPI mode.
+
+## Control panel
+
+The gear opens a panel divided into four rooms — `RITMO`, `SONIDO`, `ASPECTO`, `ESPACIO` — instead of one long list of fields. Every change lands the moment it is made: colors, theme and window behaviour are visible behind the panel while it is still open, and `DESHACER` puts every setting back to the state it was in when the panel was opened.
+
+`RITMO` offers four named rhythms — Clásico 25·5·15, Profundo 50·10·20, Sprint 15·3·10, Maratón 90·20·30 — that set the three durations and the cycle in one click, with steppers underneath to fine-tune each number. `SONIDO` reveals its options progressively behind the master switch and can play the alarm, a button click, or three seconds of white noise before committing. `ASPECTO` replaces the hexadecimal fields with a palette of tones (an exact code is still available under `OTRO…`). `ESPACIO` covers window placement and opens the local data folder.
+
+The header shows a rank earned by hours of real focus — breaks never count — from `PRIMER PASO` to `LEYENDA`, with the hours still missing before the next one.
 
 ## To Do
 

@@ -14,20 +14,14 @@ namespace PomoDock.App;
 /// <summary>A compact rich-text editor that keeps old plain-text notes readable.</summary>
 internal sealed class NotesEditor : Grid
 {
-    private sealed record NoteColor(string Key, string Name, string Hex);
-
-    private static readonly NoteColor[] Palette =
-    [
-        new("paper", "Papel", "#FAF9F3"),
-        new("yellow", "Amarillo", "#F3E8A6"),
-        new("mint", "Menta", "#CFE4D3"),
-        new("blue", "Azul", "#CFE0E8"),
-        new("rose", "Rosa", "#EBCFD0"),
-        new("lilac", "Lila", "#DDD2E7")
-    ];
-
     private readonly MainWindow owner;
     private readonly WidgetConfig config;
+    private readonly WidgetCard? card;
+    private readonly List<Button> toolButtons = [];
+    private readonly List<Button> swatches = [];
+    private readonly List<CheckBox> checklistBoxes = [];
+    private Border? toolbar;
+    private StackPanel? colorRow;
     private readonly NotesWidgetData data;
     private readonly RichTextBox editor;
     private readonly Border paper;
@@ -35,10 +29,11 @@ internal sealed class NotesEditor : Grid
     private readonly DispatcherTimer saveTimer;
     private bool loading;
 
-    public NotesEditor(MainWindow owner, WidgetConfig config)
+    public NotesEditor(MainWindow owner, WidgetConfig config, WidgetCard? card = null)
     {
         this.owner = owner;
         this.config = config;
+        this.card = card;
         data = ReadData(config.Value, out var legacyText);
 
         RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -66,7 +61,7 @@ internal sealed class NotesEditor : Grid
         };
         Grid.SetRow(paper, 1);
 
-        var toolbar = BuildToolbar();
+        toolbar = BuildToolbar();
         Grid.SetRow(toolbar, 0);
 
         var footer = new Grid { Margin = new Thickness(1, 6, 1, 0) };
@@ -80,26 +75,10 @@ internal sealed class NotesEditor : Grid
             VerticalAlignment = VerticalAlignment.Center
         };
         footer.Children.Add(status);
-        var colors = new StackPanel { Orientation = Orientation.Horizontal, ToolTip = "Color del post-it" };
-        foreach (var color in Palette)
-        {
-            var swatch = new Button
-            {
-                Width = 18,
-                Height = 18,
-                Padding = new Thickness(0),
-                Margin = new Thickness(3, 0, 0, 0),
-                Background = Brush(color.Hex),
-                BorderBrush = (Brush)Application.Current.Resources["Line"],
-                BorderThickness = new Thickness(color.Key == data.Color ? 2 : 1),
-                ToolTip = color.Name,
-                Tag = color.Key
-            };
-            swatch.Click += (_, _) => SetColor((string)swatch.Tag);
-            colors.Children.Add(swatch);
-        }
-        Grid.SetColumn(colors, 1);
-        footer.Children.Add(colors);
+        colorRow = new StackPanel { Orientation = Orientation.Horizontal, ToolTip = "Color del post-it" };
+        BuildSwatches();
+        Grid.SetColumn(colorRow, 1);
+        footer.Children.Add(colorRow);
         Grid.SetRow(footer, 2);
 
         Children.Add(toolbar);
@@ -116,9 +95,10 @@ internal sealed class NotesEditor : Grid
 
         loading = true;
         LoadDocument(legacyText);
-        ApplyColor();
+        ApplySkin();
         RestoreChecklists();
         WireChecklistBoxes();
+        ApplySkin();
         loading = false;
         editor.TextChanged += (_, _) => QueueSave();
         editor.SelectionChanged += (_, _) => UpdateStatus();
@@ -171,17 +151,22 @@ internal sealed class NotesEditor : Grid
         return button;
     }
 
-    private static Button ToolButton(string label, string tip, double width = 28) => new()
+    private Button ToolButton(string label, string tip, double width = 28)
     {
-        Content = label,
-        ToolTip = tip,
-        Width = width,
-        Height = 28,
-        Padding = new Thickness(0),
-        Margin = new Thickness(0, 0, 4, 4),
-        FontFamily = new FontFamily("Segoe UI"),
-        FontSize = 12
-    };
+        var button = new Button
+        {
+            Content = label,
+            ToolTip = tip,
+            Width = width,
+            Height = 28,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0, 0, 4, 4),
+            FontFamily = new FontFamily("Segoe UI"),
+            FontSize = 12
+        };
+        toolButtons.Add(button);
+        return button;
+    }
 
     private void EditorKeyDown(object sender, KeyEventArgs e)
     {
@@ -275,8 +260,10 @@ internal sealed class NotesEditor : Grid
             Margin = new Thickness(0, 0, 2, -1),
             Padding = new Thickness(0),
             VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = isChecked ? "Marcar pendiente" : "Marcar completado"
+            ToolTip = isChecked ? "Marcar pendiente" : "Marcar completado",
+            Foreground = NoteSkin.For(data.Color).InkBrush
         };
+        checklistBoxes.Add(box);
         box.Checked += (_, _) => SetChecklistState(paragraph, box, true);
         box.Unchecked += (_, _) => SetChecklistState(paragraph, box, false);
         return box;
@@ -354,24 +341,81 @@ internal sealed class NotesEditor : Grid
             .ToList();
     }
 
-    private void SetColor(string key)
+    private void BuildSwatches()
     {
-        if (Palette.All(color => color.Key != key)) return;
-        data.Color = key;
-        ApplyColor();
-        foreach (var swatch in FindVisualChildren<Button>(this).Where(button => button.Tag is string))
-            swatch.BorderThickness = new Thickness(Equals(swatch.Tag, key) ? 2 : 1);
+        if (colorRow is null) return;
+        colorRow.Children.Clear();
+        swatches.Clear();
+        var chosen = NoteSkin.For(data.Color);
+        foreach (var preset in NoteSkin.Palette)
+        {
+            var swatch = Swatch(NoteSkin.Resolve(preset.Key), preset.Name, chosen.Hex);
+            swatch.Click += (_, _) => SetColor(preset.Key);
+            colorRow.Children.Add(swatch);
+            swatches.Add(swatch);
+        }
+        // The current colour is shown too when it is not one of the presets.
+        bool custom = NoteSkin.Palette.All(preset => !string.Equals(NoteSkin.ToHex(NoteSkin.Resolve(preset.Key)), chosen.Hex, StringComparison.OrdinalIgnoreCase));
+        var picker = Swatch(custom ? chosen.Paper : Colors.Transparent, "Color a medida", custom ? chosen.Hex : "");
+        picker.Content = custom ? "" : "+";
+        picker.FontSize = 12;
+        picker.FontWeight = FontWeights.Bold;
+        picker.Click += (_, _) => PickColor();
+        colorRow.Children.Add(picker);
+        swatches.Add(picker);
+    }
+
+    private Button Swatch(Color color, string tip, string selectedHex)
+    {
+        bool selected = selectedHex.Length > 0 && string.Equals(NoteSkin.ToHex(color), selectedHex, StringComparison.OrdinalIgnoreCase);
+        return new Button
+        {
+            Width = 18,
+            Height = 18,
+            Padding = new Thickness(0),
+            Margin = new Thickness(3, 0, 0, 0),
+            Background = color == Colors.Transparent ? Brushes.Transparent : new SolidColorBrush(color),
+            BorderThickness = new Thickness(selected ? 2.5 : 1),
+            ToolTip = tip
+        };
+    }
+
+    private void PickColor()
+    {
+        var picked = NoteSkin.Pick(owner, data.Color);
+        if (picked is null) return;
+        SetColor(picked);
+    }
+
+    private void SetColor(string value)
+    {
+        data.Color = value;
+        ApplySkin();
+        BuildSwatches();
         QueueSave();
     }
 
-    private void ApplyColor()
+    /// <summary>One colour drives the note, its toolbar, its footer and the card around it.</summary>
+    private void ApplySkin()
     {
-        var color = Palette.FirstOrDefault(item => item.Key == data.Color) ?? Palette[0];
-        var background = Brush(color.Hex);
-        paper.Background = background;
-        editor.Background = background;
-        if (color.Key == "paper") editor.SetResourceReference(Control.ForegroundProperty, "Ink");
-        else editor.Foreground = Brush("#171916");
+        var skin = NoteSkin.For(data.Color);
+        paper.Background = skin.PaperBrush;
+        paper.BorderBrush = skin.LineBrush;
+        editor.Background = skin.PaperBrush;
+        editor.Foreground = skin.InkBrush;
+        editor.CaretBrush = skin.InkBrush;
+        editor.SelectionBrush = skin.SelectionBrush;
+        if (toolbar is not null) toolbar.BorderBrush = skin.LineBrush;
+        foreach (var button in toolButtons)
+        {
+            button.Background = skin.ChromeBrush;
+            button.Foreground = skin.InkBrush;
+            button.BorderBrush = skin.LineBrush;
+        }
+        foreach (var swatch in swatches) swatch.BorderBrush = skin.LineBrush;
+        foreach (var box in checklistBoxes) box.Foreground = skin.InkBrush;
+        status.Foreground = skin.MutedBrush;
+        card?.ApplySkin(skin.ChromeBrush, skin.InkBrush, skin.LineBrush);
     }
 
     private void QueueSave()

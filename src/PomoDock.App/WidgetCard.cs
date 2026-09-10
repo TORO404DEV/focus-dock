@@ -19,6 +19,7 @@ public sealed class WidgetCard : Border
     private readonly Grid shell = new();
     private readonly Grid moveSurface = new();
     private readonly TextBlock title;
+    private readonly List<Button> headerButtons = [];
     private ExternalWindowHost? host;
     private WebView2? web;
     private bool released;
@@ -42,7 +43,7 @@ public sealed class WidgetCard : Border
             ("×", "Quitar widget y liberar ventana", () => owner.RemoveCard(this)) })
         {
             var button = new Button { Content = label, ToolTip = tip, Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(0), BorderThickness = new Thickness(0), FontSize = 13 };
-            button.Click += (_, _) => action(); actions.Children.Add(button);
+            button.Click += (_, _) => action(); actions.Children.Add(button); headerButtons.Add(button);
         }
         DockPanel.SetDock(actions, Dock.Right); header.Children.Add(actions);
         title = new TextBlock { Text = $"{KindLabel()} / {config.Title}", FontWeight = FontWeights.Bold, FontSize = 10, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
@@ -193,7 +194,35 @@ public sealed class WidgetCard : Border
     private void BuildNotes()
     {
         body.Children.Clear();
-        body.Children.Add(new NotesEditor(owner, Config));
+        body.Children.Add(new NotesEditor(owner, Config, this));
+    }
+    /// <summary>
+    /// Paints the whole card in a widget's own colours. A post-it is its colour, so the
+    /// frame, the header and its buttons follow it instead of the app theme. Null restores
+    /// the theme, and every brush stays a dynamic reference until one is given.
+    /// </summary>
+    internal void ApplySkin(Brush? surface, Brush? ink, Brush? line)
+    {
+        if (surface is null || ink is null || line is null)
+        {
+            SetResourceReference(BackgroundProperty, "Surface");
+            SetResourceReference(BorderBrushProperty, "Line");
+            title.SetResourceReference(TextBlock.ForegroundProperty, "Ink");
+            foreach (var button in headerButtons)
+            {
+                button.ClearValue(Control.ForegroundProperty);
+                button.ClearValue(Control.BackgroundProperty);
+            }
+            return;
+        }
+        Background = surface;
+        BorderBrush = line;
+        title.Foreground = ink;
+        foreach (var button in headerButtons)
+        {
+            button.Foreground = ink;
+            button.Background = Brushes.Transparent;
+        }
     }
     private void BuildCalendar()
     {

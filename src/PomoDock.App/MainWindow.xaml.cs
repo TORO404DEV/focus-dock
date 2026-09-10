@@ -331,7 +331,9 @@ public partial class MainWindow : Window
     internal bool ShowReportChartHoverForDiagnostics() => reportContent?.ShowChartHoverForDiagnostics() == true;
     internal void ShowReportDetailForDiagnostics() => reportContent?.ShowDetailForDiagnostics();
     internal void HideReportForDiagnostics() => HideReportModal();
-    private void SettingsClick(object sender, RoutedEventArgs e) { new SettingsWindow(this).ShowDialog(); Settings.Validate(); ApplyTimerPosition(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); SaveState(); }
+    private void SettingsClick(object sender, RoutedEventArgs e) { new SettingsWindow(this).ShowDialog(); ApplyLiveSettings(); SaveState(); }
+    /// <summary>Puts a settings change on screen at once, so the panel shows its effect while it is open.</summary>
+    public void ApplyLiveSettings() { Settings.Validate(); ApplyTimerPosition(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); }
     private void LayoutsClick(object sender, RoutedEventArgs e) { new LayoutsWindow(this).ShowDialog(); }
     private static Color ParseColor(string value, Color fallback)
     {

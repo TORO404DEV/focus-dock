@@ -25,7 +25,7 @@ internal static class Diagnostics
         Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         Directory.CreateDirectory(directory);
         var results = new List<string>();
-        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null;
+        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null; SettingsWindow? settingsPanel = null;
         void Assert(bool condition, string label) { if (!condition) throw new Exception(label); results.Add("PASS " + label); }
         try
         {
@@ -157,6 +157,28 @@ internal static class Diagnostics
             Render(main.ReportModalSurface!, Path.Combine(directory, "report-detail.png"));
             main.HideReportForDiagnostics();
             Assert(!main.IsReportModalOpen, "report modal closes without a second app window");
+
+            // The control panel: four rooms, a rank read from real history, and instant changes.
+            var standing = FocusProfile.Of(main.Store.Sessions());
+            Assert(standing.Hours > 5 && standing.Level >= 3 && standing.ToNext > 0, "the control panel reads a rank from real focus history");
+            // The timer regression silenced the app; the panel is worth seeing with sound on.
+            main.Settings.Sound = true;
+            settingsPanel = new SettingsWindow(main);
+            settingsPanel.Show(); await Task.Delay(250);
+            foreach (var room in new[] { "rhythm", "sound", "look", "space" })
+            {
+                settingsPanel.ShowSection(room); await Task.Delay(150);
+                Render(settingsPanel, Path.Combine(directory, $"settings-{room}.png"));
+            }
+            int keptFocus = main.Settings.FocusMinutes, keptInterval = main.Settings.LongInterval;
+            settingsPanel.ShowSection("rhythm");
+            settingsPanel.ChooseRhythm(1); await Task.Delay(120);
+            Assert(main.Settings.FocusMinutes == 50 && main.Settings.ShortMinutes == 10 && main.Settings.LongInterval == 3,
+                "choosing a rhythm applies the whole preset at once");
+            settingsPanel.Undo(); await Task.Delay(120);
+            Assert(main.Settings.FocusMinutes == keptFocus && main.Settings.LongInterval == keptInterval,
+                "undo returns every setting to how the panel found it");
+            settingsPanel.Close(); settingsPanel = null;
             var retainedWindow = main.AddCard(new() { Kind = "window", Title = "Retained page fixture", X = 24, Y = 24, Width = 280, Height = 260 }, false);
             await retainedWindow.Attach(foreign);
             Assert(retainedWindow.IsExternalAttached, "page navigation fixture embeds a real external window");
@@ -210,7 +232,7 @@ internal static class Diagnostics
         finally
         {
             AgendaToast.CloseAll();
-            todoHarness?.Close(); calendarHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
+            settingsPanel?.Close(); todoHarness?.Close(); calendarHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
             if (fixture is not null) { if (!fixture.HasExited) fixture.CloseMainWindow(); fixture.Dispose(); }
             if (fixture2 is not null) { if (!fixture2.HasExited) fixture2.CloseMainWindow(); fixture2.Dispose(); }
             Application.Current.Shutdown(Environment.ExitCode);

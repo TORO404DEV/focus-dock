@@ -177,6 +177,19 @@ Test("the agenda survives a round trip and counts the day", () => {
  Equal(1, copy.Upcoming(now, 1).Count(item => !item.AllDay) + counts.Left - 1);
  Assert(AgendaPalette.Of("red").Hex == "#B5493C" && AgendaPalette.Of("desconocido").Key == "ink");
 });
+Test("the focus rank counts only real work and knows what comes next", () => {
+ var start = new DateTimeOffset(2026, 9, 9, 9, 0, 0, TimeSpan.Zero);
+ Session Focused(double minutes) => new() { Phase = Phase.Focus, Segments = [new(start, start.AddMinutes(minutes))] };
+ var fresh = FocusProfile.Of([]);
+ Assert(fresh.Level == 1 && fresh.Name == "PRIMER PASO", "an empty history still has a standing"); Equal(0, fresh.Hours);
+ // Breaks are rest: they never count towards the rank.
+ var mixed = FocusProfile.Of([Focused(120), new() { Phase = Phase.ShortBreak, Segments = [new(start, start.AddMinutes(300))] }]);
+ Equal(2, mixed.Hours); Assert(mixed.Level == 2 && mixed.Name == "APRENDIZ", "two hours of focus is the second rank");
+ Equal(3, mixed.ToNext); Equal(.25, mixed.Share); Assert(FocusProfile.NextName(mixed) == "CONSTANTE");
+ var top = FocusProfile.At(1000);
+ Assert(top.IsHighest && top.Name == "LEYENDA", "the ladder ends at the highest rank"); Equal(0, top.ToNext); Equal(1, top.Share);
+ Assert(FocusProfile.At(-5).Level == 1, "a negative history cannot drop below the first rank");
+});
 var directory = Path.Combine(Path.GetTempPath(), "PomoDock-tests-" + Guid.NewGuid());
 Directory.CreateDirectory(directory);
 try
