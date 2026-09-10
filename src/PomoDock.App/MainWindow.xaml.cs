@@ -782,8 +782,9 @@ public partial class MainWindow : Window
         AddInteractionThumb(root, card, "SW", 2, 0, Cursors.SizeNESW); AddInteractionThumb(root, card, "S", 2, 1, Cursors.SizeNS); AddInteractionThumb(root, card, "SE", 2, 2, Cursors.SizeNWSE);
         var popup = new Popup { Child = root, AllowsTransparency = true, StaysOpen = true, Placement = PlacementMode.Absolute, PopupAnimation = PopupAnimation.None, Focusable = false };
         popup.Opened += (_, _) => BringPopupToFront(popup);
-        interactionOverlays[card] = popup; UpdateInteractionOverlayPosition(card);
-        popup.IsOpen = true; BringPopupToFront(popup);
+        // The position only sticks on an open popup, so it is applied after opening it.
+        interactionOverlays[card] = popup;
+        popup.IsOpen = true; UpdateInteractionOverlayPosition(card); BringPopupToFront(popup);
     }
     private static Thumb CreateInteractionThumb(Cursor cursor)
     {
