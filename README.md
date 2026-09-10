@@ -12,7 +12,8 @@ The main shell is native WPF. External windows are hosted as real Win32 HWNDs, s
 - Tasks, projects, estimates, templates, and free-focus sessions.
 - Report view with daily chart, project breakdown, completed/partial sessions, streaks, pauses, filters, CSV export, JSON backup and import.
 - F11 or the fullscreen button fills the current monitor; Escape exits fullscreen.
-- A canvas-style widget grid with free drag-and-drop placement and per-widget resizing from all four sides and corners. The Pomodoro timer is a permanent widget (never removable) that can also be moved and resized; every other widget can be moved, resized, collapsed, or removed.
+- A canvas-style widget grid with free drag-and-drop placement and per-widget resizing from all four sides and corners. Every widget, including the Pomodoro timer, can be moved and resized; the timer can be added once per workspace page.
+- Launcher-style workspace pages with instant persistence, animated navigation, keyboard shortcuts, and a compact page dock. A new page is available after every existing page has content and always starts completely blank.
 - The Pomodoro surface can stay above the workspace or move below it from Settings; its full frame follows the active phase color.
 - Widget layouts with notes, native To Do lists, daily habit tracking with streaks, gamified focus stats, HTTPS web panels, and external app windows. To Do and habit data live inside each widget and persist in the local PomoDock store.
 - External window widgets can be resized, collapsed, released, and cropped at the top or bottom while preserving the source app session. Cross-DPI Windows content, including Telegram Mini App windows, uses mixed hosting when the OS permits it, and connection work runs off the UI thread.

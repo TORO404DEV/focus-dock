@@ -108,6 +108,27 @@ internal static class Diagnostics
             Render(main.ReportModalSurface!, Path.Combine(directory, "report-detail.png"));
             main.HideReportForDiagnostics();
             Assert(!main.IsReportModalOpen, "report modal closes without a second app window");
+            var retainedWindow = main.AddCard(new() { Kind = "window", Title = "Retained page fixture", X = 24, Y = 24, Width = 280, Height = 260 }, false);
+            await retainedWindow.Attach(foreign);
+            Assert(retainedWindow.IsExternalAttached, "page navigation fixture embeds a real external window");
+            int initialPages = main.WorkspacePageCount;
+            Assert(main.AddPageForDiagnostics(), "a populated workspace unlocks a new page");
+            await Task.Delay(320);
+            Assert(main.WorkspacePageCount == initialPages + 1 && main.CurrentWorkspacePageIsBlank && !main.CurrentWorkspacePageHasTimer,
+                "new workspace pages start completely blank");
+            Render(main, Path.Combine(directory, "page-blank.png"));
+            Assert(!main.AddPageForDiagnostics(), "a blank workspace prevents adding another page");
+            main.AddTimerForDiagnostics();
+            Assert(main.CurrentWorkspacePageHasTimer && !main.CurrentWorkspacePageIsBlank, "timer can be added as the first widget on a blank page");
+            Render(main, Path.Combine(directory, "page-timer.png"));
+            Assert(main.AddPageForDiagnostics(), "adding a widget unlocks the following page");
+            await Task.Delay(320);
+            Assert(main.CurrentWorkspacePageIsBlank, "each subsequently created page is blank too");
+            main.SwitchPageForDiagnostics(0);
+            await Task.Delay(320);
+            Assert(!main.CurrentWorkspacePageIsBlank, "page navigation restores the original canvas automatically");
+            Assert(retainedWindow.IsExternalAttached, "page navigation preserves embedded external windows");
+            main.RemoveCard(retainedWindow);
             main.SaveState();
             var persistedWidgets = main.Store.Read<Settings>("settings")!.Widgets;
             Assert(new[] { "notes", "stats", "todo", "habits" }.All(kind => persistedWidgets.Any(widget => widget.Kind == kind)), "widget layout persisted");

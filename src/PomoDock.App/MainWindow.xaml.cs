@@ -26,7 +26,7 @@ public partial class MainWindow : Window
     public TimerEngine Timer { get; }
     public SoundEngine Sounds { get; }
     private readonly DispatcherTimer ticker = new() { Interval = TimeSpan.FromSeconds(1) };
-    private readonly List<WidgetCard> cards = [];
+    private List<WidgetCard> cards = [];
     private readonly Dictionary<WidgetCard, Popup> overlayCards = [];
     private readonly Dictionary<WidgetCard, Popup> interactionOverlays = [];
     private readonly List<Thumb> timerGestureHandles = [];
@@ -98,6 +98,13 @@ public partial class MainWindow : Window
             if (++ticks % 15 == 0) SaveState();
             if (ticks % 5 == 0) foreach (var card in cards.ToArray()) card.Refresh();
         };
+        statusReset.Tick += (_, _) => { statusReset.Stop(); UpdatePageMeta(); };
+        PageDock.PreviewMouseWheel += (_, e) =>
+        {
+            if (e.Delta < 0) SwitchWorkspacePage(currentPageIndex + 1);
+            else if (e.Delta > 0) SwitchWorkspacePage(currentPageIndex - 1);
+            e.Handled = true;
+        };
         SystemEvents.PowerModeChanged += PowerChanged;
         UpdateTimer();
     }
@@ -110,8 +117,7 @@ public partial class MainWindow : Window
         { Left = screen.WorkingArea.Left + 30; Top = screen.WorkingArea.Top + 30; }
         var source = HwndSource.FromHwnd(hwnd); source?.AddHook(WindowMessages);
         focusHook = Win32.SetWinEventHook(3, 3, 0, foregroundCallback, 0, 0, 0);
-        foreach (var config in Settings.Widgets) AddCard(config, false);
-        ArrangeCards(); ArrangeTimerWidget(); ticker.Start(); UpdateHotkey();
+        InitializeWorkspacePages(); ticker.Start(); UpdateHotkey();
         if (Settings.Fullscreen) ToggleFullscreen();
         if (!DiagnosticMode)
         {
@@ -130,14 +136,7 @@ public partial class MainWindow : Window
     }
     public void SaveState()
     {
-        Settings.Widgets = cards.Select(c => c.Config).ToList();
-        if (!double.IsNaN(Canvas.GetLeft(TimerFrame)))
-        {
-            Settings.TimerWidget.X = Canvas.GetLeft(TimerFrame);
-            Settings.TimerWidget.Y = Canvas.GetTop(TimerFrame);
-            Settings.TimerWidget.Width = TimerFrame.Width;
-            Settings.TimerWidget.Height = TimerFrame.Height;
-        }
+        SaveCurrentWorkspacePage();
         if (!fullscreen && WindowState == WindowState.Normal) { Settings.WindowLeft = Left; Settings.WindowTop = Top; Settings.WindowWidth = Width; Settings.WindowHeight = Height; }
         Settings.Fullscreen = fullscreen;
         Store.Write("settings", Settings); Store.Write("checkpoint", Timer.Active);
@@ -200,7 +199,13 @@ public partial class MainWindow : Window
         if (Settings.ReduceMotion) return;
         TimerSurface.BeginAnimation(OpacityProperty, new DoubleAnimation(0.65, 1, TimeSpan.FromMilliseconds(180)));
     }
-    public void Status(string text) => StatusText.Text = text;
+    public void Status(string text)
+    {
+        if (!workspacePagesLoaded) return;
+        PageMetaText.Text = text;
+        statusReset.Stop();
+        statusReset.Start();
+    }
     private void UpdateHeaderClock()
     {
         var now = DateTime.Now;
@@ -337,6 +342,7 @@ public partial class MainWindow : Window
         string[] colors = Settings.Dark ? ["#191B18", "#EEEEE5", "#AFB3A4", "#252822", "#C2C6B8", Settings.AccentColor] : ["#F1F0E9", "#171916", "#66695E", "#FAF9F3", "#171916", Settings.AccentColor];
         for (int i = 0; i < keys.Length; i++) resources[keys[i]] = new SolidColorBrush(ParseColor(colors[i], Colors.Transparent));
         var phaseBrush = PhaseBrush(); TimerFrame.Background = phaseBrush; TimerSurface.Background = phaseBrush;
+        UpdatePageNavigation();
     }
     private void ApplyTimerPosition()
     {
@@ -345,7 +351,7 @@ public partial class MainWindow : Window
         // until that preference is changed again.
         if (Settings.TimerAtBottom != appliedTimerAtBottom)
         {
-            Settings.TimerPositionCustomized = false;
+            CurrentPage.TimerPositionCustomized = false;
             appliedTimerAtBottom = Settings.TimerAtBottom;
         }
         ArrangeTimerWidget();
@@ -489,29 +495,39 @@ public partial class MainWindow : Window
         x = Math.Max(0, x); y = Math.Max(0, y);
         TimerFrame.Width = width; TimerFrame.Height = height;
         Canvas.SetLeft(TimerFrame, x); Canvas.SetTop(TimerFrame, y);
-        Settings.TimerWidget.X = x; Settings.TimerWidget.Y = y; Settings.TimerWidget.Width = width; Settings.TimerWidget.Height = height;
-        Settings.TimerPositionCustomized = true;
+        if (CurrentTimerWidget is { } config)
+        {
+            config.X = x; config.Y = y; config.Width = width; config.Height = height;
+            CurrentPage.TimerPositionCustomized = true;
+        }
         UpdateTimerOverlayPosition();
     }
 
     private void EndTimerGesture()
     {
         if (!timerResizing) return;
-        timerResizing = false; timerResizeEdge = ""; Settings.TimerPositionCustomized = true; SaveState();
+        timerResizing = false; timerResizeEdge = ""; CurrentPage.TimerPositionCustomized = true; SaveState();
         QueueTimerPromotion();
     }
 
     private void ArrangeTimerWidget()
     {
         if (TimerFrame is null) return;
-        var config = Settings.TimerWidget ??= new WidgetConfig { Kind = "timer", Title = "POMODORO" };
+        var config = CurrentTimerWidget;
+        if (config is null)
+        {
+            HideTimerOverlay();
+            TimerFrame.Visibility = Visibility.Collapsed;
+            return;
+        }
+        TimerFrame.Visibility = Visibility.Visible;
         config.Kind = "timer"; if (string.IsNullOrWhiteSpace(config.Title)) config.Title = "POMODORO";
         double canvasWidth = WidgetArea.ActualWidth > 0 ? WidgetArea.ActualWidth : 720;
         double canvasHeight = WidgetArea.ActualHeight > 0 ? WidgetArea.ActualHeight : 720;
         double maxWidth = Math.Max(360, canvasWidth), maxHeight = Math.Max(300, canvasHeight);
         if (config.Width <= 0) config.Width = Math.Min(560, maxWidth);
         if (config.Height <= 0) config.Height = Math.Min(360, maxHeight);
-        if (!Settings.TimerPositionCustomized)
+        if (!CurrentPage.TimerPositionCustomized)
         {
             config.X = 12;
             config.Y = Settings.TimerAtBottom ? Math.Max(12, canvasHeight - config.Height - 12) : 12;
@@ -549,6 +565,7 @@ public partial class MainWindow : Window
         else if (choice == 3) AddCard(new() { Kind = "stats", Title = "MI ENFOQUE" }, true);
         else if (choice == 4) AddCard(new() { Kind = "todo", Title = "TO DO" }, true);
         else if (choice == 5) AddCard(new() { Kind = "habits", Title = "HÁBITOS" }, true);
+        else if (choice == 6) AddTimerWidget();
     }
     private void AddWindowClick(object sender, RoutedEventArgs e)
     {
@@ -584,13 +601,19 @@ public partial class MainWindow : Window
         }
         var card = new WidgetCard(this, config); cards.Add(card); WidgetArea.Children.Add(card);
         ArrangeCards();
-        if (IsLoaded) ShowInteractionOverlay(card);
-        if (save) SaveState(); return card;
+        if (IsLoaded && !pageTransitioning) ShowInteractionOverlay(card);
+        if (save)
+        {
+            SaveState();
+            UpdatePageNavigation();
+            AnimateWidgetArrival(card);
+        }
+        return card;
     }
     public void RemoveCard(WidgetCard card)
     {
         HideInteractionOverlay(card); HideOverlay(card);
-        card.Release(); WidgetArea.Children.Remove(card); cards.Remove(card); ArrangeCards(); SaveState();
+        card.Release(); WidgetArea.Children.Remove(card); cards.Remove(card); ArrangeCards(); SaveState(); UpdatePageNavigation();
     }
     public void MoveCard(WidgetCard card, int direction)
     {
@@ -600,7 +623,7 @@ public partial class MainWindow : Window
     }
     public void ArrangeCards()
     {
-        Welcome.Visibility = cards.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        Welcome.Visibility = cards.Count == 0 && CurrentTimerWidget is null ? Visibility.Visible : Visibility.Collapsed;
         Welcome.Width = Math.Max(1, WidgetArea.ActualWidth); Welcome.Height = Math.Max(1, WidgetArea.ActualHeight);
         foreach (var card in cards)
         {
@@ -787,7 +810,7 @@ public partial class MainWindow : Window
         foreach (var card in cards.ToArray()) RemoveCard(card);
         var copy = JsonSerializer.Deserialize<List<WidgetConfig>>(JsonSerializer.Serialize(widgets))!;
         foreach (var config in copy) { config.Id = Guid.NewGuid(); AddCard(config, false); }
-        SaveState(); Status("DISTRIBUCIÓN CARGADA · Reconecta las ventanas que quieras usar.");
+        SaveState(); UpdatePageNavigation(); Status("DISTRIBUCIÓN CARGADA · Reconecta las ventanas que quieras usar.");
     }
     public void ToggleFullscreen()
     {
@@ -827,17 +850,22 @@ public partial class MainWindow : Window
         if (e.Key == Key.Escape && reportPopup is { IsOpen: true }) { HideReportModal(); e.Handled = true; return; }
         if (e.Key == Key.F11 && !hotkeyRegistered) { ToggleFullscreen(); e.Handled = true; }
         if (e.Key == Key.Escape && fullscreen) { ToggleFullscreen(); e.Handled = true; }
-        if (e.Key == Key.Space && e.OriginalSource is not TextBox && e.OriginalSource is not Button) { ToggleTimer(); e.Handled = true; }
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Left) { SwitchWorkspacePage(currentPageIndex - 1); e.Handled = true; return; }
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Right) { SwitchWorkspacePage(currentPageIndex + 1); e.Handled = true; return; }
+        if (e.Key == Key.Space && CurrentTimerWidget is not null && e.OriginalSource is not TextBox && e.OriginalSource is not Button) { ToggleTimer(); e.Handled = true; }
     }
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         CancelTimerGesture(); HideReportModal(); HideTimerOverlay();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
-        try { foreach (var card in cards) card.Release(); }
+        try
+        {
+            foreach (var card in pageCards.Values.SelectMany(value => value).Concat(cards).Distinct()) card.Release();
+        }
         catch (Exception ex) { e.Cancel = true; Status(ex.Message); return; }
         Sounds.StopNoise(); Timer.Pause(DateTimeOffset.UtcNow, Monotonic); SaveState();
-        exiting = true; ticker.Stop(); SystemEvents.PowerModeChanged -= PowerChanged;
+        exiting = true; ticker.Stop(); statusReset.Stop(); SystemEvents.PowerModeChanged -= PowerChanged;
         Win32.UnregisterHotKey(hwnd, 11); if (focusHook != 0) Win32.UnhookWinEvent(focusHook);
         Sounds.Dispose(); Store.Dispose();
     }

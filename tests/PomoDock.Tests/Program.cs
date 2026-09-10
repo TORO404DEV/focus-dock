@@ -66,6 +66,15 @@ Test("todo and habit widgets preserve completion state", () => {
  Assert(copy.Items[0].IsCompleteOn(today.AddDays(-1))); Equal(2, copy.Items[0].CurrentStreak(today)); Assert(data.Items[0].Done);
  copy.Items[0].SetComplete(today, true); Equal(3, copy.Items[0].CurrentStreak(today)); copy.Items[0].SetComplete(today, false); Equal(2, copy.Items[0].CurrentStreak(today));
 });
+Test("legacy canvas migrates to a first workspace page", () => {
+ var note = new WidgetConfig { Kind = "notes", Title = "Ideas" };
+ var settings = new Settings { Widgets = [note], TimerPositionCustomized = true };
+ settings.Validate();
+ Equal(1, settings.WorkspacePages.Count); Assert(settings.WorkspacePages[0].Name == "INICIO");
+ Assert(settings.WorkspacePages[0].Widgets.Single() == note && settings.WorkspacePages[0].TimerWidget is not null);
+ Assert(settings.WorkspacePages[0].HasContent && settings.WorkspacePages[0].WidgetCount == 2);
+ var blank = new WorkspacePage { Name = "PÁGINA 02" }; Assert(!blank.HasContent && blank.WidgetCount == 0);
+});
 var directory = Path.Combine(Path.GetTempPath(), "PomoDock-tests-" + Guid.NewGuid());
 Directory.CreateDirectory(directory);
 try

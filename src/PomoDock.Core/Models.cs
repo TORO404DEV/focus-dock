@@ -84,6 +84,16 @@ public sealed class WidgetConfig
     public bool KeepAlive { get; set; }
     public bool Collapsed { get; set; }
 }
+public sealed class WorkspacePage
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "PÁGINA";
+    public List<WidgetConfig> Widgets { get; set; } = [];
+    public WidgetConfig? TimerWidget { get; set; }
+    public bool TimerPositionCustomized { get; set; }
+    public bool HasContent => TimerWidget is not null || Widgets.Count > 0;
+    public int WidgetCount => Widgets.Count + (TimerWidget is null ? 0 : 1);
+}
 public sealed class Settings
 {
     public int FocusMinutes { get; set; } = 25;
@@ -119,6 +129,8 @@ public sealed class Settings
     public List<WorkTask> Tasks { get; set; } = [];
     public List<WidgetConfig> Widgets { get; set; } = [];
     public Dictionary<string, List<WidgetConfig>> Layouts { get; set; } = [];
+    public List<WorkspacePage> WorkspacePages { get; set; } = [];
+    public int ActiveWorkspacePage { get; set; }
     public void Validate()
     {
         FocusMinutes = Math.Clamp(FocusMinutes, 1, 180);
@@ -128,6 +140,33 @@ public sealed class Settings
         DailyGoalMinutes = Math.Clamp(DailyGoalMinutes, 1, 1440);
         WhiteNoiseVolume = Math.Clamp(WhiteNoiseVolume, 0, 100);
         AlarmRepeats = Math.Clamp(AlarmRepeats, 1, 8);
+        Widgets ??= [];
+        Layouts ??= [];
+        WorkspacePages ??= [];
+        if (WorkspacePages.Count == 0)
+        {
+            WorkspacePages.Add(new WorkspacePage
+            {
+                Name = "INICIO",
+                Widgets = Widgets,
+                TimerWidget = TimerWidget,
+                TimerPositionCustomized = TimerPositionCustomized
+            });
+            foreach (var saved in Layouts.Where(pair => pair.Value is { Count: > 0 }))
+                WorkspacePages.Add(new WorkspacePage { Name = saved.Key, Widgets = saved.Value });
+        }
+        for (int i = 0; i < WorkspacePages.Count; i++)
+        {
+            var page = WorkspacePages[i];
+            page.Widgets ??= [];
+            if (string.IsNullOrWhiteSpace(page.Name)) page.Name = i == 0 ? "INICIO" : $"PÁGINA {i + 1:00}";
+            if (page.TimerWidget is not null)
+            {
+                page.TimerWidget.Kind = "timer";
+                if (string.IsNullOrWhiteSpace(page.TimerWidget.Title)) page.TimerWidget.Title = "POMODORO";
+            }
+        }
+        ActiveWorkspacePage = Math.Clamp(ActiveWorkspacePage, 0, WorkspacePages.Count - 1);
     }
     public double Duration(Phase phase) => 60 * (phase == Phase.Focus ? FocusMinutes : phase == Phase.ShortBreak ? ShortMinutes : LongMinutes);
 }

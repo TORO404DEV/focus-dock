@@ -19,9 +19,10 @@ public partial class MainWindow
             => element.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = routedEvent });
         Width = 900; Height = 940; UpdateLayout(); Activate();
         Sounds.StopNoise(); Settings.Sound = false; Settings.WhiteNoise = false;
-        Settings.TimerPositionCustomized = true;
-        Settings.TimerWidget.X = 30; Settings.TimerWidget.Y = 40;
-        Settings.TimerWidget.Width = 430; Settings.TimerWidget.Height = 330;
+        CurrentWorkspacePageForDiagnostics.TimerPositionCustomized = true;
+        var timerWidget = CurrentWorkspacePageForDiagnostics.TimerWidget!;
+        timerWidget.X = 30; timerWidget.Y = 40;
+        timerWidget.Width = 430; timerWidget.Height = 330;
         ArrangeTimerWidget(); UpdateLayout();
 
         try
@@ -51,8 +52,8 @@ public partial class MainWindow
             foreach (var edge in new[] { "MOVE", "N", "S", "E", "W", "NW", "NE", "SW", "SE" })
             {
                 if (canvas) BringCardToFront(embedded); else BringTimerToFront();
-                Settings.TimerWidget.X = 70; Settings.TimerWidget.Y = 70;
-                Settings.TimerWidget.Width = 430; Settings.TimerWidget.Height = 360;
+                timerWidget.X = 70; timerWidget.Y = 70;
+                timerWidget.Width = 430; timerWidget.Height = 360;
                 ArrangeTimerWidget(); UpdateLayout();
                 var element = edge == "MOVE" ? (UIElement)TimerMoveHeader : timerGestureHandles.First(h =>
                     System.Windows.Automation.AutomationProperties.GetName(h) == "Redimensionar temporizador " + edge);
@@ -72,7 +73,9 @@ public partial class MainWindow
                 EndTimerGesture();
                 await Task.Delay(50);
             }
-            var saved = Store.Read<PomoDock.Core.Settings>("settings")!.TimerWidget;
+            var savedSettings = Store.Read<PomoDock.Core.Settings>("settings")!;
+            savedSettings.Validate();
+            var saved = savedSettings.WorkspacePages[savedSettings.ActiveWorkspacePage].TimerWidget!;
             assert(saved.Width == TimerFrame.Width && saved.Height == TimerFrame.Height,
                 "timer gesture persists final geometry with embedded window");
         }

@@ -3,7 +3,7 @@
  <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/></shell:WindowChrome.WindowChrome>
  <Border BorderBrush="{DynamicResource Line}" BorderThickness="2">
    <Grid x:Name="Root">
-   <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="0"/><RowDefinition Height="*"/><RowDefinition Height="30"/></Grid.RowDefinitions>
+   <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="0"/><RowDefinition Height="*"/><RowDefinition Height="44"/></Grid.RowDefinitions>
    <Grid x:Name="TitleBar" Background="{DynamicResource Ink}" MouseLeftButtonDown="DragTitle">
     <TextBlock Text="POMODOCK     /     DESKTOP EDITION" Foreground="{DynamicResource Paper}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,110,0"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -19,13 +19,12 @@
      <Button Content="☷" Click="TasksClick" FontSize="15" Padding="6,3" ToolTip="Tareas y proyectos"/>
      <Button Content="⚙" Click="SettingsClick" FontSize="15" Padding="6,3" ToolTip="Ajustes"/>
      <Button Content="⛶" Click="FullscreenClick" FontSize="15" Padding="6,3" ToolTip="Pantalla completa · F11"/>
-     <Button Content="LAYOUTS" Click="LayoutsClick" FontSize="9" Padding="7,6" ToolTip="Distribuciones guardadas"/>
      <Button Content="+ WIDGET" Click="AddWidgetClick" FontSize="9" Padding="7,6" Margin="0" ToolTip="Añadir widget"/>
     </StackPanel>
    </Grid>
    <Grid x:Name="Workspace" Grid.Row="3" Margin="20,0,20,10">
     <Grid.RowDefinitions><RowDefinition Height="0"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-    <Canvas Grid.Row="1" x:Name="WidgetArea" Background="Transparent" ClipToBounds="True" SizeChanged="WidgetAreaSizeChanged">
+    <Canvas Grid.Row="1" x:Name="WidgetArea" Background="Transparent" ClipToBounds="True" SizeChanged="WidgetAreaSizeChanged" RenderTransformOrigin="0.5,0.5">
      <Border x:Name="Welcome" BorderBrush="{DynamicResource Muted}" BorderThickness="1" Background="{DynamicResource Surface}" Canvas.Left="0" Canvas.Top="0">
       <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="26">
        <TextBlock Text="UN MONITOR.&#10;TU UNIVERSO." FontSize="32" FontWeight="Black" LineHeight="34"/>
@@ -61,9 +60,19 @@
      </Border>
     </Canvas>
    </Grid>
-   <Grid Grid.Row="4" Background="{DynamicResource Ink}"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-    <TextBlock x:Name="StatusText" Foreground="{DynamicResource Paper}" Text="LISTO PARA ENFOCARTE" FontFamily="Consolas" FontSize="10" Margin="12,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-    <TextBlock Grid.Column="1" Text="F11 FULLSCREEN" Foreground="{DynamicResource Paper}" FontSize="9" Margin="8,0,12,0" VerticalAlignment="Center"/>
+   <Grid Grid.Row="4" x:Name="PageDock" Background="{DynamicResource Ink}">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+     <Button x:Name="PreviousPageButton" Content="←" Click="PreviousPageClick" Width="34" Height="30" Padding="0" Margin="0,0,7,0" ToolTip="Página anterior"/>
+     <TextBlock x:Name="PageMetaText" Foreground="{DynamicResource Paper}" FontFamily="Consolas" FontSize="9" FontWeight="Bold" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxWidth="210"/>
+    </StackPanel>
+    <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" HorizontalAlignment="Center" VerticalAlignment="Center">
+     <StackPanel x:Name="PageButtonStrip" Orientation="Horizontal"/>
+    </ScrollViewer>
+    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+     <Button x:Name="NextPageButton" Content="→" Click="NextPageClick" Width="34" Height="30" Padding="0" Margin="0,0,7,0" ToolTip="Página siguiente"/>
+     <Button x:Name="AddPageButton" Content="＋" Click="AddPageClick" Width="34" Height="30" Padding="0" Margin="0" FontSize="17" ToolTip="Añadir una página en blanco"/>
+    </StackPanel>
    </Grid>
   </Grid>
  </Border>
