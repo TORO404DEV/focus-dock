@@ -25,7 +25,7 @@ internal static class Diagnostics
         Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         Directory.CreateDirectory(directory);
         var results = new List<string>();
-        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null; Window? notesHarness = null; Window? statsHarness = null; SettingsWindow? settingsPanel = null;
+        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null; Window? notesHarness = null; Window? statsHarness = null; TasksWindow? tasksHarness = null; SettingsWindow? settingsPanel = null;
         void Assert(bool condition, string label) { if (!condition) throw new Exception(label); results.Add("PASS " + label); }
         try
         {
@@ -35,6 +35,22 @@ internal static class Diagnostics
             Assert(main.IsLoaded, "native shell loads");
             Assert(!main.HeaderClockText.Contains("POMODOCK", StringComparison.OrdinalIgnoreCase) && main.HeaderClockText.Contains(DateTime.Now.Year.ToString()), "workspace header shows the live date and time");
             Render(main, Path.Combine(directory, "main-light.png"));
+
+            // A real imported account can have dozens of projects. They belong in a compact rail,
+            // while the task list keeps its own full-height workspace and searchable rows.
+            for (int index = 1; index <= 32; index++)
+            {
+                string project = $"Proyecto de muestra {index:00}";
+                main.Settings.Projects.Add(project);
+                main.Settings.Tasks.Add(new WorkTask { Name = $"Siguiente acción concreta {index:00}", Project = project, Estimate = index % 4 + 1 });
+            }
+            main.Settings.Tasks.Add(new WorkTask { Name = "Revisar prioridades de la semana", Project = "Proyecto de muestra 01", Estimate = 3, Template = true });
+            tasksHarness = new TasksWindow(main, main.Settings.Tasks.First());
+            tasksHarness.Show(); await Task.Delay(250);
+            Assert(tasksHarness.VisibleProjectRowsForDiagnostics >= 30 && tasksHarness.ProjectRailScrollsForDiagnostics, "large project collections stay inside a scrolling project rail");
+            Assert(tasksHarness.VisibleTaskRowsForDiagnostics >= 30, "task workspace renders the imported task collection");
+            Render(tasksHarness, Path.Combine(directory, "tasks-projects.png"));
+            tasksHarness.Close(); tasksHarness = null;
             main.ToggleTimer(); await Task.Delay(1200); main.ToggleTimer(); Assert(main.Timer.Active!.Seconds >= 1, "UI start and pause record monotonic work");
             main.Sounds.Completed(Phase.ShortBreak); await Task.Delay(80);
             Assert(main.Sounds.ActiveAlarmVoicesForDiagnostics > 0, "a completed break starts its timer alarm");
@@ -304,7 +320,7 @@ internal static class Diagnostics
         finally
         {
             AgendaToast.CloseAll();
-            settingsPanel?.Close(); statsHarness?.Close(); notesHarness?.Close(); todoHarness?.Close(); calendarHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
+            settingsPanel?.Close(); tasksHarness?.Close(); statsHarness?.Close(); notesHarness?.Close(); todoHarness?.Close(); calendarHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
             if (fixture is not null) { if (!fixture.HasExited) fixture.CloseMainWindow(); fixture.Dispose(); }
             if (fixture2 is not null) { if (!fixture2.HasExited) fixture2.CloseMainWindow(); fixture2.Dispose(); }
             Application.Current.Shutdown(Environment.ExitCode);
