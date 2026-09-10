@@ -186,17 +186,24 @@ public sealed class ReportWindow : Window
 
     private void RenderSummary()
     {
-        var daily = Reports.Daily(sessions, TimeZoneInfo.Local);
+        // Everything on this page answers for the chosen period, so the period is picked first and
+        // every number below is computed from the sessions inside it. Only the rank stays lifetime.
+        var range = Range();
+        content.Children.Add(PeriodNavigator(range));
+
+        var periodSessions = sessions.Where(s => Reports.MinutesIn(s, range.Start, range.End, TimeZoneInfo.Local) > 0).ToList();
+        var allDaily = Reports.Daily(sessions, TimeZoneInfo.Local);
+        var daily = Reports.Daily(periodSessions, TimeZoneInfo.Local)
+            .Where(pair => pair.Key >= range.Start && pair.Key <= range.End)
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
         var today = DateOnly.FromDateTime(DateTime.Today);
         var totalMinutes = daily.Sum(pair => pair.Value);
 
-        content.Children.Add(Hero(totalMinutes));
-        content.Children.Add(StatStrip(daily, today, totalMinutes));
-        content.Children.Add(Rhythm(daily));
+        content.Children.Add(Hero(totalMinutes, PeriodLabel(range)));
+        content.Children.Add(StatStrip(daily, allDaily, periodSessions, today, totalMinutes));
+        content.Children.Add(Rhythm(daily, periodSessions));
 
         content.Children.Add(Section(L.T("report.focusHours"), L.T("report.focusHoursDetail")));
-        var range = Range();
-        content.Children.Add(PeriodNavigator(range));
 
         var data = BuildChart(range.Start, range.End);
         exportSessions = data.Sessions;
@@ -247,14 +254,15 @@ public sealed class ReportWindow : Window
     /// The one number worth a screenshot: every hour of real focus, on an inverted band, with the
     /// rank it earned and how far the next one is. Everything below it is context for this.
     /// </summary>
-    private FrameworkElement Hero(double totalMinutes)
+    private FrameworkElement Hero(double totalMinutes, string periodLabel)
     {
         var rank = FocusProfile.Of(sessions);
         var band = new Border { Background = Resource("Chrome"), Padding = new Thickness(22, 18, 22, 18), Margin = new Thickness(0, 0, 0, 12) };
         var stack = new StackPanel();
         stack.Children.Add(new TextBlock
         {
-            Text = L.T("report.heroLead"), FontFamily = Mono(), FontSize = 10, FontWeight = FontWeights.Bold,
+            // Naming the period here is what stops the big number from looking like a lifetime total.
+            Text = L.T("report.heroLeadPeriod", periodLabel), FontFamily = Mono(), FontSize = 10, FontWeight = FontWeights.Bold,
             Foreground = Resource("ChromeInk"), Opacity = .65
         });
 
@@ -278,13 +286,22 @@ public sealed class ReportWindow : Window
         var rankRow = new Grid { Margin = new Thickness(0, 12, 0, 0) };
         rankRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         rankRow.ColumnDefinitions.Add(new ColumnDefinition());
+        // The rank is earned over a lifetime, not inside a week, and says so beside itself.
+        var chipRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         var chip = new Border { Background = Resource("Accent"), Padding = new Thickness(10, 5, 10, 5), VerticalAlignment = VerticalAlignment.Center };
         chip.Child = new TextBlock
         {
             Text = L.T("report.heroRank", rank.Level.ToString("00", CultureInfo.InvariantCulture), rank.Name),
             FontFamily = Mono(), FontSize = 11, FontWeight = FontWeights.Black, Foreground = Resource("AccentInk")
         };
-        rankRow.Children.Add(chip);
+        chipRow.Children.Add(chip);
+        chipRow.Children.Add(new TextBlock
+        {
+            Text = L.T("report.heroLifetime", Spelled(FocusProfile.Hours(sessions) * 60)),
+            FontFamily = Mono(), FontSize = 9, Foreground = Resource("ChromeInk"), Opacity = .55,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(9, 0, 0, 0), TextWrapping = TextWrapping.NoWrap
+        });
+        rankRow.Children.Add(chipRow);
         var toNext = new TextBlock
         {
             Text = rank.IsHighest ? L.T("report.heroTop") : L.T("report.heroNext", rank.ToNext.ToString("0.#", Strings.Culture), FocusProfile.NextName(rank)),
@@ -307,17 +324,22 @@ public sealed class ReportWindow : Window
         return band;
     }
 
-    /// <summary>Four numbers that say whether the habit is holding: streaks, days, and a daily average.</summary>
-    private FrameworkElement StatStrip(Dictionary<DateOnly, double> daily, DateOnly today, double totalMinutes)
+    /// <summary>
+    /// Four numbers that say whether the habit is holding, all of them about the chosen period.
+    /// The running streak is the exception: a streak is only meaningful counted to today, so it
+    /// reads the whole history and is labelled as the current one.
+    /// </summary>
+    private FrameworkElement StatStrip(Dictionary<DateOnly, double> daily, Dictionary<DateOnly, double> allDaily, List<Session> periodSessions, DateOnly today, double totalMinutes)
     {
-        int activeDays = Math.Max(1, Reports.AccessDays(sessions, TimeZoneInfo.Local));
-        var outcomes = Reports.Outcomes(sessions);
+        int daysWithFocus = daily.Count(pair => pair.Value > 0);
+        int activeDays = Math.Max(1, daysWithFocus);
+        var outcomes = Reports.Outcomes(periodSessions);
         int totalSessions = outcomes.Completed + outcomes.Partial;
         var strip = new UniformGrid { Columns = 4, Margin = new Thickness(0, 0, 0, 4) };
-        strip.Children.Add(Tile(Reports.Streak(daily, today).ToString("N0", Strings.Culture), L.T("report.statStreak"), L.T("report.statStreakUnit"), true));
+        strip.Children.Add(Tile(Reports.Streak(allDaily, today).ToString("N0", Strings.Culture), L.T("report.statStreak"), L.T("report.statStreakUnit"), true));
         strip.Children.Add(Tile(Reports.BestStreak(daily).ToString("N0", Strings.Culture), L.T("report.statBestStreak"), L.T("report.statStreakUnit"), false));
-        strip.Children.Add(Tile(Reports.AccessDays(sessions, TimeZoneInfo.Local).ToString("N0", Strings.Culture), L.T("report.statDays"), "", false));
-        strip.Children.Add(Tile(Spelled(totalMinutes / activeDays), L.T("report.statAverage"),
+        strip.Children.Add(Tile(daysWithFocus.ToString("N0", Strings.Culture), L.T("report.statDays"), "", false));
+        strip.Children.Add(Tile(daysWithFocus == 0 ? "—" : Spelled(totalMinutes / activeDays), L.T("report.statAverage"),
             totalSessions > 0 ? L.T("report.statCompleted", (outcomes.Completed * 100 / Math.Max(1, totalSessions)).ToString("0", CultureInfo.InvariantCulture)) : "", false));
         return strip;
     }
@@ -343,9 +365,9 @@ public sealed class ReportWindow : Window
     /// When the work actually happens. Two small profiles — the hours of the day and the days of
     /// the week — plus the peak of each, which is the part people quote about themselves.
     /// </summary>
-    private FrameworkElement Rhythm(Dictionary<DateOnly, double> daily)
+    private FrameworkElement Rhythm(Dictionary<DateOnly, double> daily, List<Session> periodSessions)
     {
-        var hours = Reports.ByHour(sessions, TimeZoneInfo.Local);
+        var hours = Reports.ByHour(periodSessions, TimeZoneInfo.Local);
         var week = Reports.ByWeekday(daily);
         var best = Reports.BestDay(daily);
         var panel = new StackPanel();

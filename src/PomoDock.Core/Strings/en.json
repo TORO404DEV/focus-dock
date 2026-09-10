@@ -244,6 +244,8 @@
   "report.importFailedBody": "Could not import: {0}",
   "report.bucketTotal": "{0}  ·  TOTAL {1}",
   "report.heroLead": "YOU HAVE FOCUSED",
+  "report.heroLeadPeriod": "YOU HAVE FOCUSED · {0}",
+  "report.heroLifetime": "{0} ALL TIME",
   "report.heroHours": "{0} h {1} min",
   "report.heroRank": "LEVEL {0} · {1}",
   "report.heroNext": "{0} h to {1}",
