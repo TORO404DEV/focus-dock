@@ -48,6 +48,8 @@ internal sealed class CalendarWidget : Grid
 
     private DateOnly cursor = DateOnly.FromDateTime(DateTime.Now);
     private DateOnly selected = DateOnly.FromDateTime(DateTime.Now);
+    /// <summary>False while the month panel shows what is coming up; true once a day was chosen.</summary>
+    private bool dayPicked;
     private DateOnly rendered;
     private string filter = "";
     private Border? nowLine;
@@ -234,12 +236,20 @@ internal sealed class CalendarWidget : Grid
             _ => cursor.AddMonths(direction)
         };
         if (state.View != "month") selected = cursor;
+        else
+        {
+            // Leaving the month behind lets go of its day, so the panel never speaks of another month.
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            selected = cursor.Year == today.Year && cursor.Month == today.Month ? today : new DateOnly(cursor.Year, cursor.Month, 1);
+            dayPicked = false;
+        }
         Render();
     }
 
     private void GoToday()
     {
         cursor = selected = DateOnly.FromDateTime(DateTime.Now);
+        dayPicked = false;
         Render();
     }
 
@@ -247,6 +257,7 @@ internal sealed class CalendarWidget : Grid
     {
         state.View = view;
         cursor = selected;
+        dayPicked = false;
         SaveState();
         Render();
     }
@@ -306,6 +317,7 @@ internal sealed class CalendarWidget : Grid
         quickAdd.Clear();
         var day = DateOnly.FromDateTime(draft.Start);
         cursor = selected = day;
+        dayPicked = true;
         owner.Status($"EVENTO CREADO · {draft.Title} · {AgendaVisuals.DayLabel(day)}");
         Render();
     }
@@ -439,7 +451,7 @@ internal sealed class CalendarWidget : Grid
             {
                 BorderBrush = edge,
                 BorderThickness = new Thickness(0, 0, 1, 1),
-                Background = day == selected ? AgendaVisuals.Fade("Accent", 90) : Brushes.Transparent,
+                Background = dayPicked && day == selected ? AgendaVisuals.Fade("Accent", 90) : Brushes.Transparent,
                 ClipToBounds = true,
                 Cursor = Cursors.Hand
             };
@@ -495,9 +507,11 @@ internal sealed class CalendarWidget : Grid
             var captured = day;
             cell.MouseLeftButtonDown += (_, e) =>
             {
+                if (e.ClickCount == 2) { selected = captured; dayPicked = true; Edit(null, captured); return; }
+                // Clicking the chosen day again lets go of it and brings back what is coming up.
+                dayPicked = !(dayPicked && captured == selected);
                 selected = captured;
-                if (e.ClickCount == 2) Edit(null, captured);
-                else Render();
+                Render();
             };
             grid.Children.Add(cell);
         }
@@ -528,7 +542,7 @@ internal sealed class CalendarWidget : Grid
         Grid.SetRow(grid, 1);
         root.Children.Add(grid);
 
-        var detail = BuildDayPanel(selected, now);
+        var detail = dayPicked ? BuildDayPanel(selected, now) : BuildComingUp(now);
         Grid.SetRow(detail, 2);
         root.Children.Add(detail);
         return root;
@@ -554,7 +568,7 @@ internal sealed class CalendarWidget : Grid
             ToolTip = Tooltip(item),
             Cursor = Cursors.Hand
         };
-        chip.MouseLeftButtonDown += (_, e) => { e.Handled = true; selected = item.Day; Edit(item.Event, item.Series); };
+        chip.MouseLeftButtonDown += (_, e) => { e.Handled = true; selected = item.Day; dayPicked = true; Edit(item.Event, item.Series); };
         return chip;
     }
 
@@ -570,32 +584,86 @@ internal sealed class CalendarWidget : Grid
     private UIElement BuildDayPanel(DateOnly day, DateTime now)
     {
         var items = agenda.Book.OnDay(day);
+        string relative = AgendaVisuals.Relative(day, DateOnly.FromDateTime(now));
+        var list = new StackPanel { Margin = new Thickness(0, S(6), 0, 0) };
+        foreach (var item in items) list.Children.Add(Row(item, now));
+        if (items.Count == 0) list.Children.Add(Empty("Día libre. Escribe arriba para reservarlo."));
+        return PanelFrame((relative.Length > 0 ? relative + " · " : "") + AgendaVisuals.LongDayLabel(day), day, list);
+    }
+
+    /// <summary>
+    /// What the month holds from today on — or the whole month when it is not this one. It is what
+    /// the panel shows until a day is picked, so September never talks about October.
+    /// </summary>
+    private UIElement BuildComingUp(DateTime now)
+    {
+        var today = DateOnly.FromDateTime(now);
+        var start = new DateOnly(cursor.Year, cursor.Month, 1);
+        var end = start.AddMonths(1).AddDays(-1);
+        bool current = today >= start && today <= end;
+        var items = current ? agenda.Book.Upcoming(now, end.DayNumber - today.DayNumber) : agenda.Book.Between(start, end);
+        if (!state.ShowDone) items = items.Where(item => !item.Done).ToList();
+        // A multi-day entry is one line here, not one per day it covers.
+        var seen = new HashSet<(Guid, DateOnly)>();
+        items = items.Where(item => seen.Add((item.Event.Id, item.Series))).ToList();
+
+        var list = new StackPanel { Margin = new Thickness(0, S(2), 0, 0) };
+        DateOnly? heading = null;
+        foreach (var item in items)
+        {
+            if (heading != item.Day)
+            {
+                heading = item.Day;
+                list.Children.Add(DayHeading(item.Day, today, S(6)));
+            }
+            list.Children.Add(Row(item, now));
+        }
+        if (items.Count == 0)
+            list.Children.Add(Empty(current ? "Nada más este mes. Escribe arriba para reservar un día." : "Mes libre. Escribe arriba para reservar un día."));
+        string month = AgendaVisuals.MonthLabel(start);
+        string title = current ? $"PRÓXIMOS · {month[..month.LastIndexOf(' ')]} · DESDE HOY" : month;
+        return PanelFrame(items.Count > 0 ? $"{title} · {items.Count:00}" : title, current ? today : start, list);
+    }
+
+    private UIElement PanelFrame(string title, DateOnly addOn, UIElement list)
+    {
         var panel = new StackPanel { Margin = new Thickness(0, S(8), 0, 0) };
         var header = new Grid();
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        string relative = AgendaVisuals.Relative(day, DateOnly.FromDateTime(now));
         header.Children.Add(new TextBlock
         {
-            Text = (relative.Length > 0 ? relative + " · " : "") + AgendaVisuals.LongDayLabel(day),
+            Text = title,
             FontFamily = new FontFamily("Consolas"), FontSize = S(10), FontWeight = FontWeights.Black,
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis
         });
         var add = new Button { Content = "+ AÑADIR", FontSize = S(9), Padding = new Thickness(S(8), S(5), S(8), S(5)), Margin = new Thickness(0) };
-        add.Click += (_, _) => Edit(null, day);
+        add.Click += (_, _) => Edit(null, addOn);
         Grid.SetColumn(add, 1);
         header.Children.Add(add);
         panel.Children.Add(header);
 
-        var list = new StackPanel { Margin = new Thickness(0, S(6), 0, 0) };
-        foreach (var item in items) list.Children.Add(Row(item, now));
-        if (items.Count == 0)
-            list.Children.Add(new TextBlock { Text = "Día libre. Escribe arriba para reservarlo.", FontSize = S(11), Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(S(2), S(6), 0, S(4)) });
-        // The day panel takes a share of the card instead of a fixed strip, so a tall widget shows
-        // more of the day. The month grid keeps the larger half: it is what this view is for.
+        // The panel takes a share of the card instead of a fixed strip, so a tall widget shows
+        // more of it. The month grid keeps the larger half: it is what this view is for.
         double panelHeight = Math.Clamp(ActualHeight * 0.26, S(130), S(380));
         panel.Children.Add(new ScrollViewer { Content = list, MaxHeight = panelHeight, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         return panel;
+    }
+
+    private TextBlock Empty(string text) =>
+        new() { Text = text, FontSize = S(11), Foreground = AgendaVisuals.Resource("Muted"), Margin = new Thickness(S(2), S(6), 0, S(4)) };
+
+    /// <summary>The day line that groups rows in a list: "MAÑANA · VIERNES 11 DE SEPTIEMBRE".</summary>
+    private TextBlock DayHeading(DateOnly day, DateOnly today, double top)
+    {
+        string relative = AgendaVisuals.Relative(day, today);
+        return new TextBlock
+        {
+            Text = (relative.Length > 0 ? relative + " · " : "") + AgendaVisuals.LongDayLabel(day),
+            FontFamily = new FontFamily("Consolas"), FontSize = S(10), FontWeight = FontWeights.Black,
+            Foreground = day == today ? AgendaVisuals.Resource("Ink") : AgendaVisuals.Resource("Muted"),
+            Margin = new Thickness(0, top, 0, S(5))
+        };
     }
 
     // ---------------------------------------------------------------- week
@@ -638,6 +706,7 @@ internal sealed class CalendarWidget : Grid
             label.MouseLeftButtonDown += (_, e) =>
             {
                 selected = captured;
+                dayPicked = true;
                 if (e.ClickCount == 2) { state.View = "month"; SaveState(); }
                 cursor = captured;
                 Render();
@@ -844,14 +913,7 @@ internal sealed class CalendarWidget : Grid
             if (header != item.Day)
             {
                 header = item.Day;
-                string relative = AgendaVisuals.Relative(item.Day, today);
-                list.Children.Add(new TextBlock
-                {
-                    Text = (relative.Length > 0 ? relative + " · " : "") + AgendaVisuals.LongDayLabel(item.Day),
-                    FontFamily = new FontFamily("Consolas"), FontSize = S(10), FontWeight = FontWeights.Black,
-                    Foreground = item.Day == today ? AgendaVisuals.Resource("Ink") : AgendaVisuals.Resource("Muted"),
-                    Margin = new Thickness(0, S(10), 0, S(5))
-                });
+                list.Children.Add(DayHeading(item.Day, today, S(10)));
             }
             list.Children.Add(Row(item, now));
         }
