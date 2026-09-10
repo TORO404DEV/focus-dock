@@ -79,7 +79,7 @@ The timer keeps time; everything around it keeps context. Every session is store
 - **Link a session to a task** or run *free focus* (`ENFOQUE LIBRE`); resetting or skipping saves the partial work instead of discarding it.
 - **Honest timekeeping**: monotonic accounting that pauses on sleep, clock jumps or long scheduling gaps, so suspended time never counts as work.
 - **Crash recovery**: a running session is checkpointed and offered back after a restart — never resumed behind your back.
-- Optional auto-start for breaks and focus, a completion alarm, button sounds and filtered white noise — all generated in-app, no audio files.
+- Optional auto-start for breaks and focus, and a [sound library](#sound-library) of 36 generated sounds: separate alarms for the end of focus and of a break, a session ambience, reminder chimes and click packs — no audio files.
 - The timer's frame takes the colour of the active phase.
 
 ### Productivity widgets
@@ -95,7 +95,7 @@ The timer keeps time; everything around it keeps context. Every session is store
 
 Plus a **Tasks & projects** window (`☷`) with pomodoro estimates, progress per task, projects and reusable task templates.
 
-**Calendar reminders** ring with a chime and a notification card in the corner of the screen — with *snooze 5 / 15 min* and *done* — even when the calendar sits on another page or PomoDock is minimized. They run while PomoDock is open; a reminder that came due while the app was closed is only shown if its event hasn't passed yet.
+**Calendar reminders** ring with the reminder sound you choose and a notification card in the corner of the screen — with *snooze 5 / 15 min* and *done* — even when the calendar sits on another page or PomoDock is minimized. They run while PomoDock is open; a reminder that came due while the app was closed is only shown if its event hasn't passed yet.
 
 ### Anything with a window can become a widget
 
@@ -136,6 +136,19 @@ This is the core of PomoDock: the widgets you need are often other apps.
 
 - Brutalist light and dark themes, a colour palette for each phase and the accent (exact hex still available), and a *reduce motion* option.
 - The control panel (`⚙`) groups settings into four rooms — *Rhythm*, *Sound*, *Appearance*, *Space* — applies every change live, previews sounds before you commit, and offers one-click **undo** for the whole visit.
+
+### Sound library
+
+36 sounds, all synthesised in code — sines, filtered noise, a plucked-string model — so PomoDock ships no audio files and every sound renders identically on every machine. Each one is chosen in the control panel (`⚙` → *SONIDO*), where picking a card also plays it.
+
+| For | Sounds |
+|---|---|
+| End of focus and end of a break, chosen separately | Clásica, Campana, Carillón, Cuenco tibetano, Marimba, Arpa, Gong, Despertador, Cocina, Pájaros, Arcade, Pulso suave |
+| Ambience during focus | White, pink and brown noise, Lluvia, Tormenta, Olas, Viento, Arroyo, Chimenea, Ventilador, Reloj, Binaural alfa (10 Hz, for headphones) |
+| Calendar reminders | Dos notas, Campanilla, Cristal, Marimba, Burbujas, Toc toc |
+| Buttons, with a tone per action | Suave, Madera, Mecánico, Retro, Burbuja, Cristal |
+
+Alarms and reminders share one volume and clicks have another; the ambience has its own. Alarms can repeat up to eight times. Short sounds are mixed on top of the ambience instead of cutting it off, ambiences loop seamlessly — each one is crossfaded into itself — and a new ambience or volume takes over live in the middle of a session.
 
 ---
 
@@ -275,11 +288,13 @@ PomoDock is a native Windows desktop app.
 | Embedded apps | Win32 window re-parenting with a crash-safe journal and guardian process |
 | Web panels | Microsoft Edge WebView2 |
 | Storage | SQLite (`Microsoft.Data.Sqlite`) with JSON payloads |
+| Audio | Synthesised PCM; WPF `MediaPlayer` mixes short sounds, `SoundPlayer` loops ambiences without a gap |
 
 ```text
 src/
 ├── PomoDock.Core/   timer engine, sessions, reports, Pomofocus import,
-│                    habits, agenda, to-do, focus rank, storage
+│                    habits, agenda, to-do, note history, focus rank,
+│                    sound synthesis, storage
 └── PomoDock.App/    WPF shell, widget canvas and pages, widgets,
                      window hosting, dialogs, sound
 tests/

@@ -122,6 +122,17 @@ public sealed class Settings
     public int WhiteNoiseVolume { get; set; } = 18;
     public bool AlarmEnabled { get; set; } = true;
     public int AlarmRepeats { get; set; } = 3;
+    // The sound library: which sound plays for what, and how loud. Ids come from SoundLibrary.
+    public string FocusEndSound { get; set; } = "classic";
+    public string BreakEndSound { get; set; } = "chime";
+    public string ReminderSound { get; set; } = "call-two-note";
+    public string ClickSound { get; set; } = "click-soft";
+    /// <summary>What plays during focus when <see cref="WhiteNoise"/> is on; the name predates the library.</summary>
+    public string AmbientSound { get; set; } = "white";
+    /// <summary>Alarms and calendar reminders.</summary>
+    public int AlarmVolume { get; set; } = 70;
+    /// <summary>Button and habit clicks.</summary>
+    public int EffectsVolume { get; set; } = 45;
     public bool Dark { get; set; }
     public bool ReduceMotion { get; set; }
     public bool AlwaysOnTop { get; set; }
@@ -153,6 +164,13 @@ public sealed class Settings
         DailyGoalMinutes = Math.Clamp(DailyGoalMinutes, 1, 1440);
         WhiteNoiseVolume = Math.Clamp(WhiteNoiseVolume, 0, 100);
         AlarmRepeats = Math.Clamp(AlarmRepeats, 1, 8);
+        AlarmVolume = Math.Clamp(AlarmVolume, 0, 100);
+        EffectsVolume = Math.Clamp(EffectsVolume, 0, 100);
+        FocusEndSound = SoundLibrary.Valid(FocusEndSound, SoundKind.Alarm);
+        BreakEndSound = SoundLibrary.Valid(BreakEndSound, SoundKind.Alarm);
+        ReminderSound = SoundLibrary.Valid(ReminderSound, SoundKind.Reminder);
+        ClickSound = SoundLibrary.Valid(ClickSound, SoundKind.Click);
+        AmbientSound = SoundLibrary.Valid(AmbientSound, SoundKind.Ambient);
         Widgets ??= [];
         Layouts ??= [];
         WorkspacePages ??= [];

@@ -21,13 +21,15 @@ public sealed class SettingsWindow : Window
         int Focus, int Short, int Long, int Interval, int Goal, int Noise, int Repeats,
         bool AutoBreak, bool AutoFocus, bool Sound, bool ButtonSounds, bool WhiteNoise, bool Alarm,
         bool Dark, bool ReduceMotion, bool AlwaysOnTop, bool TimerAtBottom,
-        string FocusColor, string ShortColor, string LongColor, string Accent)
+        string FocusColor, string ShortColor, string LongColor, string Accent,
+        string FocusEnd, string BreakEnd, string Reminder, string Click, string Ambient, int AlarmVolume, int EffectsVolume)
     {
         public static Snapshot Of(Settings s) => new(
             s.FocusMinutes, s.ShortMinutes, s.LongMinutes, s.LongInterval, s.DailyGoalMinutes, s.WhiteNoiseVolume, s.AlarmRepeats,
             s.AutoBreak, s.AutoFocus, s.Sound, s.ButtonSounds, s.WhiteNoise, s.AlarmEnabled,
             s.Dark, s.ReduceMotion, s.AlwaysOnTop, s.TimerAtBottom,
-            s.FocusColor, s.ShortBreakColor, s.LongBreakColor, s.AccentColor);
+            s.FocusColor, s.ShortBreakColor, s.LongBreakColor, s.AccentColor,
+            s.FocusEndSound, s.BreakEndSound, s.ReminderSound, s.ClickSound, s.AmbientSound, s.AlarmVolume, s.EffectsVolume);
 
         public void Restore(Settings s)
         {
@@ -37,6 +39,8 @@ public sealed class SettingsWindow : Window
             s.WhiteNoise = WhiteNoise; s.AlarmEnabled = Alarm; s.Dark = Dark; s.ReduceMotion = ReduceMotion;
             s.AlwaysOnTop = AlwaysOnTop; s.TimerAtBottom = TimerAtBottom;
             s.FocusColor = FocusColor; s.ShortBreakColor = ShortColor; s.LongBreakColor = LongColor; s.AccentColor = Accent;
+            s.FocusEndSound = FocusEnd; s.BreakEndSound = BreakEnd; s.ReminderSound = Reminder; s.ClickSound = Click;
+            s.AmbientSound = Ambient; s.AlarmVolume = AlarmVolume; s.EffectsVolume = EffectsVolume;
         }
     }
 
@@ -64,7 +68,6 @@ public sealed class SettingsWindow : Window
     private readonly Grid xpTrack = new();
     private readonly Border xpFill = new();
     private readonly FocusRank rank;
-    private DispatcherTimer? probe;
     private string section = "rhythm";
 
     public SettingsWindow(MainWindow owner)
@@ -103,7 +106,6 @@ public sealed class SettingsWindow : Window
 
         root.Children.Add(Footer());
 
-        Closed += (_, _) => StopProbe();
         Render();
         Dialogs.Modalize(this);
     }
@@ -271,7 +273,7 @@ public sealed class SettingsWindow : Window
 
     private void BuildSound()
     {
-        body.Children.Add(Lead("SONIDO", "Todo el audio se genera dentro de la app: no hay archivos ni descargas."));
+        body.Children.Add(Lead("SONIDO", $"{SoundLibrary.Catalog.Count} sonidos generados dentro de la app, sin archivos ni descargas. Pulsa uno para elegirlo y escucharlo."));
         body.Children.Add(Toggle("Sonido", "El interruptor general. Si está apagado, no suena nada.", settings.Sound, value => settings.Sound = value));
 
         if (!settings.Sound)
@@ -280,21 +282,33 @@ public sealed class SettingsWindow : Window
             return;
         }
 
+        body.Children.Add(Lead("ALARMAS", "Lo que suena cuando se acaba un bloque. El pomodoro y el descanso pueden sonar distinto."));
         body.Children.Add(Toggle("Alarma al terminar", "Un aviso cuando se acaba el pomodoro o el descanso.", settings.AlarmEnabled, value => settings.AlarmEnabled = value));
         if (settings.AlarmEnabled)
         {
-            body.Children.Add(Stepper("Repeticiones de la alarma", "Cuántas veces suena el aviso.", settings.AlarmRepeats, 1, 8, 1, value => $"{value}", value => settings.AlarmRepeats = value));
-            body.Children.Add(Try("PROBAR LA ALARMA", () => owner.Sounds.Completed(Phase.Focus)));
+            body.Children.Add(Picker("Fin del pomodoro", "Hora de parar.", SoundKind.Alarm, settings.FocusEndSound, value => settings.FocusEndSound = value));
+            body.Children.Add(Picker("Fin del descanso", "Hora de volver.", SoundKind.Alarm, settings.BreakEndSound, value => settings.BreakEndSound = value));
+            body.Children.Add(Stepper("Repeticiones", "Cuántas veces suena la alarma.", settings.AlarmRepeats, 1, 8, 1, value => $"{value}", value => settings.AlarmRepeats = value));
         }
+        body.Children.Add(Stepper("Volumen de alarmas y avisos", "También el de los recordatorios del calendario.", settings.AlarmVolume, 0, 100, 5, value => $"{value} %", value => settings.AlarmVolume = value));
 
-        body.Children.Add(Toggle("Sonidos de los botones", "Un chasquido corto al iniciar, pausar o saltar.", settings.ButtonSounds, value => settings.ButtonSounds = value));
-        if (settings.ButtonSounds) body.Children.Add(Try("PROBAR UN BOTÓN", () => owner.Sounds.Button("start")));
-
-        body.Children.Add(Toggle("Ruido blanco al enfocar", "Un fondo filtrado que arranca con cada pomodoro.", settings.WhiteNoise, value => settings.WhiteNoise = value));
+        body.Children.Add(Lead("DURANTE LA SESIÓN", "Un fondo continuo que arranca con cada pomodoro y se calla al pausar. Nada lo interrumpe: ni los clics ni los avisos."));
+        body.Children.Add(Toggle("Ambiente al enfocar", "Lluvia, ruido, olas, un reloj… lo que te ayude a entrar en el trabajo.", settings.WhiteNoise, value => settings.WhiteNoise = value));
         if (settings.WhiteNoise)
         {
-            body.Children.Add(Stepper("Volumen del ruido", "", settings.WhiteNoiseVolume, 0, 100, 5, value => $"{value} %", value => settings.WhiteNoiseVolume = value));
-            body.Children.Add(Try("ESCUCHAR 3 SEGUNDOS", ProbeNoise));
+            body.Children.Add(Picker("Ambiente", "Al elegirlo suena cuatro segundos.", SoundKind.Ambient, settings.AmbientSound, value => settings.AmbientSound = value));
+            body.Children.Add(Stepper("Volumen del ambiente", "", settings.WhiteNoiseVolume, 0, 100, 5, value => $"{value} %", value => settings.WhiteNoiseVolume = value));
+        }
+
+        body.Children.Add(Lead("CALENDARIO", "El aviso de los recordatorios de la agenda."));
+        body.Children.Add(Picker("Recordatorios", "", SoundKind.Reminder, settings.ReminderSound, value => settings.ReminderSound = value));
+
+        body.Children.Add(Lead("BOTONES", "El pequeño sonido de iniciar, pausar, saltar o marcar un hábito."));
+        body.Children.Add(Toggle("Sonidos de los botones", "Cada acción tiene su propio tono dentro del pack.", settings.ButtonSounds, value => settings.ButtonSounds = value));
+        if (settings.ButtonSounds)
+        {
+            body.Children.Add(Picker("Pack de clics", "", SoundKind.Click, settings.ClickSound, value => settings.ClickSound = value));
+            body.Children.Add(Stepper("Volumen de los clics", "", settings.EffectsVolume, 0, 100, 5, value => $"{value} %", value => settings.EffectsVolume = value));
         }
     }
 
@@ -372,11 +386,60 @@ public sealed class SettingsWindow : Window
         TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 4)
     };
 
-    private UIElement Try(string label, Action play)
+    /// <summary>
+    /// A shelf of sounds of one kind. A card chooses and plays at once, so the choice is made by
+    /// ear rather than by name.
+    /// </summary>
+    private UIElement Picker(string label, string help, SoundKind kind, string current, Action<string> set)
     {
-        var button = new Button { Content = label, FontSize = 10, Padding = new Thickness(11, 7, 11, 7), Margin = new Thickness(0, 0, 0, 8), HorizontalAlignment = HorizontalAlignment.Left };
-        button.Click += (_, _) => play();
-        return button;
+        var row = new Border
+        {
+            BorderBrush = AgendaVisuals.Fade("Line", 70), BorderThickness = new Thickness(1),
+            Background = AgendaVisuals.Resource("Surface"), Padding = new Thickness(13, 11, 11, 8), Margin = new Thickness(0, 0, 0, 6)
+        };
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock { Text = label, FontSize = 13, FontWeight = FontWeights.SemiBold });
+        if (help.Length > 0)
+            stack.Children.Add(new TextBlock { Text = help, FontSize = 10, Foreground = AgendaVisuals.Resource("Muted"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0) });
+
+        var shelf = new WrapPanel { Margin = new Thickness(0, 9, 0, 0) };
+        foreach (var sound in SoundLibrary.OfKind(kind))
+        {
+            bool chosen = sound.Id == current;
+            var content = new StackPanel();
+            content.Children.Add(new TextBlock
+            {
+                Text = (chosen ? "♪  " : "") + sound.Name, FontSize = 11, FontWeight = FontWeights.SemiBold,
+                TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis
+            });
+            content.Children.Add(new TextBlock
+            {
+                Text = sound.Detail, FontSize = 9, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0),
+                Foreground = chosen ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Muted"), Opacity = chosen ? 0.85 : 1
+            });
+            var card = new Button
+            {
+                Content = content, Width = 134, MinHeight = 58, Margin = new Thickness(0, 0, 6, 6), Padding = new Thickness(9, 7, 9, 7),
+                HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Top,
+                Background = chosen ? AgendaVisuals.Resource("Ink") : AgendaVisuals.Resource("Surface"),
+                Foreground = chosen ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Ink"),
+                BorderThickness = new Thickness(chosen ? 2.5 : 1.2), ToolTip = "Elegir y escuchar"
+            };
+            card.SetValue(AutomationProperties.NameProperty, $"{label}: {sound.Name}");
+            card.Click += (_, _) =>
+            {
+                set(sound.Id);
+                Changed();
+                // During a focus session the new ambience already took over; a preview would only stutter it.
+                bool sessionAmbience = kind == SoundKind.Ambient && owner.Timer.Running && owner.Timer.Phase == Phase.Focus;
+                if (!sessionAmbience) owner.Sounds.Preview(sound.Id);
+                statusLine.Text = $"{label.ToUpper(AgendaVisuals.Spanish)} · {sound.Name}";
+            };
+            shelf.Children.Add(card);
+        }
+        stack.Children.Add(shelf);
+        row.Child = stack;
+        return row;
     }
 
     /// <summary>A row that reads like a sentence and flips when you click anywhere on it.</summary>
@@ -542,22 +605,6 @@ public sealed class SettingsWindow : Window
         catch (Exception) { return AgendaVisuals.Resource("Surface"); }
     }
 
-    private void ProbeNoise()
-    {
-        StopProbe();
-        owner.Sounds.StartNoise();
-        probe = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
-        probe.Tick += (_, _) => StopProbe();
-        probe.Start();
-    }
-
-    /// <summary>Never silences a focus session that was already playing its own noise.</summary>
-    private void StopProbe()
-    {
-        probe?.Stop();
-        probe = null;
-        if (!owner.Timer.Running) owner.Sounds.StopNoise();
-    }
 }
 
 public sealed class LayoutsWindow : Window
