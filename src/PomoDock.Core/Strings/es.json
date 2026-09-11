@@ -218,6 +218,9 @@
   "notifications.bannerTask": "TAREA · AHORA",
   "notifications.bannerEvent": "RECORDATORIO · AHORA",
 
+  "dictation.start": "Dictar con la voz · usa el idioma de Windows",
+  "dictation.listening": "DICTADO ACTIVO · Habla y Windows escribirá donde está el cursor.",
+
   "report.dayShort.sunday": "DOM",
   "report.dayShort.monday": "LUN",
   "report.dayShort.tuesday": "MAR",

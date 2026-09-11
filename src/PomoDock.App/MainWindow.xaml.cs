@@ -48,6 +48,7 @@ public partial class MainWindow : Window
     private readonly List<Popup> reportBackdrops = [];
     private ReportWindow? reportContent;
     private bool timerPointerPressed, timerWantsFront;
+    private readonly VoiceDictation voiceDictation;
     public bool DiagnosticMode { get; }
     public static double Monotonic => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
     private static string ResolveDataPath()
@@ -71,6 +72,7 @@ public partial class MainWindow : Window
         Timer = new(Settings);
         Sounds = new(Settings);
         InitializeComponent();
+        voiceDictation = VoiceDictation.Attach(this);
         InitializeNotifications();
         ApplyLanguage();
         appliedTimerAtBottom = Settings.TimerAtBottom;
@@ -242,7 +244,7 @@ public partial class MainWindow : Window
     }
     private void TasksClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new TasksWindow(this, selectedTask); dialog.ShowDialog();
+        var dialog = new TasksWindow(this, selectedTask); ShowWorkspaceDialog(dialog);
         if (dialog.SelectionChanged)
         {
             Sounds.StopNoise();
@@ -356,7 +358,7 @@ public partial class MainWindow : Window
     internal bool ShowReportChartHoverForDiagnostics() => reportContent?.ShowChartHoverForDiagnostics() == true;
     internal void ShowReportDetailForDiagnostics() => reportContent?.ShowDetailForDiagnostics();
     internal void HideReportForDiagnostics() => HideReportModal();
-    private void SettingsClick(object sender, RoutedEventArgs e) { new SettingsWindow(this).ShowDialog(); ApplyLiveSettings(); SaveState(); }
+    private void SettingsClick(object sender, RoutedEventArgs e) { ShowWorkspaceDialog(new SettingsWindow(this)); ApplyLiveSettings(); SaveState(); }
     /// <summary>Puts a settings change on screen at once, so the panel shows its effect while it is open.</summary>
     public void ApplyLiveSettings() { Settings.Validate(); Strings.Use(Settings.Language); ApplyLanguage(); ApplyTimerPosition(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); Sounds.Refresh(); }
 
@@ -388,9 +390,35 @@ public partial class MainWindow : Window
         LongButton.Content = L.T("timer.longBreak");
         ResetButton.ToolTip = L.T("timer.reset");
         SkipButton.ToolTip = L.T("timer.skip");
+        voiceDictation.RefreshLanguage();
         UpdateHeaderClock();
     }
-    private void LayoutsClick(object sender, RoutedEventArgs e) { new LayoutsWindow(this).ShowDialog(); }
+    private void LayoutsClick(object sender, RoutedEventArgs e) { ShowWorkspaceDialog(new LayoutsWindow(this)); }
+
+    /// <summary>
+    /// Workspace cards sometimes live in independent popup HWNDs so they can overlap embedded
+    /// applications. Those surfaces must leave while one of our own dialogs is open or they can
+    /// sit above Tasks, Settings or Layouts. Their exact visible set is restored afterwards.
+    /// </summary>
+    private void ShowWorkspaceDialog(Window dialog)
+    {
+        bool timerWasFloating = timerOverlay is not null;
+        var floatingCards = overlayCards.Keys.ToArray();
+        var floatingHandles = interactionOverlays.Keys.ToArray();
+        HideTimerOverlay();
+        foreach (var card in floatingHandles) HideInteractionOverlay(card);
+        foreach (var card in floatingCards) HideOverlay(card);
+        try { dialog.ShowDialog(); }
+        finally
+        {
+            if (!exiting)
+            {
+                foreach (var card in floatingCards.Where(cards.Contains)) ShowOverlay(card);
+                foreach (var card in floatingHandles.Where(cards.Contains)) ShowInteractionOverlay(card);
+                if (timerWasFloating && CurrentTimerWidget is not null) ShowTimerOverlay();
+            }
+        }
+    }
     private static Color ParseColor(string value, Color fallback)
     {
         try { return (Color)ColorConverter.ConvertFromString(value); } catch { return fallback; }
@@ -941,7 +969,7 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         pageSwipePoll.Stop();
-        CancelTimerGesture(); CloseNotificationCenter(); HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll();
+        CancelTimerGesture(); CloseNotificationCenter(); HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll(); voiceDictation.Dispose();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         try
@@ -959,4 +987,12 @@ public partial class MainWindow : Window
     private void MinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void MaximizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     private void CloseClick(object sender, RoutedEventArgs e) => Close();
+
+    internal bool VoiceDictationIsVisible => voiceDictation.IsVisible;
+    internal bool VoiceDictationReservesTextSpace => voiceDictation.ReservesTextSpace;
+    internal FrameworkElement VoiceDictationSurface => voiceDictation.Surface;
+    internal bool TimerOverlayIsVisible => timerOverlay is not null;
+    internal void FloatTimerForDiagnostics() => BringTimerToFront();
+    internal void HideTimerForDiagnostics() => HideTimerOverlay();
+    internal void ShowWorkspaceDialogForDiagnostics(Window dialog) => ShowWorkspaceDialog(dialog);
 }

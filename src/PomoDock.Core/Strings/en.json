@@ -218,6 +218,9 @@
   "notifications.bannerTask": "TASK · NOW",
   "notifications.bannerEvent": "REMINDER · NOW",
 
+  "dictation.start": "Dictate with your voice · uses the Windows language",
+  "dictation.listening": "VOICE TYPING ACTIVE · Speak and Windows will type at the caret.",
+
   "report.dayShort.sunday": "SUN",
   "report.dayShort.monday": "MON",
   "report.dayShort.tuesday": "TUE",

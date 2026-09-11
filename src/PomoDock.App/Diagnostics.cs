@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -25,7 +26,7 @@ internal static class Diagnostics
         Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         Directory.CreateDirectory(directory);
         var results = new List<string>();
-        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null; Window? notesHarness = null; Window? statsHarness = null; TasksWindow? tasksHarness = null; SettingsWindow? settingsPanel = null;
+        MainWindow? main = null; Process? fixture = null; Process? fixture2 = null; Window? harness = null; Window? dualHarness = null; Window? calendarHarness = null; Window? todoHarness = null; Window? notesHarness = null; Window? statsHarness = null; Window? voiceHarness = null; TasksWindow? tasksHarness = null; SettingsWindow? settingsPanel = null;
         void Assert(bool condition, string label) { if (!condition) throw new Exception(label); results.Add("PASS " + label); }
         try
         {
@@ -35,6 +36,23 @@ internal static class Diagnostics
             Assert(main.IsLoaded, "native shell loads");
             Assert(!main.HeaderClockText.Contains("POMODOCK", StringComparison.OrdinalIgnoreCase) && main.HeaderClockText.Contains(DateTime.Now.Year.ToString()), "workspace header shows the live date and time");
             Render(main, Path.Combine(directory, "main-light.png"));
+
+            // Every native editor gets one caret-aware control. It reserves its own room instead
+            // of drawing over what the user is typing, and rich notes use the same behavior.
+            var voiceStack = new StackPanel { Margin = new Thickness(14) };
+            var voiceLine = new TextBox { Text = "Sacar la basura en diez minutos", Width = 330 };
+            var voiceNote = new RichTextBox { Width = 330, Height = 90 };
+            voiceStack.Children.Add(voiceLine); voiceStack.Children.Add(voiceNote);
+            voiceHarness = new Window { Owner = main, Title = "PomoDock voice input test", Content = voiceStack, Width = 390, Height = 190, ShowInTaskbar = false };
+            voiceHarness.Show(); voiceLine.Focus(); Keyboard.Focus(voiceLine); await Task.Delay(150);
+            Assert(main.VoiceDictationIsVisible && main.VoiceDictationReservesTextSpace,
+                "a focused text input shows a microphone without covering its text");
+            Render(main.VoiceDictationSurface, Path.Combine(directory, "voice-dictation.png"));
+            voiceNote.Focus(); Keyboard.Focus(voiceNote); await Task.Delay(100);
+            Assert(main.VoiceDictationIsVisible && main.VoiceDictationReservesTextSpace,
+                "the same voice control reaches rich notes");
+            voiceHarness.Close(); voiceHarness = null; await Task.Delay(80);
+            Assert(!main.VoiceDictationIsVisible, "the microphone leaves with its input");
 
             // A real imported account can have dozens of projects. They belong in a compact rail,
             // while the task list keeps its own full-height workspace and searchable rows.
@@ -106,6 +124,20 @@ internal static class Diagnostics
             await embeddedCard.Attach(foreign);
             Assert(embeddedCard.IsExternalAttached, "timer regression uses a real embedded process on the main canvas");
             await main.VerifyTimerInputAsync(embeddedCard, Assert);
+            main.FloatTimerForDiagnostics(); await Task.Delay(60);
+            Assert(main.TimerOverlayIsVisible, "timer fixture recreates the floating surface used above embedded apps");
+            var layerProbe = Dialogs.Window(main, "Layer test", 420, 260);
+            layerProbe.Content = new TextBlock { Text = "Modal content", Margin = new Thickness(20) };
+            bool timerHiddenDuringDialog = false;
+            layerProbe.Loaded += (_, _) => layerProbe.Dispatcher.BeginInvoke(() =>
+            {
+                timerHiddenDuringDialog = !main.TimerOverlayIsVisible;
+                layerProbe.Close();
+            });
+            main.ShowWorkspaceDialogForDiagnostics(layerProbe);
+            Assert(timerHiddenDuringDialog, "workspace timer leaves the top layer while a PomoDock dialog is open");
+            Assert(main.TimerOverlayIsVisible, "workspace timer returns after the dialog closes");
+            main.HideTimerForDiagnostics();
             main.RemoveCard(embeddedCard);
             main.AddCard(new() { Kind = "notes", Title = "MI SIGUIENTE PASO", Value = "Una cosa a la vez.\n\n1. Elegir el siguiente resultado\n2. Iniciar una sesión\n3. Revisar lo aprendido" }, true);
             main.AddCard(new() { Kind = "stats", Title = "MI ENFOQUE" }, true);
@@ -334,7 +366,7 @@ internal static class Diagnostics
         finally
         {
             AgendaToast.CloseAll();
-            settingsPanel?.Close(); tasksHarness?.Close(); statsHarness?.Close(); notesHarness?.Close(); todoHarness?.Close(); calendarHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
+            settingsPanel?.Close(); tasksHarness?.Close(); statsHarness?.Close(); notesHarness?.Close(); todoHarness?.Close(); calendarHarness?.Close(); voiceHarness?.Close(); dualHarness?.Close(); harness?.Close(); main?.Close();
             if (fixture is not null) { if (!fixture.HasExited) fixture.CloseMainWindow(); fixture.Dispose(); }
             if (fixture2 is not null) { if (!fixture2.HasExited) fixture2.CloseMainWindow(); fixture2.Dispose(); }
             Application.Current.Shutdown(Environment.ExitCode);
