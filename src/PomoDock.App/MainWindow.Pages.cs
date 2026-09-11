@@ -580,10 +580,17 @@ public partial class MainWindow
         return !IsInteractiveSwipeSource(WidgetArea.InputHitTest(point) as DependencyObject);
     }
 
-    private static bool IsInteractiveSwipeSource(DependencyObject? source)
+    /// <summary>
+    /// A page swipe only ever starts from empty canvas, as the README promises — never from
+    /// inside a widget. Checking for specific controls (a button, a text box…) missed anything
+    /// merely inert: the few pixels of margin around a note's editor, its blank space below the
+    /// last line, a plain label in another widget. A card is excluded outright, control or not.
+    /// </summary>
+    private bool IsInteractiveSwipeSource(DependencyObject? source)
     {
         for (var current = source; current is not null; current = Ancestors.Up(current))
         {
+            if (current is WidgetCard || ReferenceEquals(current, TimerFrame)) return true;
             if (current is ButtonBase or TextBoxBase or PasswordBox or Selector or ScrollBar or Slider or Thumb) return true;
             if (current is FrameworkElement element && element.Cursor == Cursors.SizeAll) return true;
         }
