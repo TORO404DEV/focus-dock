@@ -386,6 +386,54 @@ internal static class Diagnostics
             Assert(new[] { "notes", "stats", "todo", "habits" }.All(kind => persistedWidgets.Any(widget => widget.Kind == kind)), "widget layout persisted");
             var savedTimer = main.Store.Read<Settings>("settings")!.TimerWidget;
             Assert(savedTimer.Kind == "timer" && savedTimer.Width >= 360 && savedTimer.Height >= 300, "permanent timer widget layout persisted");
+            var agentTools = new AgentToolbox(main);
+            using (var noteArgs = JsonDocument.Parse("""{"title":"AGENT TEST","text":"Una nota creada localmente","color":"mint"}"""))
+            {
+                var receipt = await agentTools.ExecuteAsync("add_note", noteArgs.RootElement.Clone(), CancellationToken.None);
+                var created = main.Settings.WorkspacePages.SelectMany(page => page.Widgets).Single(widget => widget.Id.ToString() == JsonDocument.Parse(receipt.Json).RootElement.GetProperty("data").GetProperty("Id").GetString());
+                var noteData = JsonSerializer.Deserialize<NotesWidgetData>(created.Value)!;
+                Assert(receipt.Changed && noteData.Color == "mint" && noteData.DocumentXaml.Contains("Una nota creada localmente"), "local agent executes a typed rich-note action and preserves its color");
+            }
+            using (var stateArgs = JsonDocument.Parse("""{"scope":"widgets"}"""))
+            {
+                var state = await agentTools.ExecuteAsync("get_state", stateArgs.RootElement.Clone(), CancellationToken.None);
+                Assert(!state.Changed && state.Json.Contains("AGENT TEST"), "local agent observes live PomoDock state before deciding its next action");
+            }
+            var focusStart = new DateTimeOffset(DateTime.Today.AddHours(10), TimeZoneInfo.Local.GetUtcOffset(DateTime.Today.AddHours(10)));
+            main.Store.Save(new Session
+            {
+                Started = focusStart,
+                Ended = focusStart.AddMinutes(42),
+                Phase = Phase.Focus,
+                Outcome = Outcome.Completed,
+                Project = "AGENT FOCUS TEST",
+                Task = "Medir historial",
+                PlannedSeconds = 42 * 60,
+                Segments = [new FocusSegment(focusStart, focusStart.AddMinutes(42))]
+            });
+            using (var focusArgs = JsonDocument.Parse(JsonSerializer.Serialize(new
+            {
+                period = "custom",
+                from = DateTime.Today.ToString("yyyy-MM-dd"),
+                to = DateTime.Today.ToString("yyyy-MM-dd"),
+                project = "AGENT FOCUS TEST"
+            })))
+            {
+                var summary = await agentTools.ExecuteAsync("focus.summarize", focusArgs.RootElement.Clone(), CancellationToken.None);
+                using var payload = JsonDocument.Parse(summary.Json);
+                var data = payload.RootElement.GetProperty("data");
+                Assert(summary.Success && !summary.Changed && data.GetProperty("totalMinutes").GetDouble() == 42 && data.GetProperty("sessionCount").GetInt32() == 1,
+                    "local agent reads exact focus totals from stored sessions");
+            }
+            var repeatedQuery = """{"action":"get_state","arguments":{"scope":"todos"},"message":""}""";
+            var stalledAgent = new PomoAgent(main, _ => new ScriptedAgentConversation(repeatedQuery, repeatedQuery, repeatedQuery));
+            var stalled = await stalledAgent.RunAsync("repite la misma consulta", null, CancellationToken.None);
+            Assert(stalled.Message.Contains("repet", StringComparison.OrdinalIgnoreCase), "local agent detects a stalled repeated-tool loop before exhausting its budget");
+            Assert(AgentToolbox.KindOf("focus.summarize") == AgentToolKind.Query
+                && AgentToolbox.KindOf("add_note") == AgentToolKind.Mutation
+                && AgentToolbox.KindOf("delete_event") == AgentToolKind.Destructive
+                && AgentToolbox.KindOf("timer") == AgentToolKind.Control,
+                "local agent classifies reads, writes, destructive actions and controls before execution");
             main.Close(); main = null;
             using var recovered = new Store(Path.Combine(directory, "data")); Assert(recovered.Read<Session>("checkpoint") is not null, "paused session survives normal close");
             File.WriteAllText(Path.Combine(directory, "results.json"), JsonSerializer.Serialize(new { success = true, tests = results }, new JsonSerializerOptions { WriteIndented = true }));
@@ -403,6 +451,18 @@ internal static class Diagnostics
             if (fixture2 is not null) { if (!fixture2.HasExited) fixture2.CloseMainWindow(); fixture2.Dispose(); }
             Application.Current.Shutdown(Environment.ExitCode);
         }
+    }
+
+    private sealed class ScriptedAgentConversation(params string[] turns) : IAgentConversation
+    {
+        private int index;
+        public Task<string> AskAsync(string text, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (index >= turns.Length) throw new InvalidOperationException("The scripted agent requested an unexpected extra turn.");
+            return Task.FromResult(turns[index++]);
+        }
+        public void Dispose() { }
     }
     /// <summary>A task list with every state the card can show: overdue, urgent, dated and done.</summary>
     private static string SeedTasks()

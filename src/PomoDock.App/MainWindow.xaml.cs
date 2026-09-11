@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private bool appliedTimerAtBottom;
     private Popup? timerOverlay;
     private Popup? reportPopup;
+    private AgentWindow? agentWindow;
     private readonly List<Popup> reportBackdrops = [];
     private ReportWindow? reportContent;
     private bool timerPointerPressed, timerWantsFront;
@@ -255,6 +256,14 @@ public partial class MainWindow : Window
     }
     private void ReportClick(object sender, RoutedEventArgs e) => ShowReportModal();
 
+    private void AgentClick(object sender, RoutedEventArgs e)
+    {
+        if (agentWindow is { IsVisible: true }) { agentWindow.Activate(); return; }
+        agentWindow = new AgentWindow(this);
+        agentWindow.Closed += (_, _) => agentWindow = null;
+        ShowWorkspaceDialog(agentWindow);
+    }
+
     private void ShowReportModal()
     {
         if (reportPopup is { IsOpen: true } existing) { BringPopupToFront(existing); return; }
@@ -374,6 +383,7 @@ public partial class MainWindow : Window
         MaximizeButton.ToolTip = L.T("chrome.maximize");
         CloseButton.ToolTip = L.T("chrome.closeRelease");
         ReportButton.ToolTip = L.T("chrome.report");
+        AgentButton.ToolTip = L.T("agent.open");
         TasksButton.ToolTip = L.T("chrome.tasks");
         RefreshNotificationChrome();
         SettingsButton.ToolTip = L.T("chrome.settings");
@@ -1000,4 +1010,57 @@ public partial class MainWindow : Window
     internal void FloatTimerForDiagnostics() => BringTimerToFront();
     internal void HideTimerForDiagnostics() => HideTimerOverlay();
     internal void ShowWorkspaceDialogForDiagnostics(Window dialog) => ShowWorkspaceDialog(dialog);
+
+    internal AgentToolResult AddTimerFromAgent()
+    {
+        if (CurrentTimerWidget is not null)
+            return new AgentToolResult(false, "El temporizador ya está en esta página", JsonSerializer.Serialize(new { success = true, changed = false, summary = "El temporizador ya está en esta página" }));
+        AddTimerWidget();
+        return new AgentToolResult(true, "Widget de temporizador añadido", JsonSerializer.Serialize(new { success = true, changed = true, summary = "Widget de temporizador añadido" }));
+    }
+
+    internal AgentToolResult RunTimerFromAgent(string command, string phase, string task)
+    {
+        command = command.Trim().ToLowerInvariant();
+        if (command is "select" or "start")
+        {
+            var selectedPhase = phase.Trim().ToLowerInvariant() switch
+            {
+                "short" or "shortbreak" => Phase.ShortBreak,
+                "long" or "longbreak" => Phase.LongBreak,
+                _ => Phase.Focus
+            };
+            if (selectedPhase != Timer.Phase) Timer.Select(selectedPhase, DateTimeOffset.UtcNow, Monotonic);
+        }
+        if (!string.IsNullOrWhiteSpace(task))
+        {
+            var matches = Settings.Tasks.Where(item => !item.Done && item.Name.Contains(task, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (matches.Count != 1)
+                return new AgentToolResult(false, $"Necesito un título de tarea de enfoque más específico para '{task}'", JsonSerializer.Serialize(new { success = false, changed = false, summary = $"Coincidencias de tarea: {matches.Count}" }), false);
+            selectedTask = matches[0];
+        }
+        string summary;
+        switch (command)
+        {
+            case "pause":
+                Timer.Pause(DateTimeOffset.UtcNow, Monotonic); Sounds.StopNoise(); summary = "Temporizador pausado"; break;
+            case "reset":
+                Sounds.StopNoise(); Timer.Select(Timer.Phase, DateTimeOffset.UtcNow, Monotonic); summary = "Temporizador reiniciado"; break;
+            case "skip":
+                Sounds.StopNoise(); Timer.Select(Timer.NextPhase(), DateTimeOffset.UtcNow, Monotonic); summary = "Fase omitida"; break;
+            case "select":
+                summary = "Fase seleccionada"; break;
+            case "start":
+                if (!Timer.Running)
+                {
+                    Sounds.StopAlarm(); Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask);
+                    if (Timer.Phase == Phase.Focus) Sounds.StartNoise();
+                }
+                summary = "Temporizador iniciado"; break;
+            default:
+                return new AgentToolResult(false, $"Comando de temporizador desconocido: {command}", JsonSerializer.Serialize(new { success = false, changed = false, summary = "Comando desconocido" }), false);
+        }
+        UpdateTimer(); SaveState();
+        return new AgentToolResult(true, summary, JsonSerializer.Serialize(new { success = true, changed = true, summary, phase = Timer.Phase.ToString(), Timer.Running }));
+    }
 }

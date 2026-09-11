@@ -15,6 +15,7 @@
     <TextBlock x:Name="HeaderDateText" Text="MIÉ 09 SEP" FontFamily="Consolas" FontSize="13" FontWeight="Black" VerticalAlignment="Center" TextWrapping="NoWrap"/>
     <TextBlock x:Name="HeaderTimeText" Grid.Column="1" Text="00:00:00" FontFamily="Consolas" FontSize="11" FontWeight="Black" Foreground="{DynamicResource Muted}" Margin="12,1,0,0" VerticalAlignment="Center" TextWrapping="NoWrap"/>
     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+     <Button x:Name="AgentButton" Content="✦" Click="AgentClick" FontSize="15" Padding="6,3" ToolTip="Agente local"/>
      <Button x:Name="ReportButton" Content="▥" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="{DynamicResource AccentInk}" FontSize="16" Padding="6,3"/>
      <Button x:Name="TasksButton" Content="☷" Click="TasksClick" FontSize="15" Padding="6,3"/>
      <Button x:Name="NotificationsButton" Content="🔔" Click="NotificationsClick" FontSize="13" Padding="6,3" ToolTip="Notificaciones"/>

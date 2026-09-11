@@ -135,6 +135,10 @@ public sealed class Settings
     public int EffectsVolume { get; set; } = 45;
     /// <summary>Interface language: a code from <see cref="Strings.Catalog"/>, or "system".</summary>
     public string Language { get; set; } = "system";
+    /// <summary>Whether the private agent reads its verified result aloud.</summary>
+    public bool AgentVoiceEnabled { get; set; } = true;
+    /// <summary>Neural speech speed. One is the voice model's natural pace.</summary>
+    public double AgentVoiceSpeed { get; set; } = 1.05;
     public bool Dark { get; set; }
     public bool ReduceMotion { get; set; }
     public bool AlwaysOnTop { get; set; }
@@ -168,6 +172,7 @@ public sealed class Settings
         AlarmRepeats = Math.Clamp(AlarmRepeats, 1, 8);
         AlarmVolume = Math.Clamp(AlarmVolume, 0, 100);
         EffectsVolume = Math.Clamp(EffectsVolume, 0, 100);
+        AgentVoiceSpeed = Math.Clamp(AgentVoiceSpeed, 0.75, 1.4);
         FocusEndSound = SoundLibrary.Valid(FocusEndSound, SoundKind.Alarm);
         BreakEndSound = SoundLibrary.Valid(BreakEndSound, SoundKind.Alarm);
         ReminderSound = SoundLibrary.Valid(ReminderSound, SoundKind.Reminder);
