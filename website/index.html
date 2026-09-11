@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PomoDock — Vertical monitor productivity workspace</title>
+  <meta name="description" content="PomoDock is an open-source Windows productivity workspace for vertical secondary monitors. Available in English and Spanish.">
+  <meta name="theme-color" content="#171916">
+  <meta name="robots" content="index, follow">
+  <!-- Replace YOUR-DOMAIN.example when the production domain is connected. -->
+  <link rel="canonical" href="https://YOUR-DOMAIN.example/">
+  <link rel="alternate" hreflang="en" href="https://YOUR-DOMAIN.example/en/">
+  <link rel="alternate" hreflang="es" href="https://YOUR-DOMAIN.example/es/">
+  <link rel="alternate" hreflang="x-default" href="https://YOUR-DOMAIN.example/">
+  <link rel="icon" href="assets/pomodock-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    (() => {
+      let saved = null;
+      try { saved = localStorage.getItem('pomodock-language'); } catch (_) {}
+      const browserLanguages = navigator.languages || [navigator.language || 'en'];
+      const preferred = saved || (browserLanguages.some((language) => language.toLowerCase().startsWith('es')) ? 'es' : 'en');
+      const target = preferred === 'es' ? 'es/' : 'en/';
+      window.location.replace(target + window.location.hash);
+    })();
+  </script>
+</head>
+<body class="language-gateway">
+  <main class="language-card">
+    <img src="assets/pomodock-mark.svg" width="54" height="54" alt="">
+    <p class="eyebrow">WINDOWS · OPEN SOURCE</p>
+    <h1>POMODOCK</h1>
+    <p>Your second monitor, turned into a focus workspace.</p>
+    <nav aria-label="Choose language / Elige idioma">
+      <a class="button button-primary" href="en/" lang="en" hreflang="en" data-language="en">Continue in English →</a>
+      <a class="button button-secondary" href="es/" lang="es" hreflang="es" data-language="es">Continuar en español →</a>
+    </nav>
+  </main>
+  <noscript><p class="gateway-noscript">Choose a language above / Elige un idioma arriba.</p></noscript>
+</body>
+</html>
