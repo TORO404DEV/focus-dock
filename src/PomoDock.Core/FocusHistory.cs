@@ -162,6 +162,58 @@ public static class FocusHistory
         };
     }
 
+    /// <summary>Maps a free-form question to a focus period so the agent never invents hours.</summary>
+    public static bool TryGuessPeriod(string? text, out string period)
+    {
+        period = "this_month";
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        string value = NormalizePeriod(text);
+        if (value is "today" or "yesterday" or "this_week" or "last_week" or "this_month" or "last_month"
+            or "last_7_days" or "last_30_days" or "all")
+        {
+            period = value;
+            return true;
+        }
+        string lower = text.ToLowerInvariant();
+        bool aboutFocus = lower.Contains("enfoq") || lower.Contains("focus") || lower.Contains("hora") ||
+                          lower.Contains("hour") || lower.Contains("pomodoro") || lower.Contains("sesión") ||
+                          lower.Contains("session") || lower.Contains("trabaj");
+        if (!aboutFocus) return false;
+        if (lower.Contains("ayer") || lower.Contains("yesterday")) { period = "yesterday"; return true; }
+        if (lower.Contains("hoy") || lower.Contains("today")) { period = "today"; return true; }
+        if (lower.Contains("semana pasada") || lower.Contains("last week")) { period = "last_week"; return true; }
+        if (lower.Contains("esta semana") || lower.Contains("this week")) { period = "this_week"; return true; }
+        if (lower.Contains("último mes") || lower.Contains("ultimo mes") || lower.Contains("mes pasado") ||
+            lower.Contains("last month") || lower.Contains("el mes pasado")) { period = "last_month"; return true; }
+        if (lower.Contains("este mes") || lower.Contains("this month")) { period = "this_month"; return true; }
+        period = "this_month";
+        return true;
+    }
+
+    public static string Describe(FocusHistorySummary summary, bool spanish)
+    {
+        double hours = Math.Round(summary.Minutes / 60.0, 2);
+        string range = $"{summary.Range.From:dd/MM/yyyy} – {summary.Range.To:dd/MM/yyyy}";
+        string period = PeriodLabel(summary.Range.Period, spanish);
+        if (spanish)
+            return $"Enfoque {period} ({range}): {summary.Minutes:0.#} min ({hours.ToString("0.##", CultureInfo.InvariantCulture)} h) en {summary.Sessions} sesión(es) y {summary.ActiveDays} día(s) activo(s). Cifra calculada desde las sesiones guardadas.";
+        return $"Focus {period} ({range}): {summary.Minutes:0.#} min ({hours.ToString("0.##", CultureInfo.InvariantCulture)} h) across {summary.Sessions} session(s) and {summary.ActiveDays} active day(s). Figure calculated from stored sessions.";
+    }
+
+    private static string PeriodLabel(string period, bool spanish) => period switch
+    {
+        "today" => spanish ? "de hoy" : "today",
+        "yesterday" => spanish ? "de ayer" : "yesterday",
+        "this_week" => spanish ? "de esta semana" : "this week",
+        "last_week" => spanish ? "de la semana pasada" : "last week",
+        "this_month" => spanish ? "de este mes" : "this month",
+        "last_month" => spanish ? "del último mes" : "last month",
+        "last_7_days" => spanish ? "de los últimos 7 días" : "last 7 days",
+        "last_30_days" => spanish ? "de los últimos 30 días" : "last 30 days",
+        "all" => spanish ? "de todo el historial" : "all time",
+        _ => period
+    };
+
     private static string DisplayProject(string? project) => string.IsNullOrWhiteSpace(project) ? "Sin proyecto" : project.Trim();
     private static string? CleanProject(string? project) => string.IsNullOrWhiteSpace(project) ? null : project.Trim();
     private static double Round(double value) => Math.Round(value, 3, MidpointRounding.AwayFromZero);

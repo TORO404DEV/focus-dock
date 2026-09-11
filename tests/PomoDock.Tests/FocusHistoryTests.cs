@@ -51,12 +51,28 @@ internal static class FocusHistoryTests
             assert(summary.Days.Count == 0 && summary.Projects.Count == 0, "empty periods do not invent totals");
         });
 
+        test("a natural last-month question maps to last_month and never this_month", () =>
+        {
+            assert(FocusHistory.TryGuessPeriod("cuantas horas enfoque el ultimo mes", out var spanish) && spanish == "last_month", "Spanish last month");
+            assert(FocusHistory.TryGuessPeriod("How many focus hours last month?", out var english) && english == "last_month", "English last month");
+            assert(!FocusHistory.TryGuessPeriod("recuerda que me llamo Ada", out _), "memory is not a focus query");
+        });
+
         test("all-time focus begins on the earliest local segment", () =>
         {
             var sessions = new[] { SessionAt(2026, 7, 4, 10, "A", Outcome.Completed), SessionAt(2026, 8, 4, 10, "B", Outcome.Completed) };
             var earliest = FocusHistory.EarliestDay(sessions, TimeZoneInfo.Utc);
             var range = FocusHistory.Resolve("all", Today, earliest: earliest);
             assert(range.From == new DateOnly(2026, 7, 4) && range.To == Today, "all-time range uses stored history, not an arbitrary epoch");
+        });
+
+        test("focus answers name the range and never invent hours", () =>
+        {
+            var sessions = new[] { SessionAt(2026, 8, 3, 90, "PomoDock", Outcome.Completed) };
+            var summary = FocusHistory.Summarize(sessions, FocusHistory.Resolve("last_month", Today), TimeZoneInfo.Utc);
+            string text = FocusHistory.Describe(summary, spanish: true);
+            assert(text.Contains("1.5 h") && text.Contains("01/08/2026") && text.Contains("31/08/2026"), "Spanish answer uses stored minutes and the previous month");
+            assert(AgentIntent.IsStandaloneFocusQuestion("how many hours did I focus last month"), "English last-month question is standalone");
         });
     }
 

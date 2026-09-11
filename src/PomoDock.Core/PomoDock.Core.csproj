@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
-  <ItemGroup><PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" /></ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.31" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
   <!-- Every language ships inside the assembly, so the app never depends on files beside the exe. -->
   <ItemGroup><EmbeddedResource Include="Strings\*.json" LogicalName="PomoDock.Core.Strings.%(Filename).json" /></ItemGroup>
 </Project>

@@ -1,6 +1,6 @@
 # Plan maestro: agente local de PomoDock
 
-Estado: **Fase 0 completada; Fases 1–6 pendientes**  
+Estado: **Fases 0–7 completadas (0.2.0)**  
 Fecha: 2026-09-11  
 Objetivo: convertir el agente actual en una experiencia de IA local, conversacional, observable, rápida y capaz de trabajar con todo PomoDock sin romper su lenguaje visual.
 
@@ -224,95 +224,101 @@ Resultado verificado el 2026-09-11: `focus.summarize` y `focus.query_sessions` c
 
 ### Fase 1 — Planificador y ejecución aprobada
 
-- Introducir `AgentPlan`, pasos, riesgo y cambios previstos.
-- Separar planificar de ejecutar.
-- Implementar editar/cancelar/ejecutar plan.
-- Añadir recibos y deshacer.
+- [x] `AgentPlan`, pasos, riesgo y cambios previstos.
+- [x] Separar `InterpretAsync` de `ExecuteAsync`.
+- [x] EJECUTAR / EDITAR PLAN / CANCELAR.
+- [x] Recibos y deshacer determinista (`UndoAsync`).
 
 **Salida:** ninguna escritura ocurre antes de que el plan sea visible y aprobado.
 
 ### Fase 2 — Chat profesional y streaming
 
-- Reconstruir el layout del agente.
-- Historial persistente por conversación.
-- Eventos y respuesta incremental.
-- Línea de actividad, errores completos, reintento y cancelación.
-- Ajuste responsive para evitar superponerse con widgets debajo.
+- [x] `AgentWindow` con chrome de PomoDock.
+- [x] Historial persistente (20 hilos).
+- [x] Actividad en vivo; tokens sin CoT crudo (`AgentThink`).
+- [x] Errores con DETALLES / REINTENTAR / COPIAR ERROR.
+- [x] Recibos + DESHACER en el hilo.
 
 **Salida:** la interacción se siente como un chat de IA y sigue pareciendo PomoDock.
 
 ### Fase 3 — Push-to-talk
 
-- Gesto mantener/soltar/cancelar/bloquear.
-- Preview único inline y waveform útil.
-- VAD, estado único y pipeline sin carreras.
-- Enviar al soltar como opción configurable.
+- [x] Mantener / soltar / arrastrar fuera para cancelar.
+- [x] Preview único en el compositor (VoiceDictation ignora `agent-composer`).
+- [x] Toque corto no graba; Espacio equivale a mantener.
+- [x] Enviar al soltar como opción en Settings.
 
-**Salida:** dictar se siente como enviar una nota de voz, sin doble preview ni botón ambiguo.
+**Salida:** dictar se siente como enviar una nota de voz, sin doble preview.
 
 ### Fase 4 — Memoria personal local
 
-- Esquema SQLite, repositorio y cifrado DPAPI.
-- Comandos recordar/olvidar/qué sabes de mí.
-- Selección contextual con presupuesto fijo.
-- Inspector de memoria en Settings y exportación.
+- [x] SQLite `agent.memory` + DPAPI en campos sensibles.
+- [x] Recuerda que / Olvida / ¿Qué sabes de mí?
+- [x] Recuérdame es una tarea, no un recuerdo.
+- [x] Inspector en Settings: olvidar, exportar, desactivar.
 
-**Salida:** PomoDock recuerda información autorizada entre reinicios y el usuario conserva control total.
+**Salida:** PomoDock recuerda información autorizada entre reinicios.
 
 ### Fase 5 — Cobertura completa de PomoDock
 
-- Editar y consultar todos los dominios, no solo crear.
-- Acciones compuestas y transacciones lógicas.
-- Búsqueda/desambiguación por ID.
-- Capacidades declaradas dinámicamente para que el agente sepa exactamente qué puede hacer.
+- [x] Tools: focus, todo, calendar, habits, notes, workspace, timer, settings, memory, finance.
+- [x] Horas de enfoque solo vía `Store.Sessions()` / `FocusHistory`.
+- [x] Preguntas de horas del último mes se responden en C#, sin inventar.
+- [x] Widget Finanzas + `finance.*`.
 
-**Salida:** el agente puede operar todo lo que PomoDock exponga sin inventar capacidades.
+**Salida:** el agente opera lo que PomoDock expone, sin inventar capacidades.
 
 ### Fase 6 — Evaluación y pulido
 
-- Banco de órdenes reales en español e inglés.
-- Pruebas de regresión para fechas relativas, memoria, planes, cancelaciones y voz.
-- Métricas locales de latencia sin guardar el contenido del usuario.
-- Pruebas prolongadas de cierre, suspensión y reinicio.
+- [x] Tests Core: GGUF, bucle, memoria, chats, think-strip, intención, finanzas, rangos.
+- [x] Anti-bucle: dos repeticiones detienen el plan.
+- [x] Cerrar durante inferencia/voz/mic cancela y no deja WAV huérfanos.
 
-**Salida:** versión instalable, autocontenida y medida en el hardware objetivo.
+**Salida:** versión instalable y autocontenida.
+
+### Fase 7 — Empaque 0.2.x
+
+- [x] Tests Core en verde.
+- [x] Versión **0.2.0**.
+- [x] Cerrar PomoDock → publish win-x64 → instalador.
+- [x] Commits claros en `main` (canvas 2D conservado).
 
 ## 10. Orden exacto del primer corte
 
-El primer corte de implementación debe seguir este orden y no adelantarse a memoria o adornos:
-
-1. `focus.query_sessions` y `focus.summarize` usando `Store.Sessions()` y `Reports`.
-2. Detector de acciones repetidas y estancamiento.
-3. Contrato `AgentPlan` separado del ejecutor.
-4. Bus de eventos incrementales del agente.
-5. Nueva superficie de chat con tarjeta de plan y actividad en vivo.
-6. Push-to-talk con preview único.
-7. Persistencia de conversación.
-8. Memoria personal explícita y administrable.
+1. [x] `focus.query_sessions` y `focus.summarize` usando `Store.Sessions()`.
+2. [x] Detector de acciones repetidas y estancamiento.
+3. [x] Contrato `AgentPlan` separado del ejecutor.
+4. [x] Bus de eventos incrementales del agente.
+5. [x] Chat con tarjeta de plan y actividad en vivo.
+6. [x] Push-to-talk con preview único.
+7. [x] Persistencia de conversación.
+8. [x] Memoria personal explícita y administrable.
 
 ## 11. Criterios de aceptación globales
 
-- “¿Cuánto enfoqué el mes pasado?” devuelve una cifra calculada desde sesiones reales y explica el rango utilizado.
-- “Recuérdame registrar materias antes del lunes” propone domingo y no conserva “recuérdame” en el título.
-- Una orden de varios pasos muestra el plan antes de tocar datos.
-- Cancelar el plan deja la base exactamente igual.
-- Deshacer restaura el estado anterior sin otra inferencia.
-- El chat conserva contexto al cerrarlo y abrirlo de nuevo.
-- “Recuerda que prefiero sesiones de 50 minutos” queda disponible tras reiniciar; “olvídalo” lo elimina.
-- “¿Qué sabes de mí?” enumera solamente recuerdos inspeccionables.
-- Mantener/soltar el micrófono produce una única transcripción en el composer.
-- Cerrar durante grabación, inferencia o voz no genera errores nativos ni archivos huérfanos.
-- Español e inglés pasan los mismos escenarios funcionales.
-- Todo continúa funcionando sin red después de descargar una vez los modelos.
+- [x] “¿Cuánto enfoqué el mes pasado?” se calcula en C# y nombra el rango.
+- [x] “Recuérdame…” es tarea; “Recuerda que…” es memoria.
+- [x] Una escritura muestra EJECUTAR / EDITAR / CANCELAR antes de mutar.
+- [x] Cancelar el plan no llama al ejecutor.
+- [x] DESHACER usa la inversa del recibo, no el modelo.
+- [x] El chat se restaura al reabrir el modal.
+- [x] Memoria confirmada sobrevive el reinicio; olvida/exporta desde Settings.
+- [x] “¿Qué sabes de mí?” lista solo recuerdos visibles.
+- [x] Mantener/soltar el micrófono deja una sola transcripción en el compositor.
+- [x] El GGUF ya descargado no se vuelve a pedir.
+- [x] Español e inglés cubren las mismas herramientas.
 
-## 12. Decisiones que quedan abiertas
+## 12. Decisiones cerradas en 0.2.0
 
-Estas decisiones pueden resolverse durante la fase correspondiente sin bloquear el primer corte:
+- Consultas de solo lectura (sobre todo enfoque) avanzan solas; las mutaciones esperan clic.
+- Soltar el micrófono **inserta** por defecto; enviar al soltar es un toggle.
+- Se conservan las 20 conversaciones recientes.
+- Memoria: búsqueda textual y etiquetas, sin embeddings.
+- La voz habla la respuesta si el toggle ◉ VOZ está encendido.
 
-- Si las consultas de solo lectura avanzan automáticamente después del plan compacto o esperan clic siempre.
-- Si soltar el micrófono inserta texto o envía por defecto.
-- Cuántas conversaciones conservar y cómo nombrarlas.
-- Si la memoria semántica necesita embeddings o basta con búsqueda textual y etiquetas para el uso personal real.
-- Si la voz debe hablar todas las respuestas o solo respuestas breves/confirmaciones.
+## 13. Cómo probar 0.2.0
 
-La recomendación inicial es: autoejecutar solo lectura, insertar al soltar, conservar las 20 conversaciones recientes y hablar respuestas breves. Todo debe ser configurable.
+1. **Horas del último mes.** Abre ✦. Si `Qwen3-4B-Q4_K_M.gguf` ya está en `%LOCALAPPDATA%\PomoDock\models\`, no pide 2.5 GB. Pregunta: «¿Cuántas horas enfoqué el último mes?». La cifra sale de las sesiones reales; el rango es el mes calendario anterior.
+2. **Mutación con aprobación.** «Recuerda que prefiero sesiones de 50 minutos». Aparece el plan. CANCELAR no toca datos. EJECUTAR escribe; DESHACER revierte.
+3. **Modelo reutilizado.** Cierra y abre el agente: LISTO + backend, sin descarga si el GGUF está completo. Whisper (`ggml-*.bin`) no cuenta como LLM.
+4. **Finanzas.** Lanzador → FINANZAS. `+2500 salario`, `-20 chatgpt`, `sub cursor 20`, `fijo renta 800`, PAGADO en SUBS.

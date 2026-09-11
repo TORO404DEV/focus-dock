@@ -84,6 +84,7 @@ public sealed class Store : IDisposable
     public const string HabitsKey = "habits";
     public const string AgendaKey = "agenda";
     public const string NotesKey = "notes-archive";
+    public const string FinanceKey = "finance";
 
     /// <summary>Everything a person would miss: settings, focus history, habits and calendar.</summary>
     public void ExportJson(string path) => File.WriteAllText(path, JsonSerializer.Serialize(new BackupData
@@ -92,7 +93,8 @@ public sealed class Store : IDisposable
         Sessions = Sessions(),
         Habits = TryRead<HabitBook>(HabitsKey),
         Agenda = TryRead<AgendaBook>(AgendaKey),
-        Notes = TryRead<NoteArchive>(NotesKey)
+        Notes = TryRead<NoteArchive>(NotesKey),
+        Finance = TryRead<FinanceBook>(FinanceKey)
     }, JsonOptions));
 
     /// <summary>A damaged row must not stop the rest of the backup from being written.</summary>
@@ -149,4 +151,6 @@ public sealed class BackupData
     public AgendaBook? Agenda { get; set; }
     /// <summary>Absent in backups written before the note history existed.</summary>
     public NoteArchive? Notes { get; set; }
+    /// <summary>Absent in backups written before the finance ledger existed.</summary>
+    public FinanceBook? Finance { get; set; }
 }

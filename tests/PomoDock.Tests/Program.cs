@@ -74,6 +74,8 @@ TodoTests.Run(Test, Equal, Assert);
 NoteArchiveTests.Run(Test, Equal, Assert);
 SoundLibraryTests.Run(Test, Equal, Assert);
 FocusHistoryTests.Run(Test, Equal, Assert);
+AgentCoreTests.Run(Test, Equal, Assert);
+FinanceTests.Run(Test, Equal, Assert);
 Test("rich note metadata preserves color, document, and checklists", () => {
  var note = new NotesWidgetData { Color = "mint", DocumentXaml = "<Section><Paragraph>Idea</Paragraph></Section>", Checklists = [new() { ParagraphIndex = 0, IsChecked = true }], UpdatedUtc = utc.UtcDateTime };
  var copy = JsonSerializer.Deserialize<NotesWidgetData>(JsonSerializer.Serialize(note))!;
@@ -274,10 +276,12 @@ try
   var notes = new NoteArchive(); var closedNote = Guid.NewGuid();
   notes.Track(closedNote, "Idea cerrada", "mint", "{}", new DateTime(2026, 9, 10)); notes.Close(closedNote, new DateTime(2026, 9, 10, 1, 0, 0));
   store.Write(Store.NotesKey, notes);
+  store.Write(Store.FinanceKey, new FinanceBook { Entries = [new MoneyEntry { Title = "Sueldo", Amount = 100, Flow = MoneyFlow.Income, Date = new DateOnly(2026, 9, 1) }] });
   string path = Path.Combine(directory, "full-backup.json"); store.ExportJson(path);
   var backup = Store.ReadBackup(path);
   Assert(backup.Habits!.Habits.Single().Name == "Meditar" && backup.Agenda!.Events.Single().Title == "Entrega", "habits and events are in the file");
   Assert(backup.Notes!.Find(closedNote) is { IsOpen: false, Text: "Idea cerrada" }, "closed notes travel in the backup too");
+  Assert(backup.Finance!.Entries.Single().Title == "Sueldo", "finance travels in the backup");
   string legacy = Path.Combine(directory, "legacy-backup.json");
   File.WriteAllText(legacy, "{\"Version\":1,\"Settings\":{},\"Sessions\":[]}");
   var old = Store.ReadBackup(legacy);

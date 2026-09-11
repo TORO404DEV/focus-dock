@@ -143,6 +143,10 @@ public sealed class Settings
     public bool AgentVoiceEnabled { get; set; } = true;
     /// <summary>Neural speech speed. One is the voice model's natural pace.</summary>
     public double AgentVoiceSpeed { get; set; } = 1.05;
+    /// <summary>Whether the agent may store explicit personal memories locally.</summary>
+    public bool AgentMemoryEnabled { get; set; } = true;
+    /// <summary>If true, releasing the agent microphone sends the transcript instead of inserting it.</summary>
+    public bool AgentSendVoiceOnRelease { get; set; }
     public bool Dark { get; set; }
     public bool ReduceMotion { get; set; }
     public bool AlwaysOnTop { get; set; }
