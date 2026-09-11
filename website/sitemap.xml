@@ -2,21 +2,21 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>https://YOUR-DOMAIN.example/</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://YOUR-DOMAIN.example/en/"/>
-    <xhtml:link rel="alternate" hreflang="es" href="https://YOUR-DOMAIN.example/es/"/>
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://YOUR-DOMAIN.example/"/>
+    <loc>https://pomodock.com/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://pomodock.com/en/"/>
+    <xhtml:link rel="alternate" hreflang="es" href="https://pomodock.com/es/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://pomodock.com/"/>
   </url>
   <url>
-    <loc>https://YOUR-DOMAIN.example/en/</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://YOUR-DOMAIN.example/en/"/>
-    <xhtml:link rel="alternate" hreflang="es" href="https://YOUR-DOMAIN.example/es/"/>
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://YOUR-DOMAIN.example/"/>
+    <loc>https://pomodock.com/en/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://pomodock.com/en/"/>
+    <xhtml:link rel="alternate" hreflang="es" href="https://pomodock.com/es/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://pomodock.com/"/>
   </url>
   <url>
-    <loc>https://YOUR-DOMAIN.example/es/</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://YOUR-DOMAIN.example/en/"/>
-    <xhtml:link rel="alternate" hreflang="es" href="https://YOUR-DOMAIN.example/es/"/>
-    <xhtml:link rel="alternate" hreflang="x-default" href="https://YOUR-DOMAIN.example/"/>
+    <loc>https://pomodock.com/es/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://pomodock.com/en/"/>
+    <xhtml:link rel="alternate" hreflang="es" href="https://pomodock.com/es/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://pomodock.com/"/>
   </url>
 </urlset>

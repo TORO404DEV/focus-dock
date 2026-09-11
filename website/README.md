@@ -4,14 +4,14 @@ This folder is a standalone static site. It has no build step and no runtime dep
 
 ## Deploy to Hostinger
 
-1. Replace `https://YOUR-DOMAIN.example` in `index.html`, `en/index.html`,
-   `es/index.html`, `robots.txt`, and `sitemap.xml` with the final public origin.
-2. Upload the contents of this folder—not the folder itself—to `public_html/`.
-3. Confirm that `index.html`, `style.css`, `script.js`, `assets/`, `en/`, and `es/`
+1. Upload the contents of this folder—not the folder itself—to `public_html/` on
+   `pomodock.com`.
+2. Confirm that `index.html`, `style.css`, `script.js`, `assets/`, `en/`, and `es/`
    sit directly inside `public_html/`.
-4. Open the production URL in browsers configured for English and Spanish. The root
+3. Open the production URL in browsers configured for English and Spanish. The root
    route detects the browser language; both language pages remain directly accessible.
-5. Verify the Download button, then submit `/sitemap.xml` in Google Search Console.
+4. Verify the Download button, then submit `https://pomodock.com/sitemap.xml` in
+   Google Search Console.
 
 ## International SEO
 
@@ -20,7 +20,7 @@ This folder is a standalone static site. It has no build step and no runtime dep
   visitor's saved manual choice.
 - Every language has localized titles, descriptions, social previews, image alt text,
   visible content, and `SoftwareApplication` structured data.
-- `robots.txt` and `sitemap.xml` are ready once the production domain is inserted.
+- `robots.txt` and `sitemap.xml` point to the production domain.
 
 ## Add the final recordings
 
