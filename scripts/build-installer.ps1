@@ -37,6 +37,13 @@ New-Item -ItemType Directory -Force -Path $publish | Out-Null
     -p:Version=$Version -p:DebugType=None -p:DebugSymbols=false -o $publish
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed." }
 
+# Publishing over an older folder can silently retain a newer Whisper.net DLL whose native ABI
+# no longer matches the pinned 1.8.1 runtimes. Fail the build instead of shipping that mixture.
+$whisperAssembly = Get-Item -LiteralPath (Join-Path $publish "Whisper.net.dll")
+if ($whisperAssembly.VersionInfo.FileVersion -ne "1.8.1.0") {
+    throw "Unexpected Whisper.net assembly: $($whisperAssembly.VersionInfo.FileVersion). Expected 1.8.1.0."
+}
+
 $env:POMODOCK_VERSION = $Version
 & $iscc $iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed." }

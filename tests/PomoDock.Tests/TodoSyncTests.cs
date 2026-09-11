@@ -20,7 +20,7 @@ internal static class TodoSyncTests
             assert(light.Task.Priority == TodoPriority.High && light.Task.Due == new DateOnly(2026, 9, 18) && light.Task.At is null, "luz: urgente, viernes 18");
 
             var report = TodoBook.Read("Entregar informe antes del viernes", Now)!;
-            assert(report.Task.Title == "Entregar informe" && report.Task.Due == new DateOnly(2026, 9, 11), "informe: antes del viernes");
+            assert(report.Task.Title == "Entregar informe" && report.Task.Due == new DateOnly(2026, 9, 10), "informe: antes del viernes queda el jueves");
 
             var bread = TodoBook.Read("Comprar pan", Now)!;
             assert(bread.Task.Due is null && bread.Draft is null, "pan: sin fecha ni calendario");

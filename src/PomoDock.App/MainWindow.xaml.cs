@@ -991,6 +991,11 @@ public partial class MainWindow : Window
     internal bool VoiceDictationIsVisible => voiceDictation.IsVisible;
     internal bool VoiceDictationReservesTextSpace => voiceDictation.ReservesTextSpace;
     internal FrameworkElement VoiceDictationSurface => voiceDictation.Surface;
+    internal bool VoiceDictationFeedbackIsVisible => voiceDictation.FeedbackIsVisible;
+    internal string VoiceDictationFeedbackCopy => voiceDictation.FeedbackCopy;
+    internal void ShowVoiceDictationFeedbackForDiagnostics() => voiceDictation.ShowFeedbackForDiagnostics();
+    internal void BeginVoiceDraftForDiagnostics(string text) => voiceDictation.BeginProvisionalForDiagnostics(text);
+    internal void UpdateVoiceDraftForDiagnostics(string text) => voiceDictation.UpdateProvisionalForDiagnostics(text);
     internal bool TimerOverlayIsVisible => timerOverlay is not null;
     internal void FloatTimerForDiagnostics() => BringTimerToFront();
     internal void HideTimerForDiagnostics() => HideTimerOverlay();

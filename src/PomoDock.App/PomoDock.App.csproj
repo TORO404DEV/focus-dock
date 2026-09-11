@@ -11,5 +11,9 @@
     <Using Remove="System.Windows.Forms"/><Using Remove="System.Drawing"/>
     <ProjectReference Include="../PomoDock.Core/PomoDock.Core.csproj" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="Whisper.net" Version="1.8.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.8.1" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.8.1" />
   </ItemGroup>
 </Project>

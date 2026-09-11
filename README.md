@@ -191,6 +191,14 @@ The control panel groups rhythm, sound, appearance and workspace settings. It in
 light/dark themes, phase colours, live previews and one-click undo for the current visit.
 The interface ships in English and Spanish and can follow the Windows language.
 
+Every text field also has private, local Whisper dictation. The multilingual model is
+downloaded once, then transcription stays on the computer and is forced to the effective
+Spanish or English language selected in Settings instead of guessing from Windows.
+On compatible Windows PCs it uses Vulkan GPU acceleration and keeps the model warm in memory;
+the CPU runtime remains packaged as a fallback.
+While recording, the microphone shows elapsed time, input level and progressive local transcript
+previews; the final stable result is inserted at the caret when recording stops.
+
 <p align="center">
   <img src="./docs/media/settings-look.png" width="480" alt="Dark mode and the English/Spanish language choice in PomoDock's control panel">
 </p>

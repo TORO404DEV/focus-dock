@@ -95,9 +95,6 @@ public sealed class TodoTask
 public sealed class TodoBook
 {
     private static readonly Regex Bang = new(@"(?<![^\s])(!{1,3})(?![^\s])", RegexOptions.CultureInvariant);
-    private static readonly Regex ReminderPrefix = new(
-        @"^\s*(?:(?:recu[eé]rdame|recordarme|av[ií]same|notif[ií]came)(?:\s+que)?|remind\s+me(?:\s+to)?)\s+",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public int Version { get; set; } = 1;
     public List<TodoTask> Items { get; set; } = [];
@@ -212,7 +209,7 @@ public sealed class TodoBook
             if (match.Groups[1].Value.Length >= 2) priority = TodoPriority.High;
             else if (priority == TodoPriority.None) priority = TodoPriority.Medium;
 
-        var clean = ReminderPrefix.Replace(Bang.Replace(text, " "), "");
+        var clean = Bang.Replace(text, " ");
         var reading = AgendaQuickAdd.Read(clean, now);
         if (reading is null) return null;
         var draft = reading.Event;

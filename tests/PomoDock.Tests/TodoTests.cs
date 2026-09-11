@@ -31,6 +31,17 @@ internal static class TodoTests
             assert(TodoBook.Parse("  hoy  ", Today) is null && TodoBook.Parse("", Today) is null, "a task needs a name");
         });
 
+        Test("spoken intent and exclusive deadlines are shared with the calendar", () =>
+        {
+            var classes = TodoBook.Read("Recuérdame registrar materias antes del lunes", new DateTime(2026, 9, 9, 12, 0, 0))!;
+            assert(classes.Task.Title == "Registrar materias", "the command is not the task title");
+            assert(classes.Task.Due == new DateOnly(2026, 9, 13), "before Monday means Sunday, not Monday");
+            assert(classes.Draft?.Title == classes.Task.Title && classes.Draft.Start == new DateTime(2026, 9, 13), "calendar receives the same clean item");
+
+            var nested = TodoBook.Read("Oye, recuérdame que tengo que entregar papeles antes del viernes", new DateTime(2026, 9, 9, 12, 0, 0))!;
+            assert(nested.Task.Title == "Entregar papeles" && nested.Task.Due == new DateOnly(2026, 9, 10), "nested spoken intent is removed and the deadline stays exclusive");
+        });
+
         Test("new tasks land on top and can be moved by hand", () =>
         {
             var book = new TodoBook();

@@ -76,6 +76,18 @@ public static class AgendaQuickAdd
     private static readonly Regex PlaceTag = R(@"@(?<p>[^\s@#]+)");
     private static readonly Regex AllDayWords = R(@"\b(?:durante\s+)?todo\s+el\s+dia\b");
 
+    // Spoken commands describe what PomoDock should do, not what the item should be called.
+    // This lives in the shared reader so Calendar and To Do behave identically after dictation.
+    private static readonly Regex CommandPrefix = R(
+        @"^\s*(?:(?:oye|hey)\s*[,;:]?\s*)?(?:por\s+favor\s*[,;:]?\s*)?(?:" +
+        @"(?:recuerdame|recordarme|avisame|notificame)(?:\s+(?:que|de|para))?" +
+        @"|(?:anotame|anota|anotar|apuntame|apunta|apuntar|agendame|agendar|programame|programar|anademe|anade|anadir|agrega|agregar|crea|crear)" +
+        @"(?:\s+(?:un|una|el|la))?(?:\s+(?:evento|cita|tarea|recordatorio))?(?:\s+(?:que|de|para))?" +
+        @"|ponme(?:\s+(?:un|una|el|la))?\s+(?:evento|cita|tarea|recordatorio)(?:\s+(?:que|de|para))?" +
+        @"|(?:tengo|tenemos)\s+que|hay\s+que|necesito|necesitamos|debo|debemos" +
+        @"|remind\s+me(?:\s+to)?|(?:please\s+)?(?:add|create|schedule)(?:\s+(?:an?|the))?(?:\s+(?:event|appointment|task|reminder))?(?:\s+to)?" +
+        @")(?:(?:\s*[,;:]\s*)|\s+)");
+
     private static readonly Regex Silent = R(@"\bsin\s+(?:aviso|avisos|recordatorio|recordatorios|alarma|alerta|notificacion)\b");
     private static readonly Regex ReminderWords = R(
         @"\b(?:avisame|avisarme|avisar|avisa|aviso|recuerdame|recordarme|recordar|recordatorio|alerta|alarma|notificame|notificar)" +
@@ -135,10 +147,16 @@ public static class AgendaQuickAdd
 
     private static readonly Regex ThisPeriod = R(@"\besta\s+(?<p>manana|tarde|noche)\b");
     private static readonly Regex Period = R(@"\b(?:por|en|de|a)\s+la\s+(?<p>manana|tarde|noche|madrugada)\b");
-    /// <summary>"antes de 2pm", "antes del viernes": a deadline reads as the moment itself.</summary>
-    private static readonly Regex DeadlineWords = R(
-        @"\b(?:para\s+)?antes\s+del?(?=\s+(?:\d{1,2}\s*(?:[:.]\s*\d{2})?\s*(?:a\.?\s?m\b|p\.?\s?m\b|h\b|hrs\b)|" + Weekday +
+    /// <summary>
+    /// "Antes de las 2" names a clock boundary. A date-only "antes del lunes" is exclusive and
+    /// belongs to Sunday; keeping that distinction prevents a deadline from landing a day late.
+    /// </summary>
+    private static readonly Regex ExclusiveDeadlineWords = R(
+        @"\b(?:para\s+)?antes\s+del?(?=\s+(?:\d{1,2}\s*(?:[:.]\s*\d{2})?\s*(?:a\.?\s?m\b|p\.?\s?m\b|h\b|hrs\b)|" +
+        @"(?:(?:este|esta|el\s+proximo|la\s+proxima|proximo|proxima)\s+)?" + Weekday +
         @"|el\s|\d{1,2}\s+de\s|\d{1,2}[/-]|fin\s|manana\b|hoy\b|pasado\b))");
+    private static readonly Regex InclusiveDeadlineWords = R(
+        @"\b(?:a\s+mas\s+tardar(?:\s+el)?|no\s+despues\s+del?|como\s+fecha\s+limite(?:\s+el)?|fecha\s+limite(?:\s+el)?|vence(?:\s+el)?)(?=\s+)");
 
     private static readonly Regex PlaceAfterEn = new(@"(?:^|\s)en\s+(?<p>\S.*)$", RegexOptions.CultureInvariant | RegexOptions.RightToLeft | RegexOptions.ExplicitCapture);
     private static readonly string[] PlaceWords =
@@ -210,6 +228,10 @@ public static class AgendaQuickAdd
         var line = new Line(text);
         var today = DateOnly.FromDateTime(now);
 
+        // More than one intent can be spoken: "recuérdame que tengo que llamar…". Peel all of
+        // them while they remain at the beginning, leaving the actual action as the title.
+        while (line.Take(CommandPrefix) is not null) { }
+
         // Tags are explicit, so they go first and never leak into anything else.
         string color = "ink";
         foreach (Match tag in ColorTag.Matches(line.Folded))
@@ -227,7 +249,8 @@ public static class AgendaQuickAdd
         }
 
         bool allDayWords = line.Take(AllDayWords) is not null;
-        line.Take(DeadlineWords);
+        bool exclusiveDeadline = line.Take(ExclusiveDeadlineWords) is not null;
+        line.Take(InclusiveDeadlineWords);
 
         bool silent = line.Take(Silent) is not null;
         int? reminder = null;
@@ -369,6 +392,11 @@ public static class AgendaQuickAdd
             date = DateOnly.FromDateTime(moment);
             time = TimeOnly.FromDateTime(moment);
         }
+
+        // A day without a clock denotes the whole preceding day when "antes de" is explicit.
+        // With a clock, the stated instant remains the boundary ("antes de las 17:00").
+        if (exclusiveDeadline && time is null && exact is null && date is { } deadline)
+            date = deadline.AddDays(-1);
 
         // A place written as "en …" is copied, never cut: the title keeps its own words.
         if (location.Length == 0) location = PlaceIn(line);

@@ -128,5 +128,14 @@ internal static class AgendaQuickAddTests
             var mum = Read("Llamar a mamá sin aviso mañana a las 11");
             assert(mum.Reminders.Count == 0 && mum.Title == "Llamar a mamá" && mum.Start == new DateTime(2026, 9, 10, 11, 0, 0), "mamá: sin aviso");
         });
+
+        test("natural commands stay out of titles and deadlines keep their meaning", () =>
+        {
+            Is("Recuérdame registrar materias antes del lunes", "Registrar materias", new(2026, 9, 13), true);
+            Is("Oye, recuérdame que tengo que enviar la solicitud antes del viernes", "Enviar la solicitud", new(2026, 9, 10), true);
+            Is("Avísame de llamar al dentista antes del lunes a las 5", "Llamar al dentista", new(2026, 9, 14, 17, 0, 0), false);
+            Is("Anota un evento: revisión a más tardar el lunes", "Revisión", new(2026, 9, 14), true);
+            Is("Crear tarea pagar colegiatura no después del viernes", "Pagar colegiatura", new(2026, 9, 11), true);
+        });
     }
 }

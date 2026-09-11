@@ -15,6 +15,11 @@ public partial class App : Application
             try { Process.GetProcessById(int.Parse(e.Args[1])).WaitForExit(); } catch (ArgumentException) { }
             Native.WindowLease.Recover(e.Args[2]); Shutdown(); return;
         }
+        if (e.Args.Length >= 5 && e.Args[0] == "--dictation-test")
+        {
+            Diagnostics.RunDictation(e.Args[1], e.Args[2], e.Args[3], e.Args[4]);
+            return;
+        }
         if (e.Args.Length >= 2 && e.Args[0] == "--fixture") { Diagnostics.RunFixture(e.Args[1]); return; }
         if (e.Args.Length >= 2 && e.Args[0] == "--self-test") { Diagnostics.Run(e.Args[1]); return; }
         mutex = new Mutex(true, "Local\\PomoDock.Desktop.SingleInstance", out bool created);

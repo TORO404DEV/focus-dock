@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,11 +10,34 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using PomoDock.App.Native;
 using PomoDock.Core;
+using Whisper.net;
 
 namespace PomoDock.App;
 
 internal static class Diagnostics
 {
+    /// <summary>Exercises the exact managed/native Whisper files in a published installation.</summary>
+    public static async void RunDictation(string model, string wave, string language, string output)
+    {
+        Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        try
+        {
+            using var factory = WhisperFactory.FromPath(model);
+            await using var processor = factory.CreateBuilder().WithLanguage(language).Build();
+            using var audio = File.OpenRead(wave);
+            var text = new StringBuilder();
+            await foreach (var segment in processor.ProcessAsync(audio)) text.Append(segment.Text);
+            await File.WriteAllTextAsync(output, text.ToString().Trim());
+            Environment.ExitCode = 0;
+        }
+        catch (Exception ex)
+        {
+            await File.WriteAllTextAsync(output, "ERROR: " + ex);
+            Environment.ExitCode = 1;
+        }
+        finally { Application.Current.Shutdown(); }
+    }
+
     public static void RunFixture(string path)
     {
         var window = new Window { Title = "PomoDock disposable integration fixture", Width = 360, Height = 440, Content = new TextBox { Text = "Disposable window fixture. No user app is involved.", AcceptsReturn = true } };
@@ -48,6 +72,14 @@ internal static class Diagnostics
             Assert(main.VoiceDictationIsVisible && main.VoiceDictationReservesTextSpace,
                 "a focused text input shows a microphone without covering its text");
             Render(main.VoiceDictationSurface, Path.Combine(directory, "voice-dictation.png"));
+            main.ShowVoiceDictationFeedbackForDiagnostics(); await Task.Delay(60);
+            Assert(main.VoiceDictationFeedbackIsVisible && main.VoiceDictationFeedbackCopy.Contains("00:03"),
+                "voice recording shows elapsed time and microphone level beside the input");
+            voiceLine.CaretIndex = voiceLine.Text.Length;
+            main.BeginVoiceDraftForDiagnostics("borrador inicial");
+            main.UpdateVoiceDraftForDiagnostics("borrador estable");
+            Assert(voiceLine.Text.EndsWith("borrador estable") && !voiceLine.Text.Contains("borrador inicial"),
+                "live voice text replaces its earlier draft directly inside the input");
             voiceNote.Focus(); Keyboard.Focus(voiceNote); await Task.Delay(100);
             Assert(main.VoiceDictationIsVisible && main.VoiceDictationReservesTextSpace,
                 "the same voice control reaches rich notes");
