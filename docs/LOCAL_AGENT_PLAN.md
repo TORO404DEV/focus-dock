@@ -2,6 +2,8 @@
 
 Documento vivo. Cada fase se marca al cerrarse con pruebas. El agente **no** muestra razonamiento interno crudo: solo información útil y verificable (qué entendió, qué consulta, qué plan propone, qué ejecuta, qué cambió y cómo deshacerlo).
 
+**Integración con otros agentes (canvas, etc.):** ver `docs/HANDOFF_OTHER_AGENT.md`. No rehacer este plan; mergear la rama del agente local al final.
+
 ## Objetivo
 
 Un asistente local que opera PomoDock con lenguaje natural: consultas de historial, mutaciones con aprobación, chat con streaming, nota de voz, conversaciones persistentes y memoria personal editable.
