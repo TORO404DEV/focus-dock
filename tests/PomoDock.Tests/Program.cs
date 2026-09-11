@@ -73,6 +73,8 @@ NotificationHistoryTests.Run(Test, Equal, Assert);
 TodoTests.Run(Test, Equal, Assert);
 NoteArchiveTests.Run(Test, Equal, Assert);
 SoundLibraryTests.Run(Test, Equal, Assert);
+FocusSummaryTests.Run(Test, Equal, Assert);
+AgentLoopGuardTests.Run(Test, Equal, Assert);
 Test("rich note metadata preserves color, document, and checklists", () => {
  var note = new NotesWidgetData { Color = "mint", DocumentXaml = "<Section><Paragraph>Idea</Paragraph></Section>", Checklists = [new() { ParagraphIndex = 0, IsChecked = true }], UpdatedUtc = utc.UtcDateTime };
  var copy = JsonSerializer.Deserialize<NotesWidgetData>(JsonSerializer.Serialize(note))!;

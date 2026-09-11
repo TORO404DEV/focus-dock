@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -191,7 +192,7 @@ public sealed class SettingsWindow : Window
         PaintRank();
 
         tabs.Children.Clear();
-        foreach (var (key, label) in new[] { ("rhythm", L.T("settings.tabRhythm")), ("sound", L.T("settings.tabSound")), ("look", L.T("settings.tabLook")), ("space", L.T("settings.tabSpace")) })
+        foreach (var (key, label) in new[] { ("rhythm", L.T("settings.tabRhythm")), ("sound", L.T("settings.tabSound")), ("look", L.T("settings.tabLook")), ("space", L.T("settings.tabSpace")), ("agent", L.T("settings.tabAgent")) })
         {
             bool active = section == key;
             var tab = new Button
@@ -210,6 +211,7 @@ public sealed class SettingsWindow : Window
             case "sound": BuildSound(); break;
             case "look": BuildLook(); break;
             case "space": BuildSpace(); break;
+            case "agent": BuildAgent(); break;
             default: BuildRhythm(); break;
         }
     }
@@ -403,6 +405,95 @@ public sealed class SettingsWindow : Window
             catch (Exception ex) { statusLine.Text = L.T("settings.openFolderFailed", ex.Message); }
         };
         body.Children.Add(open);
+    }
+
+    private void BuildAgent()
+    {
+        settings.Agent ??= new PomoDock.Core.Agent.AgentSettings();
+        settings.Agent.Validate();
+        body.Children.Add(Lead(L.T("settings.agentLead"), L.T("settings.agentHelp")));
+        body.Children.Add(Toggle(L.T("settings.agentEnabled"), "", settings.Agent.Enabled, value => settings.Agent.Enabled = value));
+        body.Children.Add(Toggle(L.T("settings.agentApproval"), "", settings.Agent.RequireApprovalForWrites, value => settings.Agent.RequireApprovalForWrites = value));
+
+        body.Children.Add(Field(L.T("settings.agentEndpoint"), settings.Agent.Endpoint, value =>
+        {
+            settings.Agent.Endpoint = value;
+            settings.Agent.Validate();
+        }));
+        body.Children.Add(Field(L.T("settings.agentModel"), settings.Agent.Model, value =>
+        {
+            settings.Agent.Model = value;
+            settings.Agent.Validate();
+        }));
+        body.Children.Add(Field(L.T("settings.agentApiKey"), settings.Agent.ApiKey, value => settings.Agent.ApiKey = value));
+
+        body.Children.Add(Lead(L.T("settings.agentMemoryLead"), L.T("settings.agentMemoryHelp")));
+        var memory = PomoDock.Core.Agent.AgentMemory.Load(owner.Store);
+        if (memory.Facts.Count == 0)
+            body.Children.Add(Note(L.T("settings.agentMemoryEmpty")));
+        else
+        {
+            foreach (var fact in memory.Facts.ToList())
+            {
+                var row = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+                var forget = new Button
+                {
+                    Content = L.T("settings.agentMemoryForget"), FontSize = 10, Padding = new Thickness(10, 5, 10, 5),
+                    Margin = new Thickness(8, 0, 0, 0)
+                };
+                DockPanel.SetDock(forget, Dock.Right);
+                var id = fact.Id;
+                forget.Click += (_, _) =>
+                {
+                    if (PomoDock.Core.Agent.AgentMemory.Forget(memory, id: id))
+                    {
+                        PomoDock.Core.Agent.AgentMemory.Save(owner.Store, memory);
+                        Render();
+                    }
+                };
+                row.Children.Add(forget);
+                row.Children.Add(new TextBlock { Text = fact.Text, TextWrapping = TextWrapping.Wrap, FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+                body.Children.Add(row);
+            }
+        }
+
+        var memoryActions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+        var export = new Button { Content = L.T("settings.agentMemoryExport"), FontSize = 11, Padding = new Thickness(12, 8, 12, 8), Margin = new Thickness(0, 0, 6, 0) };
+        export.Click += (_, _) =>
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog { Filter = "JSON|*.json", FileName = "pomodock-memory.json" };
+            if (dialog.ShowDialog(this) != true) return;
+            File.WriteAllText(dialog.FileName, PomoDock.Core.Agent.AgentMemory.ExportJson(memory));
+            statusLine.Text = dialog.FileName;
+        };
+        var import = new Button { Content = L.T("settings.agentMemoryImport"), FontSize = 11, Padding = new Thickness(12, 8, 12, 8) };
+        import.Click += (_, _) =>
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "JSON|*.json" };
+            if (dialog.ShowDialog(this) != true) return;
+            try
+            {
+                var incoming = PomoDock.Core.Agent.AgentMemory.ImportJson(File.ReadAllText(dialog.FileName));
+                foreach (var fact in incoming.Facts)
+                    PomoDock.Core.Agent.AgentMemory.Remember(memory, fact.Text, fact.Tags);
+                PomoDock.Core.Agent.AgentMemory.Save(owner.Store, memory);
+                Render();
+            }
+            catch (Exception ex) { statusLine.Text = ex.Message; }
+        };
+        memoryActions.Children.Add(export);
+        memoryActions.Children.Add(import);
+        body.Children.Add(memoryActions);
+    }
+
+    private UIElement Field(string label, string value, Action<string> set)
+    {
+        var stack = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
+        stack.Children.Add(new TextBlock { Text = label, FontSize = 12, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 4) });
+        var box = new TextBox { Text = value, FontSize = 12, Padding = new Thickness(8, 6, 8, 6) };
+        box.LostFocus += (_, _) => { set(box.Text ?? ""); owner.SaveState(); };
+        stack.Children.Add(box);
+        return stack;
     }
 
     private void ApplyRhythm((string Name, string Detail, string Story, int Focus, int Short, int Long, int Interval) preset)
