@@ -69,6 +69,7 @@ Test("todo and habit widgets preserve completion state", () => {
 HabitTests.Run(Test, Equal, Assert);
 AgendaQuickAddTests.Run(Test, Equal, Assert);
 TodoSyncTests.Run(Test, Equal, Assert);
+NotificationHistoryTests.Run(Test, Equal, Assert);
 TodoTests.Run(Test, Equal, Assert);
 NoteArchiveTests.Run(Test, Equal, Assert);
 SoundLibraryTests.Run(Test, Equal, Assert);

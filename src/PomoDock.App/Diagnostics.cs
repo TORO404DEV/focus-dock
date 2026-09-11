@@ -181,10 +181,24 @@ internal static class Diagnostics
             // is already due rings and is dismissed first, so the checks below count only their own.
             reminders.Pulse(); await Task.Delay(100);
             AgendaToast.CloseAll(); await Task.Delay(100);
+            int historyBeforeReminder = main.NotificationHistoryCount;
             var soon = new AgendaEvent { Title = "Llamada de prueba", Start = DateTime.Now.AddMinutes(2), Minutes = 30, Color = "violet", Reminders = [10] };
             agenda.Book.Events.Add(soon); agenda.Save();
             reminders.Pulse(); await Task.Delay(200);
             Assert(AgendaToast.OpenCount == 1, "a reminder that came due raises a notification card");
+            Assert(main.NotificationHistoryCount == historyBeforeReminder + 1 && main.NotificationUnreadCount > 0,
+                "a reminder is retained in the local notification history");
+            Assert(main.IsNotificationBannerVisible, "a reminder appears temporarily beneath the workspace header");
+            Render(main.NotificationBannerSurface, Path.Combine(directory, "notification-banner.png"));
+            int pageBehindNotifications = main.CurrentWorkspacePageIndex;
+            main.OpenNotificationsForDiagnostics(); await Task.Delay(100);
+            Assert(main.IsNotificationCenterOpen && main.NotificationUnreadCount == 0,
+                "the bell opens the retained history and marks what the user saw as read");
+            main.NavigatePageForDiagnostics(1); await Task.Delay(80);
+            Assert(main.CurrentWorkspacePageIndex == pageBehindNotifications,
+                "the notification history blocks background page navigation");
+            Render(main.NotificationHistorySurface, Path.Combine(directory, "notification-history.png"));
+            main.CloseNotificationsForDiagnostics();
             Render(AgendaToast.Newest!, Path.Combine(directory, "calendar-reminder.png"));
             int delivered = agenda.Book.Delivered.Count;
             reminders.Pulse(); await Task.Delay(100);

@@ -71,6 +71,7 @@ public partial class MainWindow : Window
         Timer = new(Settings);
         Sounds = new(Settings);
         InitializeComponent();
+        InitializeNotifications();
         ApplyLanguage();
         appliedTimerAtBottom = Settings.TimerAtBottom;
         BuildTimerHandles();
@@ -372,6 +373,7 @@ public partial class MainWindow : Window
         CloseButton.ToolTip = L.T("chrome.closeRelease");
         ReportButton.ToolTip = L.T("chrome.report");
         TasksButton.ToolTip = L.T("chrome.tasks");
+        RefreshNotificationChrome();
         SettingsButton.ToolTip = L.T("chrome.settings");
         FullscreenButton.ToolTip = L.T("chrome.fullscreen");
         AddWidgetButton.ToolTip = L.T("chrome.addWidget");
@@ -924,6 +926,7 @@ public partial class MainWindow : Window
     }
     private void OnKey(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && NotificationsPopup.IsOpen) { NotificationsPopup.IsOpen = false; e.Handled = true; return; }
         if (e.Key == Key.Escape && reportPopup is { IsOpen: true }) { HideReportModal(); e.Handled = true; return; }
         if (e.Key == Key.F11 && !hotkeyRegistered) { ToggleFullscreen(); e.Handled = true; }
         if (e.Key == Key.Escape && fullscreen) { ToggleFullscreen(); e.Handled = true; }
@@ -938,7 +941,7 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         pageSwipePoll.Stop();
-        CancelTimerGesture(); HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll();
+        CancelTimerGesture(); CloseNotificationCenter(); HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         try

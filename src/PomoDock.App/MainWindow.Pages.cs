@@ -54,7 +54,7 @@ public partial class MainWindow
     /// Reminder toasts and embedded third-party windows are intentionally not owner windows.
     /// </summary>
     private bool IsWorkspaceNavigationBlocked =>
-        IsReportModalOpen || !IsEnabled || OwnedWindows.Cast<Window>().Any(window => window.IsVisible);
+        IsReportModalOpen || IsNotificationCenterOpen || !IsEnabled || OwnedWindows.Cast<Window>().Any(window => window.IsVisible);
 
     private void CancelNavigationForOpenWindow(bool pointerDown)
     {

@@ -95,6 +95,9 @@ public sealed class TodoTask
 public sealed class TodoBook
 {
     private static readonly Regex Bang = new(@"(?<![^\s])(!{1,3})(?![^\s])", RegexOptions.CultureInvariant);
+    private static readonly Regex ReminderPrefix = new(
+        @"^\s*(?:(?:recu[eé]rdame|recordarme|av[ií]same|notif[ií]came)(?:\s+que)?|remind\s+me(?:\s+to)?)\s+",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public int Version { get; set; } = 1;
     public List<TodoTask> Items { get; set; } = [];
@@ -209,9 +212,13 @@ public sealed class TodoBook
             if (match.Groups[1].Value.Length >= 2) priority = TodoPriority.High;
             else if (priority == TodoPriority.None) priority = TodoPriority.Medium;
 
-        var reading = AgendaQuickAdd.Read(Bang.Replace(text, " "), now);
+        var clean = ReminderPrefix.Replace(Bang.Replace(text, " "), "");
+        var reading = AgendaQuickAdd.Read(clean, now);
         if (reading is null) return null;
         var draft = reading.Event;
+        // A relative To Do means "notify me then". Calendar appointments normally warn ten
+        // minutes before, which would make "Sacar la basura en 10 min" ring immediately.
+        if (reading.Relative && !reading.ExplicitReminder) draft.Reminders = [0];
         var task = new TodoTask { Title = draft.Title, Priority = priority };
         if (!reading.Scheduled) return new TodoReading(task, null);
         task.Due = DateOnly.FromDateTime(draft.Start);

@@ -3,7 +3,7 @@
  <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/></shell:WindowChrome.WindowChrome>
  <Border BorderBrush="{DynamicResource Edge}" BorderThickness="2">
    <Grid x:Name="Root">
-   <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="0"/><RowDefinition Height="*"/><RowDefinition Height="52"/></Grid.RowDefinitions>
+  <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="0"/><RowDefinition Height="*"/><RowDefinition Height="52"/></Grid.RowDefinitions>
    <Grid x:Name="TitleBar" Background="{DynamicResource Chrome}" MouseLeftButtonDown="DragTitle">
     <TextBlock x:Name="TitleBarText" Text="POMODOCK     /     DESKTOP EDITION" Foreground="{DynamicResource ChromeInk}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,110,0"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -17,11 +17,46 @@
     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
      <Button x:Name="ReportButton" Content="▥" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="{DynamicResource AccentInk}" FontSize="16" Padding="6,3"/>
      <Button x:Name="TasksButton" Content="☷" Click="TasksClick" FontSize="15" Padding="6,3"/>
+     <Button x:Name="NotificationsButton" Content="🔔" Click="NotificationsClick" FontSize="13" Padding="6,3" ToolTip="Notificaciones"/>
      <Button x:Name="SettingsButton" Content="⚙" Click="SettingsClick" FontSize="15" Padding="6,3"/>
      <Button x:Name="FullscreenButton" Content="⛶" Click="FullscreenClick" FontSize="15" Padding="6,3"/>
      <Button x:Name="AddWidgetButton" Content="+ WIDGET" Click="AddWidgetClick" FontSize="9" Padding="7,6" Margin="0"/>
-    </StackPanel>
+   </StackPanel>
    </Grid>
+   <Popup x:Name="NotificationBannerPopup" PlacementTarget="{Binding ElementName=NotificationsButton}" Placement="Bottom" HorizontalOffset="-330" VerticalOffset="6" AllowsTransparency="True" StaysOpen="True" PopupAnimation="Fade">
+   <Border x:Name="NotificationBanner" Width="390" Padding="0" BorderBrush="{DynamicResource Edge}" BorderThickness="2" Background="{DynamicResource Chrome}" Cursor="Hand" MouseLeftButtonDown="NotificationBannerClick">
+    <Grid>
+     <Grid.ColumnDefinitions><ColumnDefinition Width="7"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <Border Background="{DynamicResource Accent}"/>
+     <Border Grid.Column="1" Width="34" Height="34" Margin="10,8" BorderBrush="{DynamicResource ChromeInk}" BorderThickness="1" Background="{DynamicResource Paper}">
+      <TextBlock Text="🔔" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+     </Border>
+     <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,7,8,7">
+      <TextBlock x:Name="NotificationBannerLead" Text="RECORDATORIO · AHORA" Foreground="{DynamicResource ChromeInk}" FontFamily="Consolas" FontSize="8" FontWeight="Bold"/>
+      <TextBlock x:Name="NotificationBannerTitle" Text="Recordatorio" Foreground="{DynamicResource ChromeInk}" FontSize="12" FontWeight="Black" TextTrimming="CharacterEllipsis"/>
+     </StackPanel>
+     <Button Grid.Column="3" Content="×" Click="DismissNotificationBanner" Foreground="{DynamicResource ChromeInk}" Background="Transparent" BorderThickness="0" FontSize="15" Padding="10,5" Margin="0"/>
+   </Grid>
+   </Border>
+   </Popup>
+   <Popup x:Name="NotificationsPopup" PlacementTarget="{Binding ElementName=NotificationsButton}" Placement="Bottom" HorizontalOffset="-330" VerticalOffset="6" AllowsTransparency="True" StaysOpen="False" PopupAnimation="Fade">
+    <Border Width="390" MaxHeight="520" BorderBrush="{DynamicResource Edge}" BorderThickness="2" Background="{DynamicResource Surface}" SnapsToDevicePixels="True">
+     <Grid>
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+      <Grid Background="{DynamicResource Chrome}" MinHeight="44">
+       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <StackPanel Margin="14,8" VerticalAlignment="Center">
+        <TextBlock x:Name="NotificationHistoryTitle" Text="NOTIFICACIONES" Foreground="{DynamicResource ChromeInk}" FontSize="10" FontWeight="Bold"/>
+        <TextBlock x:Name="NotificationHistoryMeta" Text="HISTORIAL" Foreground="{DynamicResource ChromeInk}" Opacity="0.62" FontFamily="Consolas" FontSize="8"/>
+       </StackPanel>
+       <Button Grid.Column="1" Content="×" Click="CloseNotifications" Foreground="{DynamicResource ChromeInk}" Background="Transparent" BorderThickness="0" FontSize="15" Padding="12,5" Margin="0"/>
+      </Grid>
+      <ScrollViewer Grid.Row="1" MaxHeight="440" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+       <StackPanel x:Name="NotificationHistoryList" Margin="10"/>
+      </ScrollViewer>
+     </Grid>
+    </Border>
+   </Popup>
    <Grid x:Name="Workspace" Grid.Row="3" Margin="20,0,20,0">
     <Grid.RowDefinitions><RowDefinition Height="0"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <Grid Grid.Row="1" x:Name="CarouselViewport" ClipToBounds="True" Background="Transparent">

@@ -154,6 +154,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
         string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToLower(Strings.Culture);
         string alert = draft.Reminders.Count == 0 ? L.T("todo.noAlert")
             : draft.AllDay ? L.T("todo.alertAtHour", AgendaEvent.AllDayHour)
+            : draft.Reminders[0] == 0 ? L.T("todo.alertAtTime")
             : draft.Reminders[0] >= 60 && draft.Reminders[0] % 60 == 0 ? L.T("todo.alertHoursBefore", draft.Reminders[0] / 60)
             : L.T("todo.alertMinutesBefore", draft.Reminders[0]);
         hint.Text = L.T("todo.preview", reading.Task.Title, when, repeat, alert);
@@ -173,7 +174,10 @@ internal sealed class TodoBoard : Grid, IReskinnable
             SaveView();
         }
         if (task.Due is { } due)
-            owner.Status(L.T("todo.added", task.Title, AgendaVisuals.DayLabel(due), task.At is { } at ? $" {at:HH:mm}" : ""));
+        {
+            string key = task.At is not null ? "todo.reminderAdded" : "todo.added";
+            owner.Status(L.T(key, task.Title, AgendaVisuals.DayLabel(due), task.At is { } at ? $" {at:HH:mm}" : ""));
+        }
         Render();
     }
 

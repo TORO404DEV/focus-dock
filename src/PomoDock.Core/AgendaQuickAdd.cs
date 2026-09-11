@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace PomoDock.Core;
 
 /// <summary>A read line plus what the reader actually found in it, beyond the title.</summary>
-public sealed record QuickAddReading(AgendaEvent Event, bool Dated, bool Timed, bool Repeats)
+public sealed record QuickAddReading(AgendaEvent Event, bool Dated, bool Timed, bool Repeats, bool Relative = false, bool ExplicitReminder = false)
 {
     /// <summary>The line named a day, an hour or a rhythm: something a calendar can hold.</summary>
     public bool Scheduled => Dated || Timed || Repeats;
@@ -100,7 +100,7 @@ public static class AgendaQuickAdd
     private static readonly Regex Lasting = R(@"\b(?:durante|por)\s+(?<n>" + Num + @"|un\s+par\s+de)\s+(?<u>dias?|semanas?|mes(?:es)?|anos?)\b");
 
     private static readonly Regex InOffset = R(
-        @"\b(?:en|dentro\s+de)\s+(?<n>" + Num + @"|un\s+par\s+de|media)\s+(?<u>minutos?|mins?|horas?|hrs?|dias?|semanas?|mes(?:es)?|anos?)\b");
+        @"\b(?:en|dentro\s+de|in)\s+(?<n>" + Num + @"|un\s+par\s+de|media)\s+(?<u>minutos?|mins?|minutes?|horas?|hrs?|hours?|dias?|days?|semanas?|weeks?|mes(?:es)?|months?|anos?|years?)\b");
 
     private static readonly Regex DateRange = R(
         @"\b(?:del|desde\s+el|desde)\s+(?<a>" + DatePhrase + @")\s+(?:al|hasta\s+el|hasta|a)\s+(?<b>" + DatePhrase + ")");
@@ -301,11 +301,11 @@ public static class AgendaQuickAdd
             string unit = offset.Groups["u"].Value;
             string amount = offset.Groups["n"].Value;
             double value = amount == "media" ? .5 : ToNumber(amount);
-            if (unit.StartsWith('m') && unit.StartsWith("mes", StringComparison.Ordinal)) date = today.AddMonths((int)Math.Max(1, value));
+            if (unit.StartsWith("mes", StringComparison.Ordinal) || unit.StartsWith("mon", StringComparison.Ordinal)) date = today.AddMonths((int)Math.Max(1, value));
             else if (unit.StartsWith('m')) exact = now.AddMinutes(value);
             else if (unit.StartsWith('h')) exact = now.AddMinutes(value * 60);
             else if (unit.StartsWith('d')) date = today.AddDays((int)Math.Max(1, value));
-            else if (unit.StartsWith('s')) date = today.AddDays(7 * (int)Math.Max(1, value));
+            else if (unit.StartsWith('s') || unit.StartsWith('w')) date = today.AddDays(7 * (int)Math.Max(1, value));
             else date = today.AddYears((int)Math.Max(1, value));
         }
 
@@ -367,7 +367,7 @@ public static class AgendaQuickAdd
         if (exact is { } moment)
         {
             date = DateOnly.FromDateTime(moment);
-            time = new TimeOnly(moment.Hour, moment.Minute);
+            time = TimeOnly.FromDateTime(moment);
         }
 
         // A place written as "en …" is copied, never cut: the title keeps its own words.
@@ -426,7 +426,8 @@ public static class AgendaQuickAdd
             Reminders = silent ? [] : [reminder ?? (allDay ? 0 : 10)]
         };
         draft.Normalize();
-        return new QuickAddReading(draft, spanStart is not null || date is not null || exact is not null, !allDay, repeat != RepeatKind.None);
+        return new QuickAddReading(draft, spanStart is not null || date is not null || exact is not null, !allDay,
+            repeat != RepeatKind.None, exact is not null, silent || reminder is not null);
     }
 
     // ------------------------------------------------------------------ the line

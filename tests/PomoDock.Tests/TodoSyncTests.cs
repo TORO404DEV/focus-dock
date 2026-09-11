@@ -51,6 +51,25 @@ internal static class TodoSyncTests
             assert(morning.AllDay && morning.Reminders.Single() == 0, "todo el día, aviso a primera hora");
         });
 
+        test("a relative task reminds at the requested moment and stays pending", () =>
+        {
+            var trash = TodoBook.Read("Recuérdame sacar la basura en 10 min", Now)!;
+            assert(trash.Task.Title == "Sacar la basura", $"título del recordatorio: '{trash.Task.Title}'");
+            assert(trash.Task.Due == new DateOnly(2026, 9, 9) && trash.Task.At == new TimeOnly(12, 10), "queda programado dentro de diez minutos");
+            assert(trash.Draft is not null && trash.Draft.Reminders.Single() == 0, "avisa a la hora pedida, no diez minutos antes");
+
+            var item = TodoSync.ToEvent(trash.Task, null, trash.Draft);
+            var cue = new AgendaBook { Events = [item] }
+                .Cues(Now.AddMinutes(9), Now.AddMinutes(11)).Single();
+            assert(cue.FireAt == Now.AddMinutes(10), "el aviso se dispara al cumplirse los diez minutos");
+            assert(!trash.Task.Done && !item.IsDone(new DateOnly(2026, 9, 9)), "disparar un aviso no completa la tarea");
+
+            var english = TodoBook.Read("Remind me to stretch in 15 minutes", Now)!;
+            assert(english.Task.Title == "Stretch" && english.Task.At == new TimeOnly(12, 15),
+                $"también entiende la forma inglesa: '{english.Task.Title}' a {english.Task.At}");
+            assert(english.Draft!.Reminders.Single() == 0, "la forma inglesa también avisa a la hora pedida");
+        });
+
         test("what the calendar does comes back to the task", () =>
         {
             var task = new TodoTask { Title = "Revisar contrato", Due = new DateOnly(2026, 9, 10), At = new TimeOnly(10, 0) };

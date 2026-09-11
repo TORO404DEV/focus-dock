@@ -64,6 +64,7 @@ internal sealed class AgendaReminders
     private void Ring(ReminderCue cue, DateTime now)
     {
         if (owner is null) return;
+        owner.NotificationArrived(cue, now);
         owner.Sounds.Reminder();
         AgendaToast.Present(owner, cue, now, Snooze, Complete);
     }
