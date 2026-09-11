@@ -96,6 +96,7 @@ public sealed class WidgetCard : Border
         }
     }
     internal bool IsExternalAttached => host?.Alive == true;
+    internal bool HasKeyboardFocusOnExternal => host?.HasKeyboardFocus == true;
     /// <summary>
     /// This card paints part of itself through a real HWND — an embedded app window or a
     /// WebView2 — so ordinary WPF Z-index cannot put anything above it; only another native

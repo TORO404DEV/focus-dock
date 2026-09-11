@@ -108,8 +108,9 @@ public partial class MainWindow : Window
         statusReset.Tick += (_, _) => { statusReset.Stop(); UpdatePageMeta(); };
         PageDock.PreviewMouseWheel += (_, e) =>
         {
-            if (e.Delta < 0) NavigateWorkspace(1);
-            else if (e.Delta > 0) NavigateWorkspace(-1);
+            bool vertical = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+            if (e.Delta < 0) NavigateWorkspace(vertical ? 0 : 1, vertical ? 1 : 0);
+            else if (e.Delta > 0) NavigateWorkspace(vertical ? 0 : -1, vertical ? -1 : 0);
             e.Handled = true;
         };
         SystemEvents.PowerModeChanged += PowerChanged;
@@ -242,6 +243,23 @@ public partial class MainWindow : Window
         var culture = Strings.Culture;
         HeaderDateText.Text = now.ToString("ddd dd MMM yyyy", culture).ToUpper(culture);
         HeaderTimeText.Text = now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        // Always show how much of the active pomodoro remains — not only wall-clock time.
+        if (Timer.Running || Timer.Active is not null)
+        {
+            var remaining = TimeSpan.FromSeconds(Math.Ceiling(Timer.Remaining));
+            string mark = Timer.Running ? "▶" : "❚❚";
+            HeaderTimerText.Text = $"{mark} {(int)remaining.TotalMinutes:00}:{remaining.Seconds:00}";
+            HeaderTimerText.Visibility = Visibility.Visible;
+            HeaderTimerText.ToolTip = Timer.Phase == Phase.Focus ? L.T("timer.phaseFocusName")
+                : Timer.Phase == Phase.ShortBreak ? L.T("timer.phaseShort")
+                : L.T("timer.phaseLong");
+        }
+        else
+        {
+            HeaderTimerText.Text = "";
+            HeaderTimerText.ToolTip = null;
+            HeaderTimerText.Visibility = Visibility.Collapsed;
+        }
     }
     private void TasksClick(object sender, RoutedEventArgs e)
     {
@@ -360,7 +378,9 @@ public partial class MainWindow : Window
                 width >= panel.ActualWidth * dpi.DpiScaleX - 2 && height >= panel.ActualHeight * dpi.DpiScaleY - 2;
         }
     }
-    internal string HeaderClockText => $"{HeaderDateText.Text} {HeaderTimeText.Text}";
+    internal string HeaderClockText => string.IsNullOrWhiteSpace(HeaderTimerText.Text)
+        ? $"{HeaderDateText.Text} {HeaderTimeText.Text}"
+        : $"{HeaderDateText.Text} {HeaderTimeText.Text} {HeaderTimerText.Text}";
     internal int ReportVisibleSessionCount => reportContent?.VisibleSessionCount ?? 0;
     internal FrameworkElement? ReportModalSurface => reportPopup?.Child as FrameworkElement;
     internal void ShowReportForDiagnostics() => ShowReportModal();
@@ -972,8 +992,12 @@ public partial class MainWindow : Window
         // a rich note is a RichTextBox, not a TextBox, so space used to start the timer
         // instead of being typed, and Ctrl+arrows changed page instead of moving a word.
         if (Keyboard.FocusedElement is TextBoxBase or PasswordBox) return;
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Left) { NavigateWorkspace(-1); e.Handled = true; return; }
-        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Right) { NavigateWorkspace(1); e.Handled = true; return; }
+        // Embedded apps (Cursor, etc.) take Win32 focus outside WPF. Do not steal their keys.
+        if (cards.Any(card => card.HasKeyboardFocusOnExternal)) return;
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Left) { NavigateWorkspace(-1, 0); e.Handled = true; return; }
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Right) { NavigateWorkspace(1, 0); e.Handled = true; return; }
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Up) { NavigateWorkspace(0, -1); e.Handled = true; return; }
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.Down) { NavigateWorkspace(0, 1); e.Handled = true; return; }
         if (e.Key == Key.Space && CurrentTimerWidget is not null && Keyboard.FocusedElement is not ButtonBase) { ToggleTimer(); e.Handled = true; }
     }
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)

@@ -27,7 +27,8 @@ public partial class MainWindow
     private Point swipeStart;
     private double swipeStartedAt;
     private double swipeOffset;
-    private int swipeDirection;
+    private int swipeDx;
+    private int swipeDy;
     private int? swipeTargetIndex;
     private bool swipeCreatesPage;
     private bool swipeDestinationAvailable;
@@ -36,16 +37,41 @@ public partial class MainWindow
     private WorkspacePage CurrentPage => Settings.WorkspacePages[currentPageIndex];
     private WidgetConfig? CurrentTimerWidget => CurrentPage.TimerWidget;
     internal bool CanAddTimerWidget => CurrentTimerWidget is null;
+
     /// <summary>
-    /// A new page can open past either end of the carousel as long as the page already sitting
-    /// at that end has something on it. That allows one blank canvas on each side, and never two
-    /// blank pages in a row: a blank page on the left no longer blocks creating one on the right.
+    /// A blank neighbor can open in any empty cardinal cell next to the current page, but only
+    /// when this page already holds something. That keeps one blank canvas per edge of the live
+    /// page and never stacks two empty pages in a row from the same spot.
     /// </summary>
-    private bool CanCreateWorkspacePage(int direction)
+    private bool CanCreateWorkspacePage(int dx, int dy)
     {
-        var pages = Settings.WorkspacePages;
-        if (pages.Count == 0) return true;
-        return (direction < 0 ? pages[0] : pages[^1]).HasContent;
+        if ((dx == 0 && dy == 0) || (dx != 0 && dy != 0)) return false;
+        if (!CurrentPage.HasContent) return false;
+        return FindPageIndex(CurrentPage.Col + dx, CurrentPage.Row + dy) is null;
+    }
+
+    private int? FindPageIndex(int col, int row)
+    {
+        for (int i = 0; i < Settings.WorkspacePages.Count; i++)
+        {
+            var page = Settings.WorkspacePages[i];
+            if (page.Col == col && page.Row == row) return i;
+        }
+        return null;
+    }
+
+    private static (int Dx, int Dy) StepToward(WorkspacePage from, WorkspacePage to)
+    {
+        int dx = Math.Sign(to.Col - from.Col);
+        int dy = Math.Sign(to.Row - from.Row);
+        if (dx != 0 && dy != 0)
+        {
+            // Jumping to a diagonal neighbour via the dock: prefer the larger axis so the slide
+            // still reads as a single-direction carousel move.
+            return Math.Abs(to.Col - from.Col) >= Math.Abs(to.Row - from.Row) ? (dx, 0) : (0, dy);
+        }
+        if (dx == 0 && dy == 0) return (1, 0);
+        return (dx, dy);
     }
 
     /// <summary>
@@ -101,20 +127,23 @@ public partial class MainWindow
         Settings.TimerPositionCustomized = CurrentTimerWidget is not null && CurrentPage.TimerPositionCustomized;
     }
 
-    private void PreviousPageClick(object sender, RoutedEventArgs e) => NavigateWorkspace(-1);
-    private void NextPageClick(object sender, RoutedEventArgs e) => NavigateWorkspace(1);
+    private void PreviousPageClick(object sender, RoutedEventArgs e) => NavigateWorkspace(-1, 0);
+    private void NextPageClick(object sender, RoutedEventArgs e) => NavigateWorkspace(1, 0);
+    private void UpPageClick(object sender, RoutedEventArgs e) => NavigateWorkspace(0, -1);
+    private void DownPageClick(object sender, RoutedEventArgs e) => NavigateWorkspace(0, 1);
     private void AddPageClick(object sender, RoutedEventArgs e) => AddBlankWorkspacePage();
 
-    private void NavigateWorkspace(int direction)
+    private void NavigateWorkspace(int dx, int dy)
     {
+        if (dx == 0 && dy == 0) return;
         if (IsWorkspaceNavigationBlocked)
         {
             CancelNavigationForOpenWindow((Win32.GetAsyncKeyState(0x01) & 0x8000) != 0);
             return;
         }
-        int target = currentPageIndex + direction;
-        if (target >= 0 && target < Settings.WorkspacePages.Count) SwitchWorkspacePage(target);
-        else if (CanCreateWorkspacePage(direction)) BeginCarouselTransition(direction, null, true, 0);
+        int? target = FindPageIndex(CurrentPage.Col + dx, CurrentPage.Row + dy);
+        if (target is { } index) SwitchWorkspacePage(index);
+        else if (CanCreateWorkspacePage(dx, dy)) BeginCarouselTransition(dx, dy, null, true, 0);
         else Pulse(PageDockSurface);
     }
 
@@ -127,13 +156,13 @@ public partial class MainWindow
         }
         if (pageTransitioning) return false;
         SaveState();
-        if (!CanCreateWorkspacePage(1))
+        if (!CanCreateWorkspacePage(1, 0))
         {
             Status(L.T("pages.lastAlreadyEmpty"));
             Pulse(PageDockSurface);
             return false;
         }
-        BeginCarouselTransition(1, null, true, 0);
+        BeginCarouselTransition(1, 0, null, true, 0);
         return true;
     }
 
@@ -273,26 +302,49 @@ public partial class MainWindow
             return;
         }
         if (pageTransitioning || target < 0 || target >= Settings.WorkspacePages.Count || target == currentPageIndex) return;
-        BeginCarouselTransition(target > currentPageIndex ? 1 : -1, target, false, 0);
+        var (dx, dy) = StepToward(CurrentPage, Settings.WorkspacePages[target]);
+        BeginCarouselTransition(dx, dy, target, false, 0);
     }
 
-    private void BeginCarouselTransition(int direction, int? target, bool createPage, double initialOffset)
+    private void BeginCarouselTransition(int dx, int dy, int? target, bool createPage, double initialOffset)
     {
         if (IsWorkspaceNavigationBlocked) return;
         if (pageTransitioning) return;
-        PrepareCarousel(direction, target, createPage);
+        PrepareCarousel(dx, dy, target, createPage);
         swipeOffset = initialOffset;
-        pageSlide.X = initialOffset;
-        previewSlide.X = initialOffset + direction * Math.Max(1, CarouselViewport.ActualWidth);
+        ApplyCarouselOffset(initialOffset);
         if (Settings.ReduceMotion)
         {
-            CommitWorkspacePageChange(direction, target, createPage);
+            CommitWorkspacePageChange(dx, dy, target, createPage);
             return;
         }
-        AnimateCarousel(-direction * Math.Max(1, CarouselViewport.ActualWidth), 0, true);
+        // Current page exits opposite the step; the preview rides in from that edge.
+        double pageTarget = -(dx != 0 ? dx : dy) * CarouselExtent(dx, dy);
+        AnimateCarousel(pageTarget, commit: true);
     }
 
-    private void PrepareCarousel(int direction, int? target, bool createPage)
+    private double CarouselExtent(int dx, int dy) =>
+        dx != 0 ? Math.Max(1, CarouselViewport.ActualWidth) : Math.Max(1, CarouselViewport.ActualHeight);
+
+    private void ApplyCarouselOffset(double offset)
+    {
+        if (swipeDx != 0)
+        {
+            pageSlide.X = offset;
+            pageSlide.Y = 0;
+            previewSlide.X = offset + swipeDx * Math.Max(1, CarouselViewport.ActualWidth);
+            previewSlide.Y = 0;
+        }
+        else
+        {
+            pageSlide.X = 0;
+            pageSlide.Y = offset;
+            previewSlide.X = 0;
+            previewSlide.Y = offset + swipeDy * Math.Max(1, CarouselViewport.ActualHeight);
+        }
+    }
+
+    private void PrepareCarousel(int dx, int dy, int? target, bool createPage)
     {
         SaveState();
         CancelTimerGesture();
@@ -304,14 +356,15 @@ public partial class MainWindow
             card.SetCarouselTransition(true);
         }
         pageTransitioning = true;
-        swipeDirection = direction;
+        swipeDx = dx;
+        swipeDy = dy;
         swipeTargetIndex = target;
         swipeCreatesPage = createPage;
         swipeDestinationAvailable = target is not null || createPage;
         RenderPagePreview(target is { } index ? Settings.WorkspacePages[index] : null);
     }
 
-    private void CommitWorkspacePageChange(int direction, int? target, bool createPage)
+    private void CommitWorkspacePageChange(int dx, int dy, int? target, bool createPage)
     {
         var oldPage = CurrentPage;
         pageCards[oldPage.Id] = cards;
@@ -320,17 +373,14 @@ public partial class MainWindow
 
         if (createPage)
         {
-            var page = new WorkspacePage { Name = $"PÁGINA {Settings.WorkspacePages.Count + 1:00}" };
-            if (direction < 0)
+            var page = new WorkspacePage
             {
-                Settings.WorkspacePages.Insert(0, page);
-                target = 0;
-            }
-            else
-            {
-                Settings.WorkspacePages.Add(page);
-                target = Settings.WorkspacePages.Count - 1;
-            }
+                Name = $"PÁGINA {Settings.WorkspacePages.Count + 1:00}",
+                Col = oldPage.Col + dx,
+                Row = oldPage.Row + dy
+            };
+            Settings.WorkspacePages.Add(page);
+            target = Settings.WorkspacePages.Count - 1;
         }
         if (target is null) { ResetCarousel(true); return; }
 
@@ -603,38 +653,44 @@ public partial class MainWindow
         double dy = point.Y - swipeStart.Y;
         if (!swipeActive)
         {
-            if (Math.Abs(dy) > 22 && Math.Abs(dy) > Math.Abs(dx)) { swipeCandidate = false; return; }
-            if (Math.Abs(dx) < 12 || Math.Abs(dx) < Math.Abs(dy) * 1.15) return;
+            bool horizontal = Math.Abs(dx) >= 12 && Math.Abs(dx) > Math.Abs(dy) * 1.15;
+            bool vertical = Math.Abs(dy) >= 12 && Math.Abs(dy) > Math.Abs(dx) * 1.15;
+            if (!horizontal && !vertical) return;
             swipeActive = true;
             ReleaseTypingFocus();
-            ConfigurePointerSwipe(dx < 0 ? 1 : -1);
+            if (horizontal) ConfigurePointerSwipe(dx < 0 ? 1 : -1, 0);
+            else ConfigurePointerSwipe(0, dy < 0 ? 1 : -1);
         }
-        int newDirection = dx < 0 ? 1 : -1;
-        if (newDirection != swipeDirection) ConfigurePointerSwipe(newDirection);
-        double width = Math.Max(1, CarouselViewport.ActualWidth);
+
+        int newDx = swipeDx != 0 ? (dx < 0 ? 1 : -1) : 0;
+        int newDy = swipeDy != 0 ? (dy < 0 ? 1 : -1) : 0;
+        if (newDx != swipeDx || newDy != swipeDy) ConfigurePointerSwipe(newDx, newDy);
+
+        double extent = CarouselExtent(swipeDx, swipeDy);
+        double delta = swipeDx != 0 ? dx : dy;
         if (swipeDestinationAvailable)
         {
-            swipeOffset = Math.Clamp(dx, -width, width);
-            pageSlide.X = swipeOffset;
-            previewSlide.X = swipeOffset + swipeDirection * width;
+            swipeOffset = Math.Clamp(delta, -extent, extent);
+            ApplyCarouselOffset(swipeOffset);
         }
         else
         {
-            swipeOffset = Math.Sign(dx) * Math.Min(width * .10, Math.Sqrt(Math.Abs(dx)) * 5);
-            pageSlide.X = swipeOffset;
+            swipeOffset = Math.Sign(delta) * Math.Min(extent * .10, Math.Sqrt(Math.Abs(delta)) * 5);
+            if (swipeDx != 0) { pageSlide.X = swipeOffset; pageSlide.Y = 0; }
+            else { pageSlide.X = 0; pageSlide.Y = swipeOffset; }
             PagePreviewArea.Visibility = Visibility.Collapsed;
         }
     }
 
-    private void ConfigurePointerSwipe(int direction)
+    private void ConfigurePointerSwipe(int dx, int dy)
     {
-        int target = currentPageIndex + direction;
-        int? targetIndex = target >= 0 && target < Settings.WorkspacePages.Count ? target : null;
-        bool create = targetIndex is null && CanCreateWorkspacePage(direction);
-        if (!pageTransitioning) PrepareCarousel(direction, targetIndex, create);
+        int? targetIndex = FindPageIndex(CurrentPage.Col + dx, CurrentPage.Row + dy);
+        bool create = targetIndex is null && CanCreateWorkspacePage(dx, dy);
+        if (!pageTransitioning) PrepareCarousel(dx, dy, targetIndex, create);
         else
         {
-            swipeDirection = direction;
+            swipeDx = dx;
+            swipeDy = dy;
             swipeTargetIndex = targetIndex;
             swipeCreatesPage = create;
             swipeDestinationAvailable = targetIndex is not null || create;
@@ -649,50 +705,70 @@ public partial class MainWindow
         if (!swipeActive) return;
         swipeActive = false;
         double elapsed = Math.Max(.016, Monotonic - swipeStartedAt);
-        double threshold = Math.Min(150, Math.Max(58, CarouselViewport.ActualWidth * .16));
+        double extent = CarouselExtent(swipeDx, swipeDy);
+        double threshold = Math.Min(150, Math.Max(58, extent * .16));
         bool commit = swipeDestinationAvailable &&
             (Math.Abs(swipeOffset) >= threshold || Math.Abs(swipeOffset / elapsed) >= 720 && Math.Abs(swipeOffset) >= 30);
-        double width = Math.Max(1, CarouselViewport.ActualWidth);
         if (Settings.ReduceMotion)
         {
-            if (commit) CommitWorkspacePageChange(swipeDirection, swipeTargetIndex, swipeCreatesPage);
+            if (commit) CommitWorkspacePageChange(swipeDx, swipeDy, swipeTargetIndex, swipeCreatesPage);
             else ResetCarousel(true);
             return;
         }
-        AnimateCarousel(commit ? -swipeDirection * width : 0, commit ? 0 : swipeDirection * width, commit);
+        int step = swipeDx != 0 ? swipeDx : swipeDy;
+        AnimateCarousel(commit ? -step * extent : 0, commit);
     }
 
-    private void AnimateCarousel(double pageTarget, double previewTarget, bool commit)
+    private void AnimateCarousel(double pageTarget, bool commit)
     {
-        double width = Math.Max(1, CarouselViewport.ActualWidth);
-        double distance = Math.Abs(pageTarget - pageSlide.X);
-        var duration = TimeSpan.FromMilliseconds(Math.Clamp(110 + 130 * distance / width, 110, 240));
+        double extent = CarouselExtent(swipeDx, swipeDy);
+        bool horizontal = swipeDx != 0;
+        double current = horizontal ? pageSlide.X : pageSlide.Y;
+        double distance = Math.Abs(pageTarget - current);
+        var duration = TimeSpan.FromMilliseconds(Math.Clamp(110 + 130 * distance / extent, 110, 240));
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var pageAnimation = new DoubleAnimation(pageSlide.X, pageTarget, duration) { EasingFunction = ease };
-        var previewAnimation = new DoubleAnimation(previewSlide.X, previewTarget, duration) { EasingFunction = ease };
+        DependencyProperty axis = horizontal ? TranslateTransform.XProperty : TranslateTransform.YProperty;
+        double previewTarget = commit
+            ? pageTarget + (horizontal ? swipeDx : swipeDy) * extent
+            : (horizontal ? swipeDx : swipeDy) * extent;
+
+        // Clear the idle axis so a vertical move never keeps a leftover horizontal drift.
+        if (horizontal) { pageSlide.Y = 0; previewSlide.Y = 0; }
+        else { pageSlide.X = 0; previewSlide.X = 0; }
+
+        var pageAnimation = new DoubleAnimation(current, pageTarget, duration) { EasingFunction = ease };
+        var previewAnimation = new DoubleAnimation(horizontal ? previewSlide.X : previewSlide.Y, previewTarget, duration) { EasingFunction = ease };
         pageAnimation.Completed += (_, _) =>
         {
             pageSlide.BeginAnimation(TranslateTransform.XProperty, null);
+            pageSlide.BeginAnimation(TranslateTransform.YProperty, null);
             previewSlide.BeginAnimation(TranslateTransform.XProperty, null);
-            if (commit) CommitWorkspacePageChange(swipeDirection, swipeTargetIndex, swipeCreatesPage);
+            previewSlide.BeginAnimation(TranslateTransform.YProperty, null);
+            if (commit) CommitWorkspacePageChange(swipeDx, swipeDy, swipeTargetIndex, swipeCreatesPage);
             else ResetCarousel(true);
         };
-        pageSlide.BeginAnimation(TranslateTransform.XProperty, pageAnimation);
-        previewSlide.BeginAnimation(TranslateTransform.XProperty, previewAnimation);
+        pageSlide.BeginAnimation(axis, pageAnimation);
+        previewSlide.BeginAnimation(axis, previewAnimation);
     }
 
     private void ResetCarousel(bool restoreOverlays)
     {
         pageSlide.BeginAnimation(TranslateTransform.XProperty, null);
+        pageSlide.BeginAnimation(TranslateTransform.YProperty, null);
         previewSlide.BeginAnimation(TranslateTransform.XProperty, null);
+        previewSlide.BeginAnimation(TranslateTransform.YProperty, null);
         pageSlide.X = 0;
+        pageSlide.Y = 0;
         previewSlide.X = 0;
+        previewSlide.Y = 0;
         PagePreviewArea.Visibility = Visibility.Collapsed;
         DetachPreviewCards();
         pageTransitioning = false;
         swipeDestinationAvailable = false;
         swipeTargetIndex = null;
         swipeCreatesPage = false;
+        swipeDx = 0;
+        swipeDy = 0;
         if (!restoreOverlays) return;
         ArrangeCards();
         foreach (var card in cards)
@@ -727,36 +803,80 @@ public partial class MainWindow
     {
         if (!workspacePagesLoaded) return;
         PageButtonStrip.Children.Clear();
-        for (int i = 0; i < Settings.WorkspacePages.Count; i++)
+
+        int minCol = Settings.WorkspacePages.Min(page => page.Col);
+        int maxCol = Settings.WorkspacePages.Max(page => page.Col);
+        int minRow = Settings.WorkspacePages.Min(page => page.Row);
+        int maxRow = Settings.WorkspacePages.Max(page => page.Row);
+        int cols = maxCol - minCol + 1;
+        int rows = maxRow - minRow + 1;
+
+        var grid = new Grid { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        for (int c = 0; c < cols; c++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        for (int r = 0; r < rows; r++) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var byCell = Settings.WorkspacePages
+            .Select((page, index) => (page, index))
+            .ToDictionary(entry => (entry.page.Col, entry.page.Row), entry => entry);
+
+        for (int row = minRow; row <= maxRow; row++)
         {
-            int index = i;
-            var page = Settings.WorkspacePages[i];
-            bool active = i == currentPageIndex;
-            var button = new Button
+            for (int col = minCol; col <= maxCol; col++)
             {
-                Content = active ? "●" : "•", Width = 22, Height = 26, Padding = new Thickness(0), Margin = new Thickness(1, 0, 1, 0),
-                FontFamily = new FontFamily("Consolas"), FontSize = active ? 12 : 9, FontWeight = FontWeights.Bold,
-                Background = active ? (Brush)Application.Current.Resources["Accent"] : Brushes.Transparent,
-                Foreground = active ? (Brush)Application.Current.Resources["AccentInk"] : (Brush)Application.Current.Resources["ChromeInk"],
-                BorderThickness = new Thickness(0),
-                ToolTip = L.T("pages.pageTipDelete", (i + 1).ToString("00", System.Globalization.CultureInfo.InvariantCulture), page.WidgetCount, page.WidgetCount == 1 ? L.T("pages.widgetOne") : L.T("pages.widgetMany")),
-            };
-            AutomationProperties.SetName(button, L.T("pages.openPage", i + 1));
-            button.Click += (_, _) => SwitchWorkspacePage(index);
-            button.MouseRightButtonUp += (_, e) => { DeleteWorkspacePageClick(index); e.Handled = true; };
-            PageButtonStrip.Children.Add(button);
+                if (!byCell.TryGetValue((col, row), out var entry))
+                {
+                    var spacer = new Border { Width = 22, Height = 22, Margin = new Thickness(1), Opacity = 0 };
+                    Grid.SetColumn(spacer, col - minCol);
+                    Grid.SetRow(spacer, row - minRow);
+                    grid.Children.Add(spacer);
+                    continue;
+                }
+
+                int index = entry.index;
+                var page = entry.page;
+                bool active = index == currentPageIndex;
+                string coord = $"{col - minCol + 1},{row - minRow + 1}";
+                var button = new Button
+                {
+                    Content = active ? "●" : "•", Width = 22, Height = 22, Padding = new Thickness(0), Margin = new Thickness(1),
+                    FontFamily = new FontFamily("Consolas"), FontSize = active ? 12 : 9, FontWeight = FontWeights.Bold,
+                    Background = active ? (Brush)Application.Current.Resources["Accent"] : Brushes.Transparent,
+                    Foreground = active ? (Brush)Application.Current.Resources["AccentInk"] : (Brush)Application.Current.Resources["ChromeInk"],
+                    BorderThickness = new Thickness(0),
+                    ToolTip = L.T("pages.pageTipDelete", coord, page.WidgetCount, page.WidgetCount == 1 ? L.T("pages.widgetOne") : L.T("pages.widgetMany")),
+                };
+                AutomationProperties.SetName(button, L.T("pages.openPage", coord));
+                button.Click += (_, _) => SwitchWorkspacePage(index);
+                button.MouseRightButtonUp += (_, e) => { DeleteWorkspacePageClick(index); e.Handled = true; };
+                Grid.SetColumn(button, col - minCol);
+                Grid.SetRow(button, row - minRow);
+                grid.Children.Add(button);
+            }
         }
-        bool leftOpen = CanCreateWorkspacePage(-1), rightOpen = CanCreateWorkspacePage(1);
-        bool hasPrevious = currentPageIndex > 0, hasNext = currentPageIndex < Settings.WorkspacePages.Count - 1;
-        PreviousPageButton.IsEnabled = hasPrevious || leftOpen;
-        NextPageButton.IsEnabled = hasNext || rightOpen;
+        PageButtonStrip.Children.Add(grid);
+
+        bool leftOpen = CanCreateWorkspacePage(-1, 0), rightOpen = CanCreateWorkspacePage(1, 0);
+        bool upOpen = CanCreateWorkspacePage(0, -1), downOpen = CanCreateWorkspacePage(0, 1);
+        bool hasLeft = FindPageIndex(CurrentPage.Col - 1, CurrentPage.Row) is not null;
+        bool hasRight = FindPageIndex(CurrentPage.Col + 1, CurrentPage.Row) is not null;
+        bool hasUp = FindPageIndex(CurrentPage.Col, CurrentPage.Row - 1) is not null;
+        bool hasDown = FindPageIndex(CurrentPage.Col, CurrentPage.Row + 1) is not null;
+
+        PreviousPageButton.IsEnabled = hasLeft || leftOpen;
+        NextPageButton.IsEnabled = hasRight || rightOpen;
+        UpPageButton.IsEnabled = hasUp || upOpen;
+        DownPageButton.IsEnabled = hasDown || downOpen;
         AddPageButton.IsEnabled = rightOpen;
-        PreviousPageButton.ToolTip = hasPrevious ? L.T("pages.previous") : leftOpen ? L.T("pages.createLeft") : L.T("pages.needWidgetLeft");
-        NextPageButton.ToolTip = hasNext ? L.T("pages.next") : rightOpen ? L.T("pages.createRight") : L.T("pages.needWidgetRight");
+        PreviousPageButton.ToolTip = hasLeft ? L.T("pages.previous") : leftOpen ? L.T("pages.createLeft") : L.T("pages.needWidgetLeft");
+        NextPageButton.ToolTip = hasRight ? L.T("pages.next") : rightOpen ? L.T("pages.createRight") : L.T("pages.needWidgetRight");
+        UpPageButton.ToolTip = hasUp ? L.T("pages.up") : upOpen ? L.T("pages.createUp") : L.T("pages.needWidgetUp");
+        DownPageButton.ToolTip = hasDown ? L.T("pages.down") : downOpen ? L.T("pages.createDown") : L.T("pages.needWidgetDown");
         AddPageButton.ToolTip = rightOpen ? L.T("pages.addRight") : L.T("pages.lastEmptyTip");
         ToolTipService.SetShowOnDisabled(AddPageButton, true);
         ToolTipService.SetShowOnDisabled(PreviousPageButton, true);
         ToolTipService.SetShowOnDisabled(NextPageButton, true);
+        ToolTipService.SetShowOnDisabled(UpPageButton, true);
+        ToolTipService.SetShowOnDisabled(DownPageButton, true);
         UpdatePageMeta();
     }
 
@@ -774,24 +894,33 @@ public partial class MainWindow
     internal bool WorkspaceNavigationIsBlocked => IsWorkspaceNavigationBlocked;
     internal WorkspacePage CurrentWorkspacePageForDiagnostics => CurrentPage;
     internal bool CurrentWorkspacePageIsBlank => !CurrentPage.HasContent;
-    internal bool FirstWorkspacePageIsBlank => !Settings.WorkspacePages[0].HasContent;
+    internal bool FirstWorkspacePageIsBlank
+    {
+        get
+        {
+            int minCol = Settings.WorkspacePages.Min(page => page.Col);
+            return Settings.WorkspacePages.Where(page => page.Col == minCol).Any(page => !page.HasContent);
+        }
+    }
     internal bool CurrentWorkspacePageHasTimer => CurrentTimerWidget is not null;
     internal bool EmptyPageIsFrameless => Welcome.BorderThickness == new Thickness(0);
     internal bool AddPageForDiagnostics() => AddBlankWorkspacePage();
     internal void AddTimerForDiagnostics() => AddTimerWidget();
     internal void RemoveTimerForDiagnostics() => RemoveTimerWidget();
     internal void SwitchPageForDiagnostics(int index) => SwitchWorkspacePage(index);
-    internal void NavigatePageForDiagnostics(int direction) => NavigateWorkspace(direction);
-    internal bool ShowSwipeMidpointForDiagnostics(int direction)
+    internal void NavigatePageForDiagnostics(int direction) => NavigateWorkspace(direction, 0);
+    internal void NavigatePageForDiagnostics(int dx, int dy) => NavigateWorkspace(dx, dy);
+    internal bool ShowSwipeMidpointForDiagnostics(int direction) => ShowSwipeMidpointForDiagnostics(direction, 0);
+    internal bool ShowSwipeMidpointForDiagnostics(int dx, int dy)
     {
-        int target = currentPageIndex + direction;
-        if (pageTransitioning || target < 0 || target >= Settings.WorkspacePages.Count) return false;
-        PrepareCarousel(direction, target, false);
+        int? target = FindPageIndex(CurrentPage.Col + dx, CurrentPage.Row + dy);
+        if (pageTransitioning || target is null) return false;
+        PrepareCarousel(dx, dy, target, false);
         swipeActive = true;
-        swipeOffset = -direction * Math.Max(1, CarouselViewport.ActualWidth) * .48;
-        pageSlide.X = swipeOffset;
-        previewSlide.X = swipeOffset + direction * Math.Max(1, CarouselViewport.ActualWidth);
-        return PagePreviewArea.Visibility == Visibility.Visible && Math.Abs(pageSlide.X) > 20;
+        double extent = CarouselExtent(dx, dy);
+        swipeOffset = -(dx != 0 ? dx : dy) * extent * .48;
+        ApplyCarouselOffset(swipeOffset);
+        return PagePreviewArea.Visibility == Visibility.Visible && Math.Abs(swipeOffset) > 20;
     }
     internal void CancelSwipeForDiagnostics()
     {

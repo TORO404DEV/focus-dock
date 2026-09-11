@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 
@@ -182,11 +183,28 @@ public sealed class ExternalWindowHost : HwndHost
     private nint container;
     private WindowLease? lease;
     private bool disposed;
+    private nint foreignWndProc;
+    private Win32.WndProc? foreignSubclass;
     public bool IsConnecting { get; private set; }
     public double CropTop { get; set; }
     public double CropBottom { get; set; }
     public nint ForeignHandle => lease?.Handle ?? 0;
     public bool Alive => lease?.IsAlive ?? false;
+
+    /// <summary>
+    /// True when Win32 keyboard focus sits on this hosted window (or one of its children).
+    /// WPF cannot see that caret, so page shortcuts must yield while it is set.
+    /// </summary>
+    public bool HasKeyboardFocus
+    {
+        get
+        {
+            if (lease is null || !lease.IsAlive) return false;
+            var focus = Win32.GetFocus();
+            return focus != 0 && (focus == lease.Handle || Win32.IsChild(lease.Handle, focus));
+        }
+    }
+
     public void BringToFront()
     {
         if (lease is null || !lease.IsAlive) return;
@@ -206,7 +224,85 @@ public sealed class ExternalWindowHost : HwndHost
         }
         Win32.SetWindowPos(lease.Handle, Win32.HWND_TOP, 0, 0, 0, 0,
             Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
+        FocusForeign();
     }
+
+    /// <summary>
+    /// Hand keyboard focus to the embedded app. Mouse clicks reach a WS_CHILD guest on their
+    /// own; keys only follow SetFocus, and Chromium/Electron guests (Cursor) are picky about it.
+    /// </summary>
+    public void FocusForeign()
+    {
+        if (lease is null || !lease.IsAlive) return;
+        nint foreign = lease.Handle;
+        nint root = Handle != 0 ? Win32.GetAncestor(Handle, Win32.GA_ROOT) : 0;
+        uint thisThread = Win32.GetCurrentThreadId();
+        uint foreignThread = Win32.GetWindowThreadProcessId(foreign, out _);
+        nint foreground = Win32.GetForegroundWindow();
+        uint foreThread = foreground == 0 ? 0 : Win32.GetWindowThreadProcessId(foreground, out _);
+
+        bool linkedFore = false, linkedForeign = false;
+        if (foreThread != 0 && foreThread != thisThread)
+            linkedFore = Win32.AttachThreadInput(thisThread, foreThread, true);
+        if (foreignThread != 0 && foreignThread != thisThread && foreignThread != foreThread)
+            linkedForeign = Win32.AttachThreadInput(thisThread, foreignThread, true);
+        try
+        {
+            if (root != 0) Win32.SetForegroundWindow(root);
+            nint target = DeepestFocusTarget(foreign);
+            Win32.SetFocus(target);
+        }
+        finally
+        {
+            if (linkedForeign) Win32.AttachThreadInput(thisThread, foreignThread, false);
+            if (linkedFore) Win32.AttachThreadInput(thisThread, foreThread, false);
+        }
+    }
+
+    private static nint DeepestFocusTarget(nint root)
+    {
+        // Electron/Chromium parks typing in a nested child. Prefer the deepest enabled
+        // visible descendant so SetFocus lands where the caret actually lives.
+        nint current = root;
+        for (var depth = 0; depth < 12; depth++)
+        {
+            nint child = Win32.GetWindow(current, Win32.GW_CHILD);
+            nint pick = 0;
+            while (child != 0)
+            {
+                if (Win32.IsWindowVisible(child) && Win32.IsWindowEnabled(child)) pick = child;
+                child = Win32.GetWindow(child, Win32.GW_HWNDNEXT);
+            }
+            if (pick == 0) break;
+            current = pick;
+        }
+        return current;
+    }
+
+    private void HookForeignInput()
+    {
+        UnhookForeignInput();
+        if (lease is null || !lease.IsAlive) return;
+        foreignSubclass = ForeignWndProc;
+        foreignWndProc = Win32.SetWindowLongPtr(lease.Handle, Win32.GWLP_WNDPROC, Marshal.GetFunctionPointerForDelegate(foreignSubclass));
+    }
+
+    private void UnhookForeignInput()
+    {
+        if (foreignWndProc == 0 || lease is null) { foreignWndProc = 0; foreignSubclass = null; return; }
+        if (lease.IsAlive) Win32.SetWindowLongPtr(lease.Handle, Win32.GWLP_WNDPROC, foreignWndProc);
+        foreignWndProc = 0;
+        foreignSubclass = null;
+    }
+
+    private nint ForeignWndProc(nint hwnd, uint msg, nint wParam, nint lParam)
+    {
+        // Clicks land on the guest HWND (WPF never sees them over airspace). Steal keyboard
+        // focus on mouse activate / button down so typing follows the click.
+        if (msg is 0x0021 or 0x0201 or 0x0203 or 0x0204 or 0x0206) FocusForeign();
+        return foreignWndProc == 0 ? 0 : Win32.CallWindowProc(foreignWndProc, hwnd, msg, wParam, lParam);
+    }
+
     protected override HandleRef BuildWindowCore(HandleRef parent)
     {
         disposed = false;
@@ -219,7 +315,10 @@ public sealed class ExternalWindowHost : HwndHost
     public void Attach(nint hwnd, string journal)
     {
         if (container == 0) throw new InvalidOperationException(PomoDock.Core.L.T("lease.waitVisible"));
+        UnhookForeignInput();
         lease?.Dispose(); lease = new WindowLease(hwnd, container, journal); Resize();
+        HookForeignInput();
+        FocusForeign();
     }
     public async Task AttachAsync(nint hwnd, string journal)
     {
@@ -241,12 +340,15 @@ public sealed class ExternalWindowHost : HwndHost
                 throw last ?? new InvalidOperationException("No se pudo preparar la ventana.");
             });
             if (disposed) { await Task.Run(next.Dispose); return; }
+            UnhookForeignInput();
             lease = next;
             Resize();
+            HookForeignInput();
+            FocusForeign();
         }
         finally { IsConnecting = false; }
     }
-    public void Detach() { lease?.Dispose(); lease = null; }
+    public void Detach() { UnhookForeignInput(); lease?.Dispose(); lease = null; }
     public void Resize()
     {
         if (lease is null || !lease.IsAlive) return;
@@ -254,6 +356,11 @@ public sealed class ExternalWindowHost : HwndHost
         var scale = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleY;
         int top = (int)(CropTop * scale), bottom = (int)(CropBottom * scale);
         Win32.SetWindowPos(lease.Handle, 0, 0, -top, Math.Max(1, rect.Right), Math.Max(1, rect.Bottom + top + bottom), Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE | 0x4000); // SWP_ASYNCWINDOWPOS: never wait for the foreign UI on resize.
+    }
+    protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
+    {
+        base.OnGotKeyboardFocus(e);
+        FocusForeign();
     }
     protected override void OnWindowPositionChanged(Rect rect) { base.OnWindowPositionChanged(rect); Resize(); }
     protected override void DestroyWindowCore(HandleRef hwnd) { disposed = true; Detach(); Win32.DestroyWindow(hwnd.Handle); }

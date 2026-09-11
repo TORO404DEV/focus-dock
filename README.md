@@ -75,12 +75,13 @@ need PomoDock to run at the same permission level, or may refuse re-parenting.
 
 ## Pages that move like a launcher
 
-Every page is a separate free canvas. Drag empty space sideways, use the floating
-page dock, the mouse wheel over it, or `Ctrl + ← / →`. PomoDock keeps populated pages
-alive and creates a blank page when you move beyond a filled edge.
+Every page is a separate free canvas on an infinite grid. Drag empty space in any
+direction, use the floating page dock, the mouse wheel over it (`Shift` for vertical),
+or `Ctrl + ← / → / ↑ / ↓`. PomoDock keeps populated pages alive and creates a blank
+page when you move beyond a filled edge — left, right, up, or down.
 
 <p align="center">
-  <img src="./docs/media/canvas-pages.png" width="620" alt="PomoDock canvas moving horizontally between workspace pages">
+  <img src="./docs/media/canvas-pages.png" width="620" alt="PomoDock canvas moving between workspace pages">
 </p>
 
 <!-- GIF SLOT 3: replace canvas-pages.png above with docs/media/canvas-pages.gif. -->
@@ -211,7 +212,8 @@ previews; the final stable result is inserted at the caret when recording stops.
 | Shortcut | Action |
 |---|---|
 | `Space` | Start or pause the timer when no text field is active |
-| `Ctrl + ← / →` | Previous or next workspace page |
+| `Ctrl + ← / → / ↑ / ↓` | Move to a neighbor page (creates one past a filled edge) |
+| `Shift + wheel` on page dock | Move vertically between pages |
 | `F11` | Fullscreen on the current monitor |
 | `Esc` | Leave fullscreen or close the active modal |
 | `1–8` | Choose a widget in the launcher |

@@ -101,6 +101,10 @@ public sealed class WorkspacePage
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = "PÁGINA";
+    /// <summary>Column on the infinite page grid. Neighbors sit at Col ± 1 on the same Row.</summary>
+    public int Col { get; set; }
+    /// <summary>Row on the infinite page grid. Neighbors sit at Row ± 1 on the same Col.</summary>
+    public int Row { get; set; }
     public List<WidgetConfig> Widgets { get; set; } = [];
     public WidgetConfig? TimerWidget { get; set; }
     public bool TimerPositionCustomized { get; set; }
@@ -204,7 +208,25 @@ public sealed class Settings
                 if (string.IsNullOrWhiteSpace(page.TimerWidget.Title)) page.TimerWidget.Title = "POMODORO";
             }
         }
+        EnsureWorkspacePageCoordinates();
         ActiveWorkspacePage = Math.Clamp(ActiveWorkspacePage, 0, WorkspacePages.Count - 1);
+    }
+
+    /// <summary>
+    /// Legacy saves were a flat left-to-right list with no Col/Row. Those deserialize as every
+    /// page sitting on (0,0). Spread them across row 0 so navigation keeps working, and repair
+    /// any later collision the same way.
+    /// </summary>
+    private void EnsureWorkspacePageCoordinates()
+    {
+        if (WorkspacePages.Count == 0) return;
+        bool collided = WorkspacePages.GroupBy(page => (page.Col, page.Row)).Any(group => group.Count() > 1);
+        if (!collided) return;
+        for (int i = 0; i < WorkspacePages.Count; i++)
+        {
+            WorkspacePages[i].Col = i;
+            WorkspacePages[i].Row = 0;
+        }
     }
     public double Duration(Phase phase) => 60 * (phase == Phase.Focus ? FocusMinutes : phase == Phase.ShortBreak ? ShortMinutes : LongMinutes);
 }

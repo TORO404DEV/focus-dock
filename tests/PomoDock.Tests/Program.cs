@@ -88,6 +88,41 @@ Test("legacy canvas migrates to a first workspace page", () => {
  Assert(settings.WorkspacePages[0].HasContent && settings.WorkspacePages[0].WidgetCount == 2);
  var blank = new WorkspacePage { Name = "PÁGINA 02" }; Assert(!blank.HasContent && blank.WidgetCount == 0);
 });
+Test("legacy horizontal pages spread across row 0 with unique columns", () => {
+ // Old saves had no Col/Row, so every page deserializes on (0,0). Validate must fan them out.
+ var settings = new Settings
+ {
+  WorkspacePages =
+  [
+   new() { Name = "INICIO", Widgets = [new WidgetConfig { Kind = "notes", Title = "A" }] },
+   new() { Name = "PÁGINA 02", Widgets = [new WidgetConfig { Kind = "notes", Title = "B" }] },
+   new() { Name = "PÁGINA 03" }
+  ]
+ };
+ settings.Validate();
+ Equal(0, settings.WorkspacePages[0].Row);
+ Equal(0, settings.WorkspacePages[1].Row);
+ Equal(0, settings.WorkspacePages[2].Row);
+ Equal(0, settings.WorkspacePages[0].Col);
+ Equal(1, settings.WorkspacePages[1].Col);
+ Equal(2, settings.WorkspacePages[2].Col);
+ Assert(settings.WorkspacePages.Select(p => (p.Col, p.Row)).Distinct().Count() == 3);
+});
+Test("existing grid coordinates survive validation when already unique", () => {
+ var settings = new Settings
+ {
+  WorkspacePages =
+  [
+   new() { Name = "INICIO", Col = 0, Row = 0, Widgets = [new WidgetConfig { Kind = "notes", Title = "Home" }] },
+   new() { Name = "ARRIBA", Col = 0, Row = -1 },
+   new() { Name = "DERECHA", Col = 1, Row = 0 }
+  ]
+ };
+ settings.Validate();
+ Equal(0, settings.WorkspacePages[0].Col); Equal(0, settings.WorkspacePages[0].Row);
+ Equal(0, settings.WorkspacePages[1].Col); Equal(-1, settings.WorkspacePages[1].Row);
+ Equal(1, settings.WorkspacePages[2].Col); Equal(0, settings.WorkspacePages[2].Row);
+});
 Test("weekly agenda series lands only on its own weekdays", () => {
  var monday = new DateTime(2026, 9, 7, 9, 0, 0);
  var meeting = new AgendaEvent { Title = "Daily", Start = monday, Minutes = 30, Repeat = RepeatKind.Weekly, Days = [DayOfWeek.Monday, DayOfWeek.Wednesday] };

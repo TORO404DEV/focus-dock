@@ -12,8 +12,11 @@
    </Grid>
    <Grid Grid.Row="1" Margin="16,8,16,8">
     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-    <TextBlock x:Name="HeaderDateText" Text="MIÉ 09 SEP" FontFamily="Consolas" FontSize="13" FontWeight="Black" VerticalAlignment="Center" TextWrapping="NoWrap"/>
-    <TextBlock x:Name="HeaderTimeText" Grid.Column="1" Text="00:00:00" FontFamily="Consolas" FontSize="11" FontWeight="Black" Foreground="{DynamicResource Muted}" Margin="12,1,0,0" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+     <TextBlock x:Name="HeaderDateText" Text="MIÉ 09 SEP" FontFamily="Consolas" FontSize="18" FontWeight="Black" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+     <TextBlock x:Name="HeaderTimeText" Text="00:00:00" FontFamily="Consolas" FontSize="18" FontWeight="Black" Foreground="{DynamicResource Muted}" Margin="14,0,0,0" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+     <TextBlock x:Name="HeaderTimerText" Text="" FontFamily="Consolas" FontSize="18" FontWeight="Black" Foreground="{DynamicResource Accent}" Margin="18,0,0,0" VerticalAlignment="Center" TextWrapping="NoWrap" Visibility="Collapsed"/>
+    </StackPanel>
     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
      <Button x:Name="AgentButton" Content="✦" Click="AgentClick" FontSize="15" Padding="6,3" ToolTip="Agente local"/>
      <Button x:Name="ReportButton" Content="▥" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="{DynamicResource AccentInk}" FontSize="16" Padding="6,3"/>
@@ -108,11 +111,13 @@
     </Grid.Resources>
     <Border x:Name="PageDockSurface" HorizontalAlignment="Center" VerticalAlignment="Center" Background="{DynamicResource Chrome}" BorderBrush="{DynamicResource Edge}" BorderThickness="1" CornerRadius="19" Padding="5,3">
      <StackPanel Orientation="Horizontal">
+      <Button x:Name="UpPageButton" Style="{StaticResource PageDockButton}" Content="˄" Click="UpPageClick" FontSize="16"/>
       <Button x:Name="PreviousPageButton" Style="{StaticResource PageDockButton}" Content="‹" Click="PreviousPageClick" FontSize="19"/>
-      <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" VerticalAlignment="Center" MaxWidth="280">
+      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" VerticalAlignment="Center" MaxWidth="280" MaxHeight="72">
        <StackPanel x:Name="PageButtonStrip" Orientation="Horizontal"/>
       </ScrollViewer>
       <Button x:Name="NextPageButton" Style="{StaticResource PageDockButton}" Content="›" Click="NextPageClick" FontSize="19"/>
+      <Button x:Name="DownPageButton" Style="{StaticResource PageDockButton}" Content="˅" Click="DownPageClick" FontSize="16"/>
       <Border Width="1" Height="20" Background="{DynamicResource ChromeInk}" Opacity="0.28" Margin="5,0"/>
       <Button x:Name="AddPageButton" Style="{StaticResource PageDockButton}" Content="＋" Click="AddPageClick" FontSize="16"/>
      </StackPanel>
