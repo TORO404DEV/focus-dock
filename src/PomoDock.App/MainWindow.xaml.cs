@@ -49,6 +49,7 @@ public partial class MainWindow : Window
     private ReportWindow? reportContent;
     private bool timerPointerPressed, timerWantsFront;
     private readonly VoiceDictation voiceDictation;
+    private readonly AgentChat agentChat;
     public bool DiagnosticMode { get; }
     public static double Monotonic => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
     private static string ResolveDataPath()
@@ -73,6 +74,7 @@ public partial class MainWindow : Window
         Sounds = new(Settings);
         InitializeComponent();
         voiceDictation = VoiceDictation.Attach(this);
+        agentChat = AgentChat.Attach(this);
         InitializeNotifications();
         ApplyLanguage();
         appliedTimerAtBottom = Settings.TimerAtBottom;
@@ -254,6 +256,29 @@ public partial class MainWindow : Window
         UpdateTimer(); SaveState();
     }
     private void ReportClick(object sender, RoutedEventArgs e) => ShowReportModal();
+    private void AgentClick(object sender, RoutedEventArgs e) => agentChat.Toggle(AgentButton);
+
+    internal void AgentToggleTimer() => ToggleTimer();
+    internal void AgentSkip()
+    {
+        Sounds.Button("skip"); Sounds.StopNoise();
+        var next = Timer.NextPhase();
+        Timer.Select(next, DateTimeOffset.UtcNow, Monotonic);
+        UpdateTimer(); AnimateTimer(); SaveState();
+    }
+    internal void AgentSetPhase(Phase phase)
+    {
+        if (phase == Timer.Phase) return;
+        Sounds.Button("phase"); Sounds.StopNoise();
+        Timer.Select(phase, DateTimeOffset.UtcNow, Monotonic);
+        UpdateTimer(); AnimateTimer(); SaveState();
+    }
+    internal void AgentAddNotesWidget(WidgetConfig config) => AddCard(config, true);
+    internal void AgentRemoveWidget(Guid id)
+    {
+        var card = cards.FirstOrDefault(c => c.Config.Id == id);
+        if (card is not null) RemoveCard(card);
+    }
 
     private void ShowReportModal()
     {
@@ -374,6 +399,7 @@ public partial class MainWindow : Window
         MaximizeButton.ToolTip = L.T("chrome.maximize");
         CloseButton.ToolTip = L.T("chrome.closeRelease");
         ReportButton.ToolTip = L.T("chrome.report");
+        AgentButton.ToolTip = L.T("chrome.agent");
         TasksButton.ToolTip = L.T("chrome.tasks");
         RefreshNotificationChrome();
         SettingsButton.ToolTip = L.T("chrome.settings");
@@ -391,6 +417,7 @@ public partial class MainWindow : Window
         ResetButton.ToolTip = L.T("timer.reset");
         SkipButton.ToolTip = L.T("timer.skip");
         voiceDictation.RefreshLanguage();
+        agentChat.RefreshLanguage();
         UpdateHeaderClock();
     }
     private void LayoutsClick(object sender, RoutedEventArgs e) { ShowWorkspaceDialog(new LayoutsWindow(this)); }
@@ -969,7 +996,7 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         pageSwipePoll.Stop();
-        CancelTimerGesture(); CloseNotificationCenter(); HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll(); voiceDictation.Dispose();
+        CancelTimerGesture(); CloseNotificationCenter(); HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll(); agentChat.Dispose(); voiceDictation.Dispose();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         try

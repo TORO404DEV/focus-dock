@@ -135,6 +135,8 @@ public sealed class Settings
     public int EffectsVolume { get; set; } = 45;
     /// <summary>Interface language: a code from <see cref="Strings.Catalog"/>, or "system".</summary>
     public string Language { get; set; } = "system";
+    /// <summary>Local agent endpoint, model and approval policy.</summary>
+    public Agent.AgentSettings Agent { get; set; } = new();
     public bool Dark { get; set; }
     public bool ReduceMotion { get; set; }
     public bool AlwaysOnTop { get; set; }
@@ -200,6 +202,8 @@ public sealed class Settings
             }
         }
         ActiveWorkspacePage = Math.Clamp(ActiveWorkspacePage, 0, WorkspacePages.Count - 1);
+        Agent ??= new Agent.AgentSettings();
+        Agent.Validate();
     }
     public double Duration(Phase phase) => 60 * (phase == Phase.Focus ? FocusMinutes : phase == Phase.ShortBreak ? ShortMinutes : LongMinutes);
 }
