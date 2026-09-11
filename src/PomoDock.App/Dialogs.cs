@@ -87,11 +87,11 @@ internal static class Dialogs
     }
     public static int ChooseWidget(MainWindow owner)
     {
-        var window = Window(owner, L.T("widgets.addTitle"), 700, 680); window.MinWidth = 600; window.MinHeight = 620;
+        var window = Window(owner, L.T("widgets.addTitle"), 760, 740); window.MinWidth = 640; window.MinHeight = 640;
         var root = new Grid { Margin = new Thickness(28, 22, 28, 24) }; root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); window.Content = root;
         var intro = new StackPanel(); intro.Children.Add(Heading(L.T("widgets.addTitle"))); intro.Children.Add(new TextBlock { Text = L.T("widgets.addHelp"), FontSize = 12, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, -8, 0, 20) }); Grid.SetRow(intro, 0); root.Children.Add(intro);
         var guide = new TextBlock { Text = L.T("widgets.addGuide"), FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 8) }; Grid.SetRow(guide, 1); root.Children.Add(guide);
-        var launcher = new UniformGrid { Columns = 2, Rows = 4 };
+        var launcher = new UniformGrid { Columns = 3, Rows = 3 };
         var entries = new[]
         {
             ("▣", L.T("widgets.windowTitle"), L.T("widgets.windowHelp"), "1"),
@@ -101,7 +101,8 @@ internal static class Dialogs
             ("☑", L.T("widgets.todoTitle"), L.T("widgets.todoHelp"), "5"),
             ("↻", L.T("widgets.habitsTitle"), L.T("widgets.habitsHelp"), "6"),
             ("▦", L.T("widgets.calendarTitle"), L.T("widgets.calendarHelp"), "7"),
-            ("◷", L.T("widgets.timerTitle"), L.T("widgets.timerHelp"), "8")
+            ("◈", L.T("widgets.financeTitle"), L.T("widgets.financeHelp"), "8"),
+            ("◷", L.T("widgets.timerTitle"), L.T("widgets.timerHelp"), "9")
         };
         int selected = -1;
         for (int i = 0; i < entries.Length; i++)
@@ -121,7 +122,15 @@ internal static class Dialogs
             launch.SetValue(AutomationProperties.NameProperty, entry.Item2); launch.Click += (_, _) => { selected = index; window.DialogResult = true; }; launcher.Children.Add(launch);
         }
         Grid.SetRow(launcher, 2); root.Children.Add(launcher);
-        window.PreviewKeyDown += (_, e) => { if (e.Key is >= Key.D1 and <= Key.D8) { selected = (int)e.Key - (int)Key.D1; if (selected != entries.Length - 1 || owner.CanAddTimerWidget) window.DialogResult = true; e.Handled = true; } };
+        window.PreviewKeyDown += (_, e) =>
+        {
+            int key = e.Key is >= Key.D1 and <= Key.D9 ? (int)e.Key - (int)Key.D1
+                : e.Key is >= Key.NumPad1 and <= Key.NumPad9 ? (int)e.Key - (int)Key.NumPad1 : -1;
+            if (key < 0 || key >= entries.Length) return;
+            selected = key;
+            if (selected != entries.Length - 1 || owner.CanAddTimerWidget) window.DialogResult = true;
+            e.Handled = true;
+        };
         window.Loaded += (_, _) => { Modalize(window); Keyboard.Focus(launcher.Children[0]); }; window.ShowDialog(); return selected;
     }
     public static WindowCandidate? PickWindow(Window owner)

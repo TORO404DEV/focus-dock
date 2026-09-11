@@ -693,7 +693,8 @@ public partial class MainWindow : Window
         else if (choice == 4) AddCard(new() { Kind = "todo", Title = "TO DO" }, true);
         else if (choice == 5) AddCard(new() { Kind = "habits", Title = L.T("widgets.kindHabits") }, true);
         else if (choice == 6) AddCard(new() { Kind = "calendar", Title = "AGENDA" }, true);
-        else if (choice == 7) AddTimerWidget();
+        else if (choice == 7) AddCard(new() { Kind = "finance", Title = L.T("widgets.kindFinance") }, true);
+        else if (choice == 8) AddTimerWidget();
     }
     private void AddWindowClick(object sender, RoutedEventArgs e)
     {
@@ -718,6 +719,7 @@ public partial class MainWindow : Window
             "todo" => 400,
             "habits" => 390,
             "calendar" => 520,
+            "finance" => 460,
             _ => 300
         };
         if (newPlacement)

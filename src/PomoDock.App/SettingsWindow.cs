@@ -191,7 +191,7 @@ public sealed class SettingsWindow : Window
         PaintRank();
 
         tabs.Children.Clear();
-        foreach (var (key, label) in new[] { ("rhythm", L.T("settings.tabRhythm")), ("sound", L.T("settings.tabSound")), ("look", L.T("settings.tabLook")), ("space", L.T("settings.tabSpace")) })
+        foreach (var (key, label) in new[] { ("rhythm", L.T("settings.tabRhythm")), ("sound", L.T("settings.tabSound")), ("look", L.T("settings.tabLook")), ("agent", L.T("settings.tabAgent")), ("space", L.T("settings.tabSpace")) })
         {
             bool active = section == key;
             var tab = new Button
@@ -209,6 +209,7 @@ public sealed class SettingsWindow : Window
         {
             case "sound": BuildSound(); break;
             case "look": BuildLook(); break;
+            case "agent": BuildAgent(); break;
             case "space": BuildSpace(); break;
             default: BuildRhythm(); break;
         }
@@ -329,6 +330,42 @@ public sealed class SettingsWindow : Window
         body.Children.Add(Swatches(L.T("settings.colorShort"), "", settings.ShortBreakColor, value => settings.ShortBreakColor = value));
         body.Children.Add(Swatches(L.T("settings.colorLong"), "", settings.LongBreakColor, value => settings.LongBreakColor = value));
         body.Children.Add(Swatches(L.T("settings.colorAccent"), L.T("settings.colorAccentHelp"), settings.AccentColor, value => settings.AccentColor = value));
+    }
+
+    private void BuildAgent()
+    {
+        body.Children.Add(Lead(L.T("settings.agentLead"), L.T("settings.agentHelp")));
+        body.Children.Add(Toggle(L.T("settings.agentMemory"), L.T("settings.agentMemoryHelp"), settings.AgentMemoryEnabled, value =>
+        {
+            settings.AgentMemoryEnabled = value;
+            var book = new AgentMemoryStore(owner.Store);
+            book.Book.Enabled = value;
+            book.Save();
+        }));
+        body.Children.Add(Toggle(L.T("settings.agentSendVoice"), L.T("settings.agentSendVoiceHelp"), settings.AgentSendVoiceOnRelease, value => settings.AgentSendVoiceOnRelease = value));
+        var memory = new AgentMemoryStore(owner.Store);
+        var facts = memory.Book.Search("", 20);
+        if (facts.Count == 0) body.Children.Add(Note(L.T("settings.agentMemoryEmpty")));
+        foreach (var item in facts)
+        {
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.Children.Add(new TextBlock { Text = item.Content, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center });
+            var forget = new Button { Content = L.T("settings.agentForget"), FontSize = 8, Padding = new Thickness(9, 5, 9, 5), Margin = new Thickness(8, 0, 0, 0) };
+            var copy = item;
+            forget.Click += (_, _) => { memory.Book.Forget(copy.Content); memory.Save(); Render(); };
+            Grid.SetColumn(forget, 1); row.Children.Add(forget);
+            body.Children.Add(row);
+        }
+        var export = new Button { Content = L.T("settings.agentExportMemory"), FontSize = 11, Padding = new Thickness(13, 9, 13, 9), HorizontalAlignment = HorizontalAlignment.Left };
+        export.Click += (_, _) =>
+        {
+            var path = System.IO.Path.Combine(owner.Store.DirectoryPath, "agent-memory.json");
+            System.IO.File.WriteAllText(path, memory.ExportJson());
+            statusLine.Text = path;
+        };
+        body.Children.Add(export);
     }
 
     /// <summary>

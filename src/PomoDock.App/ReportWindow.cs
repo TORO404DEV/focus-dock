@@ -783,7 +783,8 @@ public sealed class ReportWindow : Window
                 int habits = HabitStore.For(owner.Store).Merge(backup.Habits);
                 int events = AgendaStore.For(owner.Store).Merge(backup.Agenda);
                 int notes = NoteArchiveStore.For(owner.Store).Merge(backup.Notes);
-                owner.Status(L.T("report.imported", count.ToString("N0", Strings.Culture), habits.ToString("N0", Strings.Culture), events.ToString("N0", Strings.Culture), notes.ToString("N0", Strings.Culture)));
+                int finance = FinanceStore.For(owner.Store).Merge(backup.Finance);
+                owner.Status(L.T("report.imported", count.ToString("N0", Strings.Culture), habits.ToString("N0", Strings.Culture), events.ToString("N0", Strings.Culture), notes.ToString("N0", Strings.Culture), finance.ToString("N0", Strings.Culture)));
             }
             else
             {

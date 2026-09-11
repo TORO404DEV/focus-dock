@@ -84,6 +84,7 @@ public sealed class WidgetCard : Border
         else if (config.Kind == "todo") BuildTodo();
         else if (config.Kind == "habits") BuildHabits();
         else if (config.Kind == "calendar") BuildCalendar();
+        else if (config.Kind == "finance") BuildFinance();
         else
         {
             // Width changes the type scale just as much as height. Rebuild in small buckets so
@@ -207,6 +208,7 @@ public sealed class WidgetCard : Border
         "todo" => L.T("widgets.kindTodo"),
         "habits" => L.T("widgets.kindHabits"),
         "calendar" => L.T("widgets.kindCalendar"),
+        "finance" => L.T("widgets.kindFinance"),
         "notes" => L.T("widgets.kindNote"),
         _ => L.T("widgets.kindText")
     };
@@ -259,6 +261,11 @@ public sealed class WidgetCard : Border
         // Habits live in the shared book, not in this card: the widget is only a lens.
         body.Children.Clear();
         body.Children.Add(new HabitsBoard(owner, Config));
+    }
+    private void BuildFinance()
+    {
+        body.Children.Clear();
+        body.Children.Add(new FinanceBoard(owner, Config));
     }
     private void BuildWindow()
     {
@@ -334,12 +341,23 @@ public sealed class WidgetCard : Border
         if (Config.Kind == "notes") { NotesHistory.Show(owner, Config.Id); return; }
         var options = Config.Kind == "window" ? new[] { "Renombrar", "Recortar barras superior / inferior", "Liberar ventana", "Conectar otra ventana" }
             : Config.Kind == "web" ? [L.T("widgets.menuRename"), L.T("widgets.menuChangeUrl"), L.T("widgets.menuReload"), Config.KeepAlive ? L.T("widgets.menuAllowSleep") : L.T("widgets.menuKeepAlive")]
-            : Config.Kind == "stats" ? [L.T("widgets.menuRename"), L.T("widgets.menuGoal", owner.Settings.DailyGoalMinutes)] : [L.T("widgets.menuRename")];
+            : Config.Kind == "stats" ? [L.T("widgets.menuRename"), L.T("widgets.menuGoal", owner.Settings.DailyGoalMinutes)]
+            : Config.Kind == "finance" ? [L.T("widgets.menuRename"), L.T("finance.currency")]
+            : [L.T("widgets.menuRename")];
         var choice = Dialogs.Choose(owner, "OPCIONES DEL WIDGET", options);
         if (choice == 0)
         {
             var name = Dialogs.Prompt(owner, "NOMBRE DEL WIDGET", "Nombre", Config.Title);
             if (!string.IsNullOrWhiteSpace(name)) { Config.Title = name; title.Text = $"{KindLabel()} / {name}"; }
+        }
+        else if (Config.Kind == "finance")
+        {
+            if (choice == 1)
+            {
+                var ledger = FinanceStore.For(owner.Store);
+                var code = Dialogs.Prompt(owner, L.T("finance.currency"), L.T("finance.currencyLabel"), ledger.Book.Currency);
+                if (!string.IsNullOrWhiteSpace(code)) ledger.SetCurrency(code);
+            }
         }
         else if (Config.Kind == "stats")
         {

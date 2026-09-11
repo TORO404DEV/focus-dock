@@ -177,6 +177,7 @@ internal static class Diagnostics
             main.AddCard(new() { Kind = "habits", Title = "HÁBITOS" }, true);
             SeedAgenda(main.Store);
             main.AddCard(new() { Kind = "calendar", Title = "AGENDA" }, true);
+            main.AddCard(new() { Kind = "finance", Title = "FINANZAS" }, true);
             await Task.Delay(100); Render(main, Path.Combine(directory, "widgets.png"));
 
             // Notes: a strike line that really draws, a checklist that takes clicks, a history that outlives the card.
@@ -427,7 +428,7 @@ internal static class Diagnostics
             }
             var repeatedQuery = """{"action":"get_state","arguments":{"scope":"todos"},"message":""}""";
             var stalledAgent = new PomoAgent(main, _ => new ScriptedAgentConversation(repeatedQuery, repeatedQuery, repeatedQuery));
-            var stalled = await stalledAgent.RunAsync("repite la misma consulta", null, CancellationToken.None);
+            var stalled = await stalledAgent.InterpretAsync("repite la misma consulta", [], null, CancellationToken.None);
             Assert(stalled.Message.Contains("repet", StringComparison.OrdinalIgnoreCase), "local agent detects a stalled repeated-tool loop before exhausting its budget");
             Assert(AgentToolbox.KindOf("focus.summarize") == AgentToolKind.Query
                 && AgentToolbox.KindOf("add_note") == AgentToolKind.Mutation
@@ -456,7 +457,9 @@ internal static class Diagnostics
     private sealed class ScriptedAgentConversation(params string[] turns) : IAgentConversation
     {
         private int index;
-        public Task<string> AskAsync(string text, CancellationToken cancellationToken)
+        public Task<string> AskAsync(string text, CancellationToken cancellationToken) =>
+            AskAsync(text, null, cancellationToken);
+        public Task<string> AskAsync(string text, IProgress<string>? tokens, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (index >= turns.Length) throw new InvalidOperationException("The scripted agent requested an unexpected extra turn.");

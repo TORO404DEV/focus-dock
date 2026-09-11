@@ -9,12 +9,14 @@ using LLama;
 using LLama.Common;
 using LLama.Sampling;
 using LLama.Transformers;
+using PomoDock.Core;
 
 namespace PomoDock.App;
 
 internal interface IAgentConversation : IDisposable
 {
     Task<string> AskAsync(string text, CancellationToken cancellationToken);
+    Task<string> AskAsync(string text, IProgress<string>? tokens, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -23,9 +25,9 @@ internal interface IAgentConversation : IDisposable
 /// </summary>
 internal sealed class LocalAgentModel : IDisposable
 {
-    public const string FileName = "Qwen3-4B-Q4_K_M.gguf";
-    public const long ExpectedBytes = 2_497_280_640;
-    public const string Sha256 = "ab27b9bfa375a178d6cba48f3ad892b94b7739659dcc7aae8058ce0ffed6b328";
+    public const string FileName = LocalLlmFile.FileName;
+    public const long ExpectedBytes = LocalLlmFile.ExpectedBytes;
+    public const string Sha256 = LocalLlmFile.Sha256;
     private const string DownloadUrl = "https://huggingface.co/ggml-org/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf";
 
     private static readonly HttpClient http = new(new SocketsHttpHandler
@@ -38,20 +40,32 @@ internal sealed class LocalAgentModel : IDisposable
     private ModelParams? parameters;
     private readonly object lifetimeGate = new();
     private bool disposed;
-    public string ModelPath { get; }
-    public bool IsDownloaded => File.Exists(ModelPath) && new FileInfo(ModelPath).Length == ExpectedBytes;
+    public string DataPath { get; }
+    public string ModelPath { get; private set; }
+    public LocalLlmStatus FileStatus => LocalLlmFile.Inspect(DataPath);
+    public bool IsDownloaded => RefreshReady();
     public bool IsLoaded => weights is not null;
     public string Backend { get; private set; } = "";
 
     public LocalAgentModel(string dataPath)
     {
-        ModelPath = Path.Combine(dataPath, "models", FileName);
+        DataPath = dataPath;
+        var status = LocalLlmFile.Inspect(dataPath);
+        ModelPath = status.Path is { Length: > 0 } && status.Ready ? status.Path : LocalLlmFile.DefaultPath(dataPath);
+    }
+
+    private bool RefreshReady()
+    {
+        var status = LocalLlmFile.Inspect(DataPath);
+        if (status.Ready && status.Path is { Length: > 0 }) ModelPath = status.Path;
+        return status.Ready;
     }
 
     public async Task DownloadAsync(IProgress<double>? progress, CancellationToken cancellationToken)
     {
+        if (RefreshReady()) { progress?.Report(1); return; }
         Directory.CreateDirectory(Path.GetDirectoryName(ModelPath)!);
-        var partial = ModelPath + ".partial";
+        var partial = LocalLlmFile.PartialPath(DataPath);
         long existing = File.Exists(partial) ? new FileInfo(partial).Length : 0;
         if (existing > ExpectedBytes) { File.Delete(partial); existing = 0; }
 
@@ -89,7 +103,8 @@ internal sealed class LocalAgentModel : IDisposable
             if (!string.Equals(digest, Sha256, StringComparison.Ordinal))
                 throw new InvalidDataException("La firma del modelo no coincide. No se cargó el archivo por seguridad.");
         }
-        File.Move(partial, ModelPath, true);
+        File.Move(partial, LocalLlmFile.DefaultPath(DataPath), true);
+        ModelPath = LocalLlmFile.DefaultPath(DataPath);
         progress?.Report(1);
     }
 
@@ -100,8 +115,6 @@ internal sealed class LocalAgentModel : IDisposable
         await Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            // Qwen 3 4B Q4 fits inside this machine's 4 GB RX 580 together with a compact
-            // 4K context. Vulkan can offload all layers; llama.cpp spills safely if needed.
             ModelParams loadedParameters = Parameters(99);
             LLamaWeights loadedWeights;
             string loadedBackend;
@@ -164,7 +177,7 @@ internal sealed class LocalAgentModel : IDisposable
         private readonly ChatSession session;
         private readonly InferenceParams inference = new()
         {
-            MaxTokens = 220,
+            MaxTokens = 280,
             SamplingPipeline = new DefaultSamplingPipeline
             {
                 Temperature = 0.1f,
@@ -182,22 +195,32 @@ internal sealed class LocalAgentModel : IDisposable
             session.WithHistoryTransform(new PromptTemplateTransformer(weights, withAssistant: true));
         }
 
-        public async Task<string> AskAsync(string text, CancellationToken cancellationToken)
+        public Task<string> AskAsync(string text, CancellationToken cancellationToken) =>
+            AskAsync(text, null, cancellationToken);
+
+        public async Task<string> AskAsync(string text, IProgress<string>? tokens, CancellationToken cancellationToken)
         {
             var output = new System.Text.StringBuilder();
+            var visible = new System.Text.StringBuilder();
             await foreach (var token in session.ChatAsync(
                 new ChatHistory.Message(AuthorRole.User, text), inference, cancellationToken))
             {
                 output.Append(token);
-                // Agent turns are exactly one JSON object. Stop native generation the instant
-                // that object closes instead of paying for Qwen to continue with commentary.
-                if (ContainsCompleteJson(output)) break;
+                string stripped = AgentThink.Strip(output.ToString());
+                if (stripped.Length > visible.Length)
+                {
+                    string extra = stripped[visible.Length..];
+                    visible.Clear().Append(stripped);
+                    if (AgentThink.LooksLikeJson(stripped)) tokens?.Report("");
+                    else if (extra.Trim().Length > 0) tokens?.Report(extra);
+                }
+                if (ContainsCompleteJson(stripped)) break;
             }
-            Debug.WriteLine("LOCAL AGENT: " + output);
-            return output.ToString().Trim();
+            Debug.WriteLine("LOCAL AGENT: " + AgentThink.Strip(output.ToString()));
+            return AgentThink.Strip(output.ToString());
         }
 
-        private static bool ContainsCompleteJson(System.Text.StringBuilder text)
+        private static bool ContainsCompleteJson(string text)
         {
             bool started = false, quoted = false, escaped = false;
             int depth = 0;

@@ -144,6 +144,7 @@ internal sealed class VoiceDictation : IDisposable
 
     private static void InputFocused(object sender, KeyboardFocusChangedEventArgs e)
     {
+        if (sender is FrameworkElement fe && string.Equals(fe.Tag as string, "agent-composer", StringComparison.Ordinal)) return;
         if (sender is TextBoxBase input) current?.Show(input);
     }
 
