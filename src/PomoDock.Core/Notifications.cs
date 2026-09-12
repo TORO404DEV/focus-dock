@@ -58,4 +58,12 @@ public sealed class NotificationHistory
     {
         foreach (var item in Items) item.Read = true;
     }
+
+    public bool MarkRead(Guid id)
+    {
+        var item = Items.FirstOrDefault(entry => entry.Id == id);
+        if (item is null) return false;
+        item.Read = true;
+        return true;
+    }
 }

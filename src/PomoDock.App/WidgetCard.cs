@@ -22,8 +22,11 @@ public sealed class WidgetCard : Border
     private readonly List<Button> headerButtons = [];
     private ExternalWindowHost? host;
     private WebView2? web;
+    private CalendarWidget? calendar;
+    private NotesEditor? notes;
     private bool released;
     private bool resizing;
+    private readonly Grid handles = new();
     private readonly List<Thumb> gestureHandles = [];
     private string resizeEdge = "";
     private Point pointerStart;
@@ -32,15 +35,17 @@ public sealed class WidgetCard : Border
     public WidgetCard(MainWindow owner, WidgetConfig config)
     {
         this.owner = owner; Config = config;
+        ClipToBounds = true;
         BorderThickness = new Thickness(1.5); SetResourceReference(BorderBrushProperty, "Edge"); SetResourceReference(BackgroundProperty, "Surface");
         shell.RowDefinitions.Add(new() { Height = new GridLength(38) }); shell.RowDefinitions.Add(new()); Child = shell;
-        body.Margin = new Thickness(8, 0, 8, 8);
+        body.Margin = new Thickness(config.Kind == "agent" ? 4 : 8, 0, config.Kind == "agent" ? 4 : 8, config.Kind == "agent" ? 4 : 8);
+        body.ClipToBounds = true; body.MinWidth = 0; body.MinHeight = 0;
         var header = new DockPanel { LastChildFill = true, Margin = new Thickness(9, 0, 2, 0), Cursor = Cursors.SizeAll };
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
         foreach (var (label, tip, action) in new (string, string, Action)[] {
             ("⋯", config.Kind == "notes" ? "Historial de notas" : "Opciones del widget", Options),
             ("−", "Contraer / expandir", ToggleCollapsed),
-            ("×", L.T("widgets.remove"), () => owner.RemoveCard(this)) })
+            ("×", L.T("widgets.remove"), () => { if (config.Kind == "agent") owner.HideAgentWidget(); else owner.RemoveCard(this); }) })
         {
             var button = new Button { Content = label, ToolTip = tip, Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(0), BorderThickness = new Thickness(0), FontSize = 13 };
             button.Click += (_, _) => action(); actions.Children.Add(button); headerButtons.Add(button);
@@ -70,14 +75,14 @@ public sealed class WidgetCard : Border
         PreviewMouseDown += (_, e) => { if (!IsGestureSource(e.OriginalSource)) owner.BringCardToFront(this); };
         Unloaded += (_, _) => CancelGesture(this, EventArgs.Empty);
         Grid.SetRow(body, 1); shell.Children.Add(body);
-        var handles = new Grid(); Panel.SetZIndex(handles, 30);
+        Panel.SetZIndex(handles, 30);
         handles.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) }); handles.RowDefinitions.Add(new RowDefinition()); handles.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
         handles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) }); handles.ColumnDefinitions.Add(new ColumnDefinition()); handles.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
         AddResizeHandle(handles, "NW", 0, 0, Cursors.SizeNWSE); AddResizeHandle(handles, "N", 0, 1, Cursors.SizeNS); AddResizeHandle(handles, "NE", 0, 2, Cursors.SizeNESW);
         AddResizeHandle(handles, "W", 1, 0, Cursors.SizeWE); AddResizeHandle(handles, "E", 1, 2, Cursors.SizeWE);
         AddResizeHandle(handles, "SW", 2, 0, Cursors.SizeNESW); AddResizeHandle(handles, "S", 2, 1, Cursors.SizeNS); AddResizeHandle(handles, "SE", 2, 2, Cursors.SizeNWSE);
         Grid.SetRowSpan(handles, 2); shell.Children.Add(handles);
-        body.Visibility = config.Collapsed ? Visibility.Collapsed : Visibility.Visible;
+        ApplyCollapsed();
         if (config.Kind == "window") BuildWindow();
         else if (config.Kind == "web") Loaded += async (_, _) => await BuildWeb();
         else if (config.Kind == "notes") BuildNotes();
@@ -85,6 +90,7 @@ public sealed class WidgetCard : Border
         else if (config.Kind == "habits") BuildHabits();
         else if (config.Kind == "calendar") BuildCalendar();
         else if (config.Kind == "finance") BuildFinance();
+        else if (config.Kind == "agent") owner.AttachAgentBody(body);
         else
         {
             // Width changes the type scale just as much as height. Rebuild in small buckets so
@@ -165,7 +171,9 @@ public sealed class WidgetCard : Border
         double dx = pointer.X - pointerStart.X, dy = pointer.Y - pointerStart.Y;
         var edge = resizeEdge;
         double x = elementStartX, y = elementStartY, width = elementStartWidth, height = elementStartHeight;
-        const double minWidth = 220, minHeight = 90;
+        double minWidth = Config.Kind == "agent" ? 260 : 220;
+        double minHeight = Config.Kind == "agent" ? 280 : 90;
+        if (Config.Collapsed) minHeight = 42;
         var maxX = owner.WidgetCanvas.ActualWidth; var maxY = owner.WidgetCanvas.ActualHeight;
         if (edge == "MOVE")
         {
@@ -188,7 +196,8 @@ public sealed class WidgetCard : Border
         height = Math.Min(height, Math.Max(minHeight, maxY - y));
         }
         x = Math.Max(0, x); y = Math.Max(0, y);
-        Width = width; Height = height; Canvas.SetLeft(this, x); Canvas.SetTop(this, y); Config.X = x; Config.Y = y; Config.Width = width; Config.Height = height;
+        Width = width; Height = height; Canvas.SetLeft(this, x); Canvas.SetTop(this, y); Config.X = x; Config.Y = y; Config.Width = width;
+        if (!Config.Collapsed) Config.Height = height;
         owner.UpdateCardOverlayPosition(this);
         owner.UpdateCardInteractionOverlayPosition(this);
     }
@@ -210,13 +219,19 @@ public sealed class WidgetCard : Border
         "calendar" => L.T("widgets.kindCalendar"),
         "finance" => L.T("widgets.kindFinance"),
         "notes" => L.T("widgets.kindNote"),
+        "agent" => L.T("widgets.kindAgent"),
         _ => L.T("widgets.kindText")
     };
     private void BuildNotes()
     {
         body.Children.Clear();
-        body.Children.Add(new NotesEditor(owner, Config, this));
+        notes = new NotesEditor(owner, Config, this);
+        body.Children.Add(notes);
     }
+
+    internal bool AgentAppendNote(string text) => notes?.AgentAppend(text) == true;
+
+    internal bool AgentSetNoteColor(string color) => notes?.AgentSetColor(color) == true;
     /// <summary>
     /// Paints the whole card in a widget's own colours. A post-it is its colour, so the
     /// frame, the header and its buttons follow it instead of the app theme. Null restores
@@ -248,7 +263,36 @@ public sealed class WidgetCard : Border
     private void BuildCalendar()
     {
         body.Children.Clear();
-        body.Children.Add(new CalendarWidget(owner, Config));
+        calendar = new CalendarWidget(owner, Config);
+        body.Children.Add(calendar);
+    }
+
+    internal bool SetCalendarView(string view)
+    {
+        if (Config.Kind != "calendar" || calendar is null) return false;
+        string key = view.Trim().ToLowerInvariant() switch
+        {
+            "mes" or "month" or "m" => "month",
+            "sem" or "semana" or "week" or "w" => "week",
+            "lista" or "agenda" or "list" or "a" => "agenda",
+            _ => view.Trim().ToLowerInvariant()
+        };
+        if (key is not ("month" or "week" or "agenda")) return false;
+        calendar.ApplyView(key);
+        return true;
+    }
+
+    internal bool NavigateCalendar(string to)
+    {
+        if (Config.Kind != "calendar" || calendar is null) return false;
+        return calendar.ApplyNavigate(to);
+    }
+
+    internal bool SetCalendarShowDone(bool show)
+    {
+        if (Config.Kind != "calendar" || calendar is null) return false;
+        calendar.ApplyShowDone(show);
+        return true;
     }
     private void BuildTodo()
     {
@@ -329,11 +373,57 @@ public sealed class WidgetCard : Border
     }
     private async void ToggleCollapsed()
     {
-        Config.Collapsed = !Config.Collapsed; body.Visibility = Config.Collapsed ? Visibility.Collapsed : Visibility.Visible;
+        await SetCollapsedAsync(!Config.Collapsed);
+    }
+    internal Task SetCollapsedAsync(bool collapsed)
+    {
+        Config.Collapsed = collapsed;
+        ApplyCollapsed();
         owner.ArrangeCards(); owner.SaveState();
-        if (Config.Kind != "web") return;
+        if (Config.Kind != "web") return Task.CompletedTask;
+        return SuspendOrResumeWeb();
+    }
+    private async Task SuspendOrResumeWeb()
+    {
         if (Config.Collapsed && !Config.KeepAlive && web?.CoreWebView2 is { } core) { try { await core.TrySuspendAsync(); } catch { } }
         else if (!Config.Collapsed) { if (web is null) await BuildWeb(); else web.CoreWebView2?.Resume(); }
+    }
+    internal void SetTitle(string name)
+    {
+        Config.Title = name;
+        title.Text = $"{KindLabel()} / {name}";
+        owner.SaveState();
+    }
+    internal void SetSize(double width, double height)
+    {
+        Config.Width = Math.Clamp(width, 160, 2400);
+        Config.Height = Math.Clamp(height, 42, 2400);
+        Config.Collapsed = false;
+        ApplyCollapsed();
+        owner.ArrangeCards();
+        owner.SaveState();
+    }
+    internal bool SetWebUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https") return false;
+        Config.Value = uri.AbsoluteUri;
+        if (web is not null) web.Source = uri;
+        owner.SaveState();
+        return true;
+    }
+    internal void ReloadWeb() => web?.Reload();
+    internal void SetKeepAlive(bool keep)
+    {
+        Config.KeepAlive = keep;
+        if (keep) web?.CoreWebView2?.Resume();
+        owner.SaveState();
+    }
+    private void ApplyCollapsed()
+    {
+        body.Visibility = Config.Collapsed ? Visibility.Collapsed : Visibility.Visible;
+        handles.Visibility = Config.Collapsed ? Visibility.Collapsed : Visibility.Visible;
+        shell.RowDefinitions[1].Height = Config.Collapsed ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        if (Config.Collapsed) Height = 42;
     }
     private async void Options()
     {

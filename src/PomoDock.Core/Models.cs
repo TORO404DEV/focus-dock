@@ -142,11 +142,16 @@ public sealed class Settings
     /// <summary>Whether the private agent reads its verified result aloud.</summary>
     public bool AgentVoiceEnabled { get; set; } = true;
     /// <summary>Neural speech speed. One is the voice model's natural pace.</summary>
-    public double AgentVoiceSpeed { get; set; } = 1.05;
+    public double AgentVoiceSpeed { get; set; } = 1.0;
     /// <summary>Whether the agent may store explicit personal memories locally.</summary>
     public bool AgentMemoryEnabled { get; set; } = true;
+    /// <summary>DeepSeek API key (DPAPI-sealed). Empty = agent chat unavailable until configured.</summary>
+    public string AgentDeepSeekApiKey { get; set; } = "";
     /// <summary>If true, releasing the agent microphone sends the transcript instead of inserting it.</summary>
     public bool AgentSendVoiceOnRelease { get; set; }
+    /// <summary>Floating agent widget geometry. It is not a page widget, so work on the canvas stays visible.</summary>
+    public WidgetConfig AgentWidget { get; set; } = new() { Kind = "agent", Title = "PomoDock", Width = 360, Height = 520 };
+    public bool AgentWidgetVisible { get; set; }
     public bool Dark { get; set; }
     public bool ReduceMotion { get; set; }
     public bool AlwaysOnTop { get; set; }
@@ -169,6 +174,8 @@ public sealed class Settings
     public Dictionary<string, List<WidgetConfig>> Layouts { get; set; } = [];
     public List<WorkspacePage> WorkspacePages { get; set; } = [];
     public int ActiveWorkspacePage { get; set; }
+    /// <summary>Page the agent treats as home / casa / principal when the user asks to go back.</summary>
+    public Guid? HomePageId { get; set; }
     public void Validate()
     {
         FocusMinutes = Math.Clamp(FocusMinutes, 1, 180);
@@ -205,6 +212,7 @@ public sealed class Settings
         {
             var page = WorkspacePages[i];
             page.Widgets ??= [];
+            page.Widgets.RemoveAll(widget => string.Equals(widget.Kind, "agent", StringComparison.OrdinalIgnoreCase));
             if (string.IsNullOrWhiteSpace(page.Name)) page.Name = i == 0 ? "INICIO" : $"PÁGINA {i + 1:00}";
             if (page.TimerWidget is not null)
             {
@@ -214,6 +222,12 @@ public sealed class Settings
         }
         EnsureWorkspacePageCoordinates();
         ActiveWorkspacePage = Math.Clamp(ActiveWorkspacePage, 0, WorkspacePages.Count - 1);
+        if (HomePageId is { } home && WorkspacePages.All(page => page.Id != home))
+            HomePageId = WorkspacePages.Count > 0 ? WorkspacePages[0].Id : null;
+        AgentWidget ??= new WidgetConfig { Kind = "agent", Title = "PomoDock", Width = 360, Height = 520 };
+        AgentWidget.Kind = "agent";
+        if (AgentWidget.Width < 280) AgentWidget.Width = 360;
+        if (AgentWidget.Height < 280) AgentWidget.Height = 520;
     }
 
     /// <summary>

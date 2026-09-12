@@ -23,6 +23,8 @@ public partial class MainWindow : Window
     public static string DataPath => ResolveDataPath();
     public Store Store { get; }
     public Settings Settings { get; }
+    /// <summary>Set while an approved agent plan runs so UI dialogs are not shown again per step.</summary>
+    internal bool AgentPlanApproved { get; set; }
     public TimerEngine Timer { get; }
     public SoundEngine Sounds { get; }
     private readonly DispatcherTimer ticker = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -46,6 +48,7 @@ public partial class MainWindow : Window
     private Popup? timerOverlay;
     private Popup? reportPopup;
     private AgentWindow? agentWindow;
+    private WidgetCard? agentCard;
     private readonly List<Popup> reportBackdrops = [];
     private ReportWindow? reportContent;
     private bool timerPointerPressed, timerWantsFront;
@@ -126,6 +129,7 @@ public partial class MainWindow : Window
         var source = HwndSource.FromHwnd(hwnd); source?.AddHook(WindowMessages);
         focusHook = Win32.SetWinEventHook(3, 3, 0, foregroundCallback, 0, 0, 0);
         InitializeWorkspacePages(); ticker.Start(); UpdateHotkey();
+        if (Settings.AgentWidgetVisible) ShowAgentWidget();
         // Calendar reminders ring on their own clock: they never depend on a widget being visible.
         AgendaReminders.For(Store).Attach(this);
         if (Settings.Fullscreen) ToggleFullscreen();
@@ -276,10 +280,77 @@ public partial class MainWindow : Window
 
     private void AgentClick(object sender, RoutedEventArgs e)
     {
-        if (agentWindow is { IsVisible: true }) { agentWindow.Activate(); return; }
-        agentWindow = new AgentWindow(this);
-        agentWindow.Closed += (_, _) => agentWindow = null;
-        ShowWorkspaceDialog(agentWindow);
+        Sounds.Button("click");
+        if (agentCard is { Visibility: Visibility.Visible }) HideAgentWidget();
+        else ShowAgentWidget();
+    }
+
+    internal void ShowAgentWidget()
+    {
+        EnsureAgentHost();
+        if (agentCard is null)
+        {
+            var config = Settings.AgentWidget ?? new WidgetConfig { Kind = "agent", Title = L.T("agent.name"), Width = 360, Height = 520 };
+            config.Kind = "agent";
+            if (config.Width < 280) config.Width = 360;
+            if (config.Height < 280) config.Height = 520;
+            if (config.X == 0 && config.Y == 0 && WidgetArea.ActualHeight > 0)
+            {
+                config.X = 16;
+                config.Y = Math.Max(16, WidgetArea.ActualHeight - config.Height - 24);
+            }
+            agentCard = new WidgetCard(this, config);
+            WidgetArea.Children.Add(agentCard);
+            AnimateWidgetArrival(agentCard);
+        }
+        agentCard.Visibility = Visibility.Visible;
+        Settings.AgentWidgetVisible = true;
+        ArrangeCards();
+        Panel.SetZIndex(agentCard, 20);
+        SaveState();
+    }
+
+    internal void HideAgentWidget()
+    {
+        if (agentCard is null) return;
+        PersistWidget(agentCard, false);
+        Settings.AgentWidget = agentCard.Config;
+        Settings.AgentWidgetVisible = false;
+        agentCard.Visibility = Visibility.Collapsed;
+        SaveState();
+    }
+
+    internal void AttachAgentBody(Grid body)
+    {
+        EnsureAgentHost();
+        if (agentWindow!.Surface.Parent is Panel parent) parent.Children.Remove(agentWindow.Surface);
+        body.ClipToBounds = true; body.MinWidth = 0; body.MinHeight = 0;
+        agentWindow.Surface.HorizontalAlignment = HorizontalAlignment.Stretch;
+        agentWindow.Surface.VerticalAlignment = VerticalAlignment.Stretch;
+        agentWindow.Surface.MinWidth = 0; agentWindow.Surface.MinHeight = 0;
+        body.Children.Clear();
+        body.Children.Add(agentWindow.Surface);
+    }
+
+    private void EnsureAgentHost()
+    {
+        agentWindow ??= new AgentWindow(this, HideAgentWidget);
+    }
+
+    internal void ShowCreatedWork(Guid? widgetId)
+    {
+        Status(L.T("agent.showingWork"));
+        if (widgetId is { } id)
+        {
+            var card = cards.FirstOrDefault(item => item.Config.Id == id);
+            if (card is not null)
+            {
+                BringCardToFront(card);
+                Pulse(card);
+            }
+        }
+        else Pulse(PageDockSurface);
+        if (agentCard is { Visibility: Visibility.Visible }) Panel.SetZIndex(agentCard, 20);
     }
 
     private void ShowReportModal()
@@ -720,6 +791,7 @@ public partial class MainWindow : Window
             "habits" => 390,
             "calendar" => 520,
             "finance" => 460,
+            "agent" => 520,
             _ => 300
         };
         if (newPlacement)
@@ -745,6 +817,7 @@ public partial class MainWindow : Window
     }
     public void RemoveCard(WidgetCard card)
     {
+        if (card.Config.Kind == "agent") { HideAgentWidget(); return; }
         // Closing a note keeps its words in the note history instead of throwing them away.
         if (card.Config.Kind == "notes") NoteArchiveStore.For(Store).Close(card.Config);
         HideInteractionOverlay(card); HideOverlay(card);
@@ -760,13 +833,18 @@ public partial class MainWindow : Window
     {
         Welcome.Visibility = cards.Count == 0 && CurrentTimerWidget is null ? Visibility.Visible : Visibility.Collapsed;
         Welcome.Width = Math.Max(1, WidgetArea.ActualWidth); Welcome.Height = Math.Max(1, WidgetArea.ActualHeight);
-        foreach (var card in cards)
+        foreach (var card in cards.Concat(agentCard is { Visibility: Visibility.Visible } ? [agentCard] : Array.Empty<WidgetCard>()))
         {
-            card.Width = Math.Clamp(card.Config.Width, 220, Math.Max(220, WidgetArea.ActualWidth));
-            card.Height = Math.Clamp(card.Config.Collapsed ? 42 : card.Config.Height, 42, Math.Max(42, WidgetArea.ActualHeight));
+            double minW = card.Config.Kind == "agent" ? 260 : 220;
+            double minH = card.Config.Collapsed ? 42 : card.Config.Kind == "agent" ? 280 : 42;
+            card.Width = Math.Clamp(card.Config.Width, minW, Math.Max(minW, WidgetArea.ActualWidth));
+            card.Height = card.Config.Collapsed
+                ? 42
+                : Math.Clamp(card.Config.Height, minH, Math.Max(minH, WidgetArea.ActualHeight));
             Canvas.SetLeft(card, Math.Clamp(card.Config.X, 0, Math.Max(0, WidgetArea.ActualWidth - card.Width)));
             Canvas.SetTop(card, Math.Clamp(card.Config.Y, 0, Math.Max(0, WidgetArea.ActualHeight - card.Height)));
         }
+        if (agentCard is { Visibility: Visibility.Visible }) Panel.SetZIndex(agentCard, 20);
         ArrangeTimerWidget();
         UpdateOverlayPositions();
     }
@@ -784,7 +862,8 @@ public partial class MainWindow : Window
         HideTimerOverlay();
         Panel.SetZIndex(TimerFrame, 0);
         foreach (var other in cards) Panel.SetZIndex(other, 0);
-        Panel.SetZIndex(card, 1);
+        Panel.SetZIndex(card, card.Config.Kind == "agent" ? 20 : 1);
+        if (agentCard is { Visibility: Visibility.Visible } && card != agentCard) Panel.SetZIndex(agentCard, 20);
         if (cards.Any(c => c.HasNativeSurface))
         {
             if (card.HasNativeSurface)
@@ -987,6 +1066,10 @@ public partial class MainWindow : Window
     private void OnKey(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape && NotificationsPopup.IsOpen) { NotificationsPopup.IsOpen = false; e.Handled = true; return; }
+        if (e.Key == Key.Escape && agentCard is { Visibility: Visibility.Visible } && Keyboard.FocusedElement is not TextBoxBase and not PasswordBox)
+        {
+            HideAgentWidget(); e.Handled = true; return;
+        }
         if (e.Key == Key.Escape && reportPopup is { IsOpen: true }) { HideReportModal(); e.Handled = true; return; }
         if (e.Key == Key.F11 && !hotkeyRegistered) { ToggleFullscreen(); e.Handled = true; }
         if (e.Key == Key.Escape && fullscreen) { ToggleFullscreen(); e.Handled = true; }
@@ -1005,7 +1088,10 @@ public partial class MainWindow : Window
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         pageSwipePoll.Stop();
-        CancelTimerGesture(); CloseNotificationCenter(); HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll(); voiceDictation.Dispose();
+        CancelTimerGesture(); CloseNotificationCenter();
+        agentWindow?.Shutdown();
+        HideAgentWidget();
+        HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll(); voiceDictation.Dispose();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         try
@@ -1060,10 +1146,18 @@ public partial class MainWindow : Window
         }
         if (!string.IsNullOrWhiteSpace(task))
         {
-            var matches = Settings.Tasks.Where(item => !item.Done && item.Name.Contains(task, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (matches.Count != 1)
-                return new AgentToolResult(false, $"Necesito un título de tarea de enfoque más específico para '{task}'", JsonSerializer.Serialize(new { success = false, changed = false, summary = $"Coincidencias de tarea: {matches.Count}" }), false);
-            selectedTask = matches[0];
+            if (task.Trim().Equals("free", StringComparison.OrdinalIgnoreCase)
+                || task.Trim().Equals("libre", StringComparison.OrdinalIgnoreCase)
+                || task.Trim().Equals("none", StringComparison.OrdinalIgnoreCase)
+                || task.Trim().Equals("clear", StringComparison.OrdinalIgnoreCase))
+                selectedTask = null;
+            else
+            {
+                var matches = Settings.Tasks.Where(item => !item.Done && item.Name.Contains(task, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (matches.Count != 1)
+                    return new AgentToolResult(false, $"Necesito un título de tarea de enfoque más específico para '{task}'", JsonSerializer.Serialize(new { success = false, changed = false, summary = $"Coincidencias de tarea: {matches.Count}" }), false);
+                selectedTask = matches[0];
+            }
         }
         string summary;
         switch (command)
@@ -1076,6 +1170,9 @@ public partial class MainWindow : Window
                 Sounds.StopNoise(); Timer.Select(Timer.NextPhase(), DateTimeOffset.UtcNow, Monotonic); summary = "Fase omitida"; break;
             case "select":
                 summary = "Fase seleccionada"; break;
+            case "free" or "clear_task":
+                selectedTask = null;
+                summary = "Enfoque libre"; break;
             case "start":
                 if (!Timer.Running)
                 {

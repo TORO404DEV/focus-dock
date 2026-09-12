@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace PomoDock.Core;
 
@@ -175,9 +176,13 @@ public static class FocusHistory
             return true;
         }
         string lower = text.ToLowerInvariant();
-        bool aboutFocus = lower.Contains("enfoq") || lower.Contains("focus") || lower.Contains("hora") ||
-                          lower.Contains("hour") || lower.Contains("pomodoro") || lower.Contains("sesión") ||
-                          lower.Contains("session") || lower.Contains("trabaj");
+        bool aboutFocus = Regex.IsMatch(lower, @"enfoq|pomodoro")
+            || Regex.IsMatch(lower, @"\bfocus\b")
+            || Regex.IsMatch(lower, @"\bhoras?\b")
+            || Regex.IsMatch(lower, @"\bhours?\b")
+            || Regex.IsMatch(lower, @"\bsesi[oó]n(es)?\b")
+            || Regex.IsMatch(lower, @"\bsessions?\b")
+            || Regex.IsMatch(lower, @"\btrabaj");
         if (!aboutFocus) return false;
         if (lower.Contains("ayer") || lower.Contains("yesterday")) { period = "yesterday"; return true; }
         if (lower.Contains("hoy") || lower.Contains("today")) { period = "today"; return true; }
@@ -192,12 +197,15 @@ public static class FocusHistory
 
     public static string Describe(FocusHistorySummary summary, bool spanish)
     {
-        double hours = Math.Round(summary.Minutes / 60.0, 2);
-        string range = $"{summary.Range.From:dd/MM/yyyy} – {summary.Range.To:dd/MM/yyyy}";
         string period = PeriodLabel(summary.Range.Period, spanish);
+        string from = DateLabel(summary.Range.From, spanish);
+        string to = DateLabel(summary.Range.To, spanish);
+        string time = AgentSpeech.Duration(summary.Minutes, spanish);
+        string sessions = AgentSpeech.CountPhrase(summary.Sessions, spanish, "sesión", "sesiones", "session", "sessions");
+        string days = AgentSpeech.CountPhrase(summary.ActiveDays, spanish, "día activo", "días activos", "active day", "active days");
         if (spanish)
-            return $"Enfoque {period} ({range}): {summary.Minutes:0.#} min ({hours.ToString("0.##", CultureInfo.InvariantCulture)} h) en {summary.Sessions} sesión(es) y {summary.ActiveDays} día(s) activo(s). Cifra calculada desde las sesiones guardadas.";
-        return $"Focus {period} ({range}): {summary.Minutes:0.#} min ({hours.ToString("0.##", CultureInfo.InvariantCulture)} h) across {summary.Sessions} session(s) and {summary.ActiveDays} active day(s). Figure calculated from stored sessions.";
+            return $"Enfoque {period}, del {from} al {to}: {time}, en {sessions} y {days}.";
+        return $"Focus {period}, from {from} to {to}: {time}, across {sessions} and {days}.";
     }
 
     private static string PeriodLabel(string period, bool spanish) => period switch
@@ -213,6 +221,13 @@ public static class FocusHistory
         "all" => spanish ? "de todo el historial" : "all time",
         _ => period
     };
+
+    private static string DateLabel(DateOnly day, bool spanish)
+    {
+        string[] monthsEs = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+        string[] monthsEn = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        return spanish ? $"{day.Day} de {monthsEs[day.Month - 1]}" : $"{monthsEn[day.Month - 1]} {day.Day}";
+    }
 
     private static string DisplayProject(string? project) => string.IsNullOrWhiteSpace(project) ? "Sin proyecto" : project.Trim();
     private static string? CleanProject(string? project) => string.IsNullOrWhiteSpace(project) ? null : project.Trim();

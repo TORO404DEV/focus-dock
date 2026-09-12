@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en" class="no-js">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PomoDock: Vertical Monitor Productivity Workspace for Windows</title>
-  <meta name="description" content="Turn a vertical second monitor into a Windows productivity workspace with Pomodoro, tasks, habits, notes, calendar, focus reports, Pomofocus import, and real apps as widgets.">
+  <title>PomoDock — Second-monitor focus workspace for Windows</title>
+  <meta name="description" content="Open-source Windows workspace for a vertical second monitor: Pomodoro, tasks, habits, notes, calendar, finance, and a private agent. Local-first. MIT.">
   <meta name="theme-color" content="#171916">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://pomodock.com/en/">
@@ -13,19 +13,18 @@
   <link rel="alternate" hreflang="x-default" href="https://pomodock.com/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="PomoDock">
-  <meta property="og:title" content="PomoDock — Make your second monitor count">
-  <meta property="og:description" content="An open-source productivity workspace designed for vertical secondary monitors. Native focus tools plus your real apps and websites as widgets.">
+  <meta property="og:title" content="PomoDock">
+  <meta property="og:description" content="Turn your second monitor into a focus workspace. Windows. Local-first. Open source.">
   <meta property="og:url" content="https://pomodock.com/en/">
   <meta property="og:locale" content="en_US">
   <meta property="og:locale:alternate" content="es_ES">
   <meta property="og:image" content="https://pomodock.com/assets/screenshot-hero.webp">
-  <meta property="og:image:alt" content="PomoDock running as a productivity workspace on a vertical monitor">
+  <meta property="og:image:alt" content="PomoDock workspace on a vertical monitor">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="PomoDock — Make your second monitor count">
-  <meta name="twitter:description" content="Pomodoro, tasks, habits, notes, calendar, stats, and real Windows apps—together on your second monitor.">
+  <meta name="twitter:title" content="PomoDock">
+  <meta name="twitter:description" content="Second-monitor focus workspace for Windows.">
   <meta name="twitter:image" content="https://pomodock.com/assets/screenshot-hero.webp">
   <link rel="icon" href="../assets/pomodock-mark.svg" type="image/svg+xml">
-  <script>document.documentElement.classList.replace('no-js', 'js');</script>
   <link rel="stylesheet" href="../style.css">
   <script src="../script.js" defer></script>
   <script type="application/ld+json">
@@ -33,12 +32,12 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "PomoDock",
-    "description": "An open-source productivity workspace for vertical secondary monitors with native focus tools and Windows apps as widgets.",
+    "description": "Open-source Windows focus workspace for a vertical second monitor.",
     "applicationCategory": "DesktopEnhancementApplication",
     "operatingSystem": "Windows x64",
-    "softwareVersion": "0.1.0",
+    "softwareVersion": "0.2.1",
     "url": "https://pomodock.com/en/",
-    "downloadUrl": "https://github.com/TORO404DEV/focus-dock/releases/download/v0.1.0/PomoDock-Setup-0.1.0.exe",
+    "downloadUrl": "https://github.com/TORO404DEV/focus-dock/releases/download/v0.2.1/PomoDock-Setup-0.2.1.exe",
     "codeRepository": "https://github.com/TORO404DEV/focus-dock",
     "license": "https://github.com/TORO404DEV/focus-dock/blob/main/LICENSE",
     "image": "https://pomodock.com/assets/screenshot-hero.webp",
@@ -49,266 +48,60 @@
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
 
-  <header class="site-header" data-header>
-    <a class="brand" href="#top" aria-label="PomoDock home">
-      <img src="../assets/pomodock-mark.svg" width="34" height="34" alt="">
-      <span>POMODOCK</span>
+  <header class="topbar">
+    <a class="brand" href="#top">
+      <img src="../assets/pomodock-mark.svg" width="28" height="28" alt="">
+      <span>PomoDock</span>
     </a>
-    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" data-nav-toggle>
-      <span class="sr-only">Open navigation</span>
-      <span></span><span></span>
-    </button>
-    <nav class="site-nav" id="site-nav" aria-label="Primary navigation" data-nav>
-      <a href="#windows">Any window</a>
-      <a href="#widgets">Widgets</a>
-      <a href="#history">Import</a>
-      <a href="#open-source">Open source</a>
-    </nav>
-    <nav class="language-switcher" aria-label="Language">
+    <div class="topbar-spacer"></div>
+    <nav class="lang" aria-label="Language">
       <a class="is-active" href="./" lang="en" hreflang="en" aria-current="page" data-language="en">EN</a>
       <a href="../es/" lang="es" hreflang="es" data-language="es">ES</a>
     </nav>
-    <a class="header-github" href="https://github.com/TORO404DEV/focus-dock" target="_blank" rel="noreferrer">GITHUB ↗</a>
+    <a class="top-link" href="https://github.com/TORO404DEV/focus-dock" target="_blank" rel="noreferrer">GitHub</a>
   </header>
 
   <main id="main">
     <section class="hero" id="top">
-      <div class="hero-copy" data-reveal>
-        <p class="eyebrow"><span class="status-dot"></span> WINDOWS · OPEN SOURCE · v0.1.0</p>
-        <h1>Your second monitor,<br><em>turned into a focus workspace.</em></h1>
-        <p class="hero-lede">Pomodoro, tasks, habits, notes, calendar and stats—plus your real apps and websites as widgets. Built for the vertical screen beside your work.</p>
-        <div class="cta-row">
-          <a class="button button-primary" href="https://github.com/TORO404DEV/focus-dock/releases/download/v0.1.0/PomoDock-Setup-0.1.0.exe">Download PomoDock <span>↓</span></a>
-          <a class="button button-secondary" href="https://github.com/TORO404DEV/focus-dock" target="_blank" rel="noreferrer">View on GitHub ↗</a>
-          <a class="text-link" href="#open-source">Support the project →</a>
-        </div>
-        <ul class="hero-facts" aria-label="PomoDock facts">
-          <li>FREE + MIT</li>
-          <li>NO ACCOUNT</li>
-          <li>LOCAL-FIRST</li>
-        </ul>
-      </div>
-
-      <div class="hero-stage" data-reveal>
-        <div class="monitor-rig" aria-hidden="true">
-          <span class="monitor-label">SECOND DISPLAY / LIVE WORKSPACE</span>
-          <span class="monitor-light"></span>
-        </div>
-        <figure class="media-frame media-frame-vertical hero-media" data-media-frame>
-          <div class="frame-bar"><span>POMODOCK / DESKTOP EDITION</span><span>● LIVE</span></div>
-          <img src="../assets/screenshot-hero.webp" data-gif="../assets/hero.gif" width="1078" height="1918" alt="PomoDock vertical monitor productivity workspace with Pomodoro, focus stats, tasks, habits and page navigation" fetchpriority="high">
-          <figcaption>One vertical monitor. Your complete focus system.</figcaption>
-        </figure>
-      </div>
-    </section>
-
-    <section class="manifesto ruled-section" aria-labelledby="useful-title">
-      <div class="section-number">01 / WHY</div>
-      <div data-reveal>
-        <p class="kicker">THE SCREEN BESIDE THE SCREEN</p>
-        <h2 id="useful-title">Your second monitor,<br>finally useful.</h2>
-      </div>
-      <div class="manifesto-copy" data-reveal>
-        <p>Your main monitor is for the work.</p>
-        <p>Your vertical monitor can hold everything around it.</p>
-      </div>
-      <div class="screen-roles" data-reveal>
-        <article>
-          <span>01</span>
-          <strong>MAIN MONITOR</strong>
-          <p>Editor, document, course—the thing that needs your attention.</p>
-        </article>
-        <div class="role-arrow" aria-hidden="true">→</div>
-        <article class="screen-role-active">
-          <span>02</span>
-          <strong>SECOND MONITOR</strong>
-          <p>Timer, context, routine and tools—always in sight.</p>
-        </article>
-      </div>
-    </section>
-
-    <section class="window-feature ink-section" id="windows" aria-labelledby="windows-title">
-      <div class="section-number">02 / THE KILLER FEATURE</div>
-      <div class="window-copy" data-reveal>
-        <p class="kicker kicker-accent">NATIVE WINDOWS · HTTPS PANELS</p>
-        <h2 id="windows-title">Any window can<br>become a widget.</h2>
-        <p class="section-lede">Pick an open Windows app. Place the real, interactive window inside PomoDock. Move it, resize it, overlap it, or release it back to the desktop.</p>
-        <p class="feature-claim">Your apps. Your workspace. One screen.</p>
-        <ul class="tag-list" aria-label="Examples of apps and content that can be embedded">
-          <li>Telegram</li><li>Spotify</li><li>Browsers</li><li>Dashboards</li><li>Documentation</li><li>Other Windows apps</li>
-        </ul>
-        <p class="compat-note">Window compatibility depends on each app's permission and DPI mode.</p>
-      </div>
-      <figure class="media-frame media-frame-dark embedding-media" data-media-frame data-reveal>
-        <div class="frame-bar"><span>ADD WIDGET / WINDOW OF ANOTHER APP</span><span>01</span></div>
-        <img src="../assets/screenshot-embedding.webp" data-gif="../assets/embedding.gif" width="672" height="1197" alt="PomoDock widget launcher for embedding a Windows app or HTTPS web page" loading="lazy">
-        <figcaption>Choose an open window. It becomes a movable, resizable widget.</figcaption>
-      </figure>
-    </section>
-
-    <section class="widgets ruled-section" id="widgets" aria-labelledby="widgets-title">
-      <div class="section-number">03 / NATIVE TOOLS</div>
-      <header class="section-heading" data-reveal>
-        <p class="kicker">EVERYTHING AROUND THE WORK</p>
-        <h2 id="widgets-title">Build the workspace<br>your brain expects.</h2>
-        <p>Every widget moves, resizes and persists on your canvas.</p>
-      </header>
-      <div class="widget-grid">
-        <article class="widget-card widget-card-wide" data-reveal><span class="widget-icon">◷</span><div><h3>Pomodoro</h3><p>Focus, short break and long break. Your rhythm, your cycle.</p></div><b>25:00</b></article>
-        <article class="widget-card" data-reveal><span class="widget-icon">☑</span><h3>To Do</h3><p>Priorities, dates, recurrence and reminders.</p></article>
-        <article class="widget-card" data-reveal><span class="widget-icon">↻</span><h3>Habits</h3><p>Targets, streaks, XP, levels and heat maps.</p></article>
-        <article class="widget-card" data-reveal><span class="widget-icon">✎</span><h3>Notes</h3><p>Rich text, lists, checklists and searchable history.</p></article>
-        <article class="widget-card widget-card-tall" data-reveal><span class="widget-icon">▦</span><h3>Calendar</h3><p>Month, week and agenda views with repeating events.</p><img src="../assets/screenshot-calendar.webp" width="1078" height="1918" alt="PomoDock calendar showing a month and upcoming agenda" loading="lazy"></article>
-        <article class="widget-card" data-reveal><span class="widget-icon">◒</span><h3>Focus Stats</h3><p>Today, goals, streaks and the week at a glance.</p></article>
-        <article class="widget-card widget-card-wide" data-reveal><span class="widget-icon">☷</span><div><h3>Tasks &amp; Projects</h3><p>Estimates, progress, reusable tasks and one-click focus.</p></div><span class="micro-ui">PROJECT → TASK → FOCUS</span></article>
-        <article class="widget-card" data-reveal><span class="widget-icon">◎</span><h3>Web Panels</h3><p>Any HTTPS page in an isolated WebView2 profile.</p></article>
-        <article class="widget-card widget-card-invert" data-reveal><span class="widget-icon">▣</span><h3>Embedded Apps</h3><p>Real desktop windows, living beside native widgets.</p></article>
-      </div>
-    </section>
-
-    <section class="workflows" id="workflows" aria-labelledby="workflow-title">
-      <div class="section-number">04 / IN PRACTICE</div>
-      <header class="section-heading" data-reveal>
-        <p class="kicker">A PERMANENT DASHBOARD BESIDE THE WORK</p>
-        <h2 id="workflow-title">One monitor works.<br>The other keeps you moving.</h2>
-      </header>
-      <div class="workflow-layout">
-        <div class="workflow-tabs" role="tablist" aria-label="PomoDock workspace examples" data-tabs>
-          <button type="button" role="tab" id="tab-coding" aria-selected="true" aria-controls="panel-coding" data-tab="coding"><span>01</span><strong>CODING</strong><small>IDE + execution context</small></button>
-          <button type="button" role="tab" id="tab-study" aria-selected="false" aria-controls="panel-study" data-tab="study"><span>02</span><strong>STUDY</strong><small>Material + learning system</small></button>
-          <button type="button" role="tab" id="tab-deep" aria-selected="false" aria-controls="panel-deep" data-tab="deep"><span>03</span><strong>DEEP WORK</strong><small>Project + visible progress</small></button>
-        </div>
-        <div class="workflow-panels" data-reveal>
-          <article role="tabpanel" id="panel-coding" aria-labelledby="tab-coding" data-panel="coding">
-            <p><span>MAIN</span> IDE</p><p><span>SECOND</span> Pomodoro · tasks · browser · notes</p>
-          </article>
-          <article role="tabpanel" id="panel-study" aria-labelledby="tab-study" data-panel="study" hidden>
-            <p><span>MAIN</span> Course or book</p><p><span>SECOND</span> Timer · notes · habits · calendar</p>
-          </article>
-          <article role="tabpanel" id="panel-deep" aria-labelledby="tab-deep" data-panel="deep" hidden>
-            <p><span>MAIN</span> The project</p><p><span>SECOND</span> Timer · today's tasks · focus statistics</p>
-          </article>
-          <figure class="media-frame productivity-media" data-media-frame>
-            <div class="frame-bar"><span>WORKSPACE PAGES / HORIZONTAL CANVAS</span><span>DRAG →</span></div>
-            <img src="../assets/screenshot-productivity.webp" data-gif="../assets/productivity.gif" width="1350" height="1410" alt="PomoDock canvas transitioning smoothly between workspace pages" loading="lazy">
-            <figcaption>Arrange multiple pages and move between them like a desktop launcher.</figcaption>
-          </figure>
+      <div class="hero-copy">
+        <p class="eyebrow">Windows · Open source · v0.2.1</p>
+        <h1 class="hero-brand">PomoDock</h1>
+        <p class="hero-line">Your second monitor, as a focus workspace. Timer, tools, pages—and a private agent that can run them.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/TORO404DEV/focus-dock/releases/download/v0.2.1/PomoDock-Setup-0.2.1.exe">Download for Windows</a>
+          <a class="button button-ghost" href="https://github.com/TORO404DEV/focus-dock" target="_blank" rel="noreferrer">Source</a>
         </div>
       </div>
-    </section>
-
-    <section class="history ruled-section" id="history" aria-labelledby="history-title">
-      <div class="section-number">05 / YOUR HISTORY</div>
-      <div class="history-copy" data-reveal>
-        <p class="kicker">IMPORT POMOFOCUS HISTORY · CSV + TSV</p>
-        <h2 id="history-title">Move from Pomofocus<br>without starting over.</h2>
-        <p>Export your Pomofocus report and import the CSV or TSV file directly into PomoDock. The built-in Pomofocus importer turns past focus sessions into native reports, projects, tasks, streaks and rank.</p>
-        <ul class="check-list">
-          <li>Sessions feed reports, projects, tasks, streaks and rank.</li>
-          <li>Re-imports deduplicate stable records.</li>
-          <li>A database safety copy is created before every import.</li>
-        </ul>
-      </div>
-      <figure class="report-shot" data-reveal>
-        <img src="../assets/screenshot-report.webp" width="1078" height="1918" alt="Pomofocus history imported into PomoDock focus reports with total time, streak and productive hours" loading="lazy">
-        <figcaption>Real focus history. Native reports. No reset to zero.</figcaption>
-      </figure>
-    </section>
-
-    <section class="ownership ink-section" id="open-source" aria-labelledby="ownership-title">
-      <div class="section-number">06 / OWNERSHIP</div>
-      <div data-reveal>
-        <p class="kicker kicker-accent">NO ACCOUNT · NO POMODOCK SERVER</p>
-        <h2 id="ownership-title">Free. Open source.<br>Your data.</h2>
-      </div>
-      <div class="ownership-grid" data-reveal>
-        <article><strong>MIT</strong><p>Read the code. Build it yourself. Change it.</p></article>
-        <article><strong>LOCAL</strong><p>Focus history and state live in SQLite on your machine.</p></article>
-        <article><strong>YOURS</strong><p>Export CSV. Back up JSON. Keep ownership of your workspace.</p></article>
-      </div>
-      <div class="code-line" aria-label="PomoDock local data path"><span>DATA_PATH</span><code>%LOCALAPPDATA%\PomoDock</code><i>● LOCAL</i></div>
-      <a class="button button-light" href="https://github.com/TORO404DEV/focus-dock" target="_blank" rel="noreferrer">Read the source ↗</a>
-    </section>
-
-    <section class="comparison ruled-section" aria-labelledby="comparison-title">
-      <div class="section-number">07 / WHY POMODOCK</div>
-      <header class="section-heading" data-reveal>
-        <p class="kicker">PUT PRODUCTIVITY WHERE IT BELONGS</p>
-        <h2 id="comparison-title">Stop making your focus tools<br>compete with your focus.</h2>
-      </header>
-      <div class="comparison-grid" data-reveal>
-        <article>
-          <h3>TRADITIONAL PRODUCTIVITY APP</h3>
-          <ul><li>Lives on your main screen</li><li>Competes with the work</li><li>Usually solves one function</li></ul>
-        </article>
-        <article class="comparison-active">
-          <h3>POMODOCK</h3>
-          <ul><li>Designed for the second screen</li><li>Multiple persistent widgets</li><li>Native tools + real apps</li><li>Open source + local-first</li></ul>
-        </article>
+      <div class="hero-visual" aria-hidden="false">
+        <img src="../assets/screenshot-hero.webp" width="1078" height="1918" alt="PomoDock on a vertical second monitor: Pomodoro, stats, tasks and habits on one page" fetchpriority="high">
       </div>
     </section>
 
-    <section class="answers ruled-section" aria-labelledby="answers-title">
-      <div class="section-number">08 / QUICK ANSWERS</div>
-      <header class="section-heading" data-reveal>
-        <p class="kicker">BEFORE YOU DOCK</p>
-        <h2 id="answers-title">The useful details,<br>without the fine print.</h2>
-      </header>
-      <div class="answer-grid" data-reveal>
-        <details open>
-          <summary>Can I import my Pomofocus history?</summary>
-          <p>Yes. Export the report from Pomofocus, then import its CSV or TSV file. PomoDock maps those sessions into its native history and reports.</p>
-        </details>
-        <details>
-          <summary>What can I put on a vertical second monitor?</summary>
-          <p>Native widgets such as the Pomodoro timer, tasks, habits, notes, calendar and focus stats, plus open Windows apps and HTTPS web panels.</p>
-        </details>
-        <details>
-          <summary>Does PomoDock need an account?</summary>
-          <p>No. PomoDock stores its workspace and focus data locally in SQLite and supports CSV export and JSON backup.</p>
-        </details>
-        <details>
-          <summary>Is PomoDock free and open source?</summary>
-          <p>Yes. The source is public under the MIT License, and the Windows installer is free to download.</p>
-        </details>
-      </div>
+    <section class="strip" aria-labelledby="kit-title">
+      <h2 id="kit-title">On the canvas</h2>
+      <ul class="kit">
+        <li><strong>Pomodoro</strong><span>Focus, short break, long break. Your rhythm.</span></li>
+        <li><strong>Pages</strong><span>An infinite grid of canvases. Drag between them.</span></li>
+        <li><strong>Widgets</strong><span>Tasks, habits, notes, calendar, finance, stats, web.</span></li>
+        <li><strong>Windows</strong><span>Embed a real Windows app as a widget.</span></li>
+        <li><strong>Agent</strong><span>Talk or type. It plans, you confirm, it acts—locally, with DeepSeek when you choose.</span></li>
+        <li><strong>Yours</strong><span>No account. Data stays in %LOCALAPPDATA%\PomoDock.</span></li>
+      </ul>
     </section>
 
-    <section class="community" aria-labelledby="community-title">
-      <div class="community-mark" aria-hidden="true">★</div>
-      <div data-reveal>
-        <p class="kicker">BUILT IN THE OPEN</p>
-        <h2 id="community-title">PomoDock gets better<br>where everyone can see it.</h2>
-        <p>There is no donation program today. A GitHub star, a useful bug report or a focused contribution directly helps the project.</p>
-        <div class="cta-row">
-          <a class="button button-primary" href="https://github.com/TORO404DEV/focus-dock" target="_blank" rel="noreferrer">★ Star on GitHub</a>
-          <a class="button button-secondary" href="https://github.com/TORO404DEV/focus-dock/pulls" target="_blank" rel="noreferrer">Contribute ↗</a>
-          <a class="text-link" href="https://github.com/TORO404DEV/focus-dock/issues" target="_blank" rel="noreferrer">Report a bug →</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="final-cta ink-section" aria-labelledby="final-title">
-      <p class="kicker kicker-accent">YOUR UNUSED SCREEN IS READY</p>
-      <h2 id="final-title">Make your second<br>monitor count.</h2>
-      <div class="cta-row">
-        <a class="button button-accent" href="https://github.com/TORO404DEV/focus-dock/releases/download/v0.1.0/PomoDock-Setup-0.1.0.exe">Download PomoDock ↓</a>
-        <a class="button button-outline-light" href="https://github.com/TORO404DEV/focus-dock" target="_blank" rel="noreferrer">View on GitHub ↗</a>
-      </div>
-      <p class="closing-line">Built for people who refuse to let their second monitor go to waste.</p>
+    <section class="cta">
+      <p>Put the second screen to work.</p>
+      <a class="button button-primary" href="https://github.com/TORO404DEV/focus-dock/releases/download/v0.2.1/PomoDock-Setup-0.2.1.exe">Download 0.2.1</a>
     </section>
   </main>
 
   <footer class="site-footer">
-    <a class="brand" href="#top"><img src="../assets/pomodock-mark.svg" width="30" height="30" alt=""><span>POMODOCK</span></a>
-    <p>Windows x64 · MIT License · Local-first</p>
-    <nav aria-label="Footer navigation">
-      <a href="https://github.com/TORO404DEV/focus-dock/releases/tag/v0.1.0">Release</a>
-      <a href="https://github.com/TORO404DEV/focus-dock">Source</a>
-      <a href="https://github.com/TORO404DEV/focus-dock/issues">Issues</a>
-      <a href="https://github.com/TORO404DEV/focus-dock/blob/main/LICENSE">License</a>
+    <p>MIT · TORO404DEV · 2026</p>
+    <nav aria-label="Footer">
+      <a href="https://github.com/TORO404DEV/focus-dock/releases">Releases</a>
+      <a href="https://github.com/TORO404DEV/focus-dock">Repository</a>
+      <a href="../es/" lang="es" hreflang="es" data-language="es">Español</a>
     </nav>
-    <p>© <span data-year>2026</span> TORO404DEV</p>
   </footer>
 </body>
 </html>

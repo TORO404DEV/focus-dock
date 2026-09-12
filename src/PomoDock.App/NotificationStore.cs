@@ -36,6 +36,13 @@ internal sealed class NotificationStore
         Save();
     }
 
+    public bool MarkRead(Guid id)
+    {
+        if (!History.MarkRead(id)) return false;
+        Save();
+        return true;
+    }
+
     private void Save()
     {
         History.Normalize();

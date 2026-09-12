@@ -56,6 +56,7 @@ internal static class FocusHistoryTests
             assert(FocusHistory.TryGuessPeriod("cuantas horas enfoque el ultimo mes", out var spanish) && spanish == "last_month", "Spanish last month");
             assert(FocusHistory.TryGuessPeriod("How many focus hours last month?", out var english) && english == "last_month", "English last month");
             assert(!FocusHistory.TryGuessPeriod("recuerda que me llamo Ada", out _), "memory is not a focus query");
+            assert(!FocusHistory.TryGuessPeriod("Ahora crea una nota de color amarillo", out _), "ahora is not hours");
         });
 
         test("all-time focus begins on the earliest local segment", () =>
@@ -71,7 +72,7 @@ internal static class FocusHistoryTests
             var sessions = new[] { SessionAt(2026, 8, 3, 90, "PomoDock", Outcome.Completed) };
             var summary = FocusHistory.Summarize(sessions, FocusHistory.Resolve("last_month", Today), TimeZoneInfo.Utc);
             string text = FocusHistory.Describe(summary, spanish: true);
-            assert(text.Contains("1.5 h") && text.Contains("01/08/2026") && text.Contains("31/08/2026"), "Spanish answer uses stored minutes and the previous month");
+            assert(text.Contains("hora") && text.Contains("agosto") && text.Contains("media"), "Spanish answer uses stored minutes and the previous month");
             assert(AgentIntent.IsStandaloneFocusQuestion("how many hours did I focus last month"), "English last-month question is standalone");
         });
     }

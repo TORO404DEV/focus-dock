@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PomoDock — Vertical monitor productivity workspace</title>
-  <meta name="description" content="PomoDock is an open-source Windows productivity workspace for vertical secondary monitors. Available in English and Spanish.">
+  <title>PomoDock</title>
+  <meta name="description" content="PomoDock — second-monitor focus workspace for Windows. English and Spanish.">
   <meta name="theme-color" content="#171916">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://pomodock.com/">
@@ -19,20 +19,19 @@
       try { saved = localStorage.getItem('pomodock-language'); } catch (_) {}
       const browserLanguages = navigator.languages || [navigator.language || 'en'];
       const preferred = saved || (browserLanguages.some((language) => language.toLowerCase().startsWith('es')) ? 'es' : 'en');
-      const target = preferred === 'es' ? 'es/' : 'en/';
-      window.location.replace(target + window.location.hash);
+      window.location.replace((preferred === 'es' ? 'es/' : 'en/') + window.location.hash);
     })();
   </script>
 </head>
 <body class="language-gateway">
   <main class="language-card">
-    <img src="assets/pomodock-mark.svg" width="54" height="54" alt="">
-    <p class="eyebrow">WINDOWS · OPEN SOURCE</p>
-    <h1>POMODOCK</h1>
-    <p>Your second monitor, turned into a focus workspace.</p>
+    <img src="assets/pomodock-mark.svg" width="48" height="48" alt="">
+    <p class="eyebrow">Windows · Open source</p>
+    <h1>PomoDock</h1>
+    <p>Your second monitor, as a focus workspace.</p>
     <nav aria-label="Choose language / Elige idioma">
-      <a class="button button-primary" href="en/" lang="en" hreflang="en" data-language="en">Continue in English →</a>
-      <a class="button button-secondary" href="es/" lang="es" hreflang="es" data-language="es">Continuar en español →</a>
+      <a class="button button-primary" href="en/" lang="en" hreflang="en" data-language="en">English</a>
+      <a class="button button-ghost" href="es/" lang="es" hreflang="es" data-language="es">Español</a>
     </nav>
   </main>
   <noscript><p class="gateway-noscript">Choose a language above / Elige un idioma arriba.</p></noscript>

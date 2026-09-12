@@ -335,6 +335,57 @@ public sealed class SettingsWindow : Window
     private void BuildAgent()
     {
         body.Children.Add(Lead(L.T("settings.agentLead"), L.T("settings.agentHelp")));
+
+        var keyBox = new TextBox
+        {
+            FontSize = 13,
+            Padding = new Thickness(9, 8, 9, 8),
+            ToolTip = L.T("settings.agentApiKeyPlaceholder")
+        };
+        if (DeepSeekAgentModel.IsConfigured(settings))
+            keyBox.Text = "••••••••••••";
+        var keyRow = new Border
+        {
+            BorderBrush = AgendaVisuals.Fade("Line", 70), BorderThickness = new Thickness(1),
+            Background = AgendaVisuals.Resource("Surface"), Padding = new Thickness(13, 11, 11, 10), Margin = new Thickness(0, 0, 0, 8)
+        };
+        var keyStack = new StackPanel();
+        keyStack.Children.Add(new TextBlock { Text = L.T("settings.agentApiKey"), FontSize = 13, FontWeight = FontWeights.SemiBold });
+        keyStack.Children.Add(new TextBlock
+        {
+            Text = L.T("settings.agentApiKeyHelp"), FontSize = 10, Foreground = AgendaVisuals.Resource("Muted"),
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 8)
+        });
+        keyStack.Children.Add(AgendaVisuals.WithHint(keyBox, L.T("settings.agentApiKeyPlaceholder")));
+        var keyButtons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+        var saveKey = new Button { Content = L.T("settings.agentApiKeySave"), FontSize = 11, Padding = new Thickness(13, 9, 13, 9) };
+        saveKey.Click += (_, _) =>
+        {
+            string raw = keyBox.Text.Trim();
+            if (raw.Length == 0 || raw.StartsWith('•'))
+            {
+                statusLine.Text = L.T("settings.agentApiKeyMissing");
+                return;
+            }
+            DeepSeekAgentModel.SaveKey(settings, raw);
+            keyBox.Text = "••••••••••••";
+            statusLine.Text = L.T("settings.agentApiKeySaved");
+            Changed();
+        };
+        var clearKey = new Button { Content = L.T("settings.agentApiKeyClear"), FontSize = 11, Padding = new Thickness(13, 9, 13, 9), Margin = new Thickness(8, 0, 0, 0) };
+        clearKey.Click += (_, _) =>
+        {
+            DeepSeekAgentModel.SaveKey(settings, "");
+            keyBox.Text = "";
+            statusLine.Text = L.T("settings.agentApiKeyCleared");
+            Changed();
+        };
+        keyButtons.Children.Add(saveKey);
+        keyButtons.Children.Add(clearKey);
+        keyStack.Children.Add(keyButtons);
+        keyRow.Child = keyStack;
+        body.Children.Add(keyRow);
+
         body.Children.Add(Toggle(L.T("settings.agentMemory"), L.T("settings.agentMemoryHelp"), settings.AgentMemoryEnabled, value =>
         {
             settings.AgentMemoryEnabled = value;

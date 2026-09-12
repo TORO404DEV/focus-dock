@@ -78,6 +78,21 @@ public static class SoundLibrary
         return null;
     }
 
+    public static SoundInfo? Resolve(string? query, SoundKind? kind = null)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return null;
+        string needle = query.Trim();
+        var pool = kind is { } filter ? OfKind(filter) : Catalog;
+        foreach (var sound in pool)
+            if (sound.Id.Equals(needle, StringComparison.OrdinalIgnoreCase) || sound.Name.Equals(needle, StringComparison.OrdinalIgnoreCase))
+                return sound;
+        foreach (var sound in pool)
+            if (sound.Name.Contains(needle, StringComparison.OrdinalIgnoreCase) || sound.Id.Contains(needle, StringComparison.OrdinalIgnoreCase)
+                || sound.Detail.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                return sound;
+        return null;
+    }
+
     public static string Default(SoundKind kind) => kind switch
     {
         SoundKind.Alarm => "classic",

@@ -560,6 +560,38 @@ internal sealed class NotesEditor : Grid
         QueueSave();
     }
 
+    /// <summary>Agent path: append plain text and flush so the open editor never overwrites it.</summary>
+    internal bool AgentAppend(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        editor.Document.Blocks.Add(new Paragraph(new Run(text.Trim())));
+        QueueSave();
+        FlushNow();
+        return true;
+    }
+
+    /// <summary>Agent path: change post-it colour (preset key or #hex) and flush.</summary>
+    internal bool AgentSetColor(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        string color = value.Trim();
+        if (color.Equals("lavender", StringComparison.OrdinalIgnoreCase)) color = "lilac";
+        SetColor(color);
+        FlushNow();
+        return true;
+    }
+
+    private void FlushNow()
+    {
+        saveTimer.Stop();
+        data.DocumentXaml = SaveDocument();
+        data.UpdatedUtc = DateTime.UtcNow;
+        config.Value = JsonSerializer.Serialize(data);
+        owner.SaveState();
+        archive.Track(config);
+        UpdateStatus();
+    }
+
     /// <summary>One colour drives the note, its toolbar, its footer and the card around it.</summary>
     private void ApplySkin()
     {

@@ -256,7 +256,18 @@ public static class FinanceQuickAdd
         if (Starts(raw, "ingreso", "income", "sueldo", "salario", "+")) negative = false;
         if (Starts(raw, "gasto", "expense", "-")) negative = true;
         string title = (raw[..match.Index] + raw[(match.Index + match.Length)..]).Trim();
-        title = Strip(title, "sub", "suscripción", "suscripcion", "subscription", "fijo", "fixed", "ingreso", "income", "gasto", "expense", "mensual", "anual", "yearly", "annual", "año");
+        var conceptInline = Regex.Match(title, @"\bconcepto\s*[:=]?\s*(.+)$", RegexOptions.IgnoreCase);
+        if (conceptInline.Success) title = conceptInline.Groups[1].Value.Trim();
+        else
+        {
+            var concept = Regex.Match(title, @"^(?:concepto|concept)\s*[:=]?\s*(.+)$", RegexOptions.IgnoreCase);
+            if (concept.Success) title = concept.Groups[1].Value.Trim();
+        }
+        title = Strip(title, "sub", "suscripción", "suscripcion", "subscription", "fijo", "fixed", "ingreso", "income", "gasto", "expense", "gastos", "ingresos",
+            "mensual", "anual", "yearly", "annual", "año", "agrega", "añade", "anade", "registra", "apunta", "crea", "add", "create",
+            "por", "favor", "please", "un", "una", "el", "la", "los", "las", "de", "en", "a", "al", "del", "usd", "mxn", "eur", "dolares", "dólares", "dollars", "concepto", "concept");
+        title = Regex.Replace(title, @"[,:;]+", " ");
+        title = Regex.Replace(title, @"\s+", " ").Trim(' ', '.', ',', '·', '-');
         if (title.Length == 0) title = sub ? "Suscripción" : fixedCost ? "Gasto fijo" : negative ? "Gasto" : "Ingreso";
         var flow = negative ? MoneyFlow.Expense : MoneyFlow.Income;
         string category = FinanceBook.NormalizeCategory(GuessCategory(title, sub, fixedCost, flow), flow);
@@ -290,7 +301,7 @@ public static class FinanceQuickAdd
         if (flow == MoneyFlow.Income) return lower.Contains("freelance") ? "freelance" : "salary";
         if (fixedCost || lower.Contains("renta") || lower.Contains("alquiler") || lower.Contains("rent")) return "rent";
         if (lower.Contains("host") || lower.Contains("vps") || lower.Contains("domain") || lower.Contains("dominio") || lower.Contains("cloudflare")) return "hosting";
-        if (lower.Contains("gpt") || lower.Contains("openai") || lower.Contains("claude") || lower.Contains("cursor") || lower.Contains("gemini") || lower.Contains("copilot") || lower.Contains("grok") || lower.Contains("anthropic") || lower.Contains("ai") || lower.Contains(" ia")) return "ai";
+        if (lower.Contains("gpt") || lower.Contains("openai") || lower.Contains("claude") || lower.Contains("cursor") || lower.Contains("gemini") || lower.Contains("copilot") || lower.Contains("grok") || lower.Contains("anthropic") || lower.Contains("deepseek") || lower.Contains("ai") || lower.Contains(" ia")) return "ai";
         if (lower.Contains("netflix") || lower.Contains("spotify") || lower.Contains("youtube")) return "media";
         if (lower.Contains("vercel") || lower.Contains("netlify") || lower.Contains("digitalocean") || lower.Contains("railway")) return "hosting";
         if (sub) return "software";

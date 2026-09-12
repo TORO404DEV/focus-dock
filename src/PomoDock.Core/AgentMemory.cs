@@ -175,7 +175,7 @@ public sealed class AgentMemoryStore
         return JsonSerializer.Serialize(visible, Store.JsonOptions);
     }
 
-    internal static string Seal(string text, bool sensitive)
+    public static string Seal(string text, bool sensitive)
     {
         if (!sensitive || string.IsNullOrEmpty(text)) return text;
         try
@@ -187,7 +187,7 @@ public sealed class AgentMemoryStore
         catch (CryptographicException) { return text; }
     }
 
-    internal static string Reveal(string text)
+    public static string Reveal(string text)
     {
         if (string.IsNullOrEmpty(text) || !text.StartsWith("dpapi:", StringComparison.Ordinal)) return text;
         try

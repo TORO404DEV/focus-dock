@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -113,7 +114,12 @@ public partial class MainWindow
     private void SaveCurrentWorkspacePage()
     {
         if (!workspacePagesLoaded) return;
-        CurrentPage.Widgets = cards.Select(card => card.Config).ToList();
+        CurrentPage.Widgets = cards.Where(card => card.Config.Kind != "agent").Select(card => card.Config).ToList();
+        if (agentCard is not null)
+        {
+            PersistWidget(agentCard, false);
+            Settings.AgentWidget = agentCard.Config;
+        }
         if (CurrentTimerWidget is { } timer && !double.IsNaN(Canvas.GetLeft(TimerFrame)))
         {
             timer.X = Canvas.GetLeft(TimerFrame);
@@ -306,6 +312,14 @@ public partial class MainWindow
         BeginCarouselTransition(dx, dy, target, false, 0);
     }
 
+    private void JumpToWorkspacePage(int target)
+    {
+        if (target < 0 || target >= Settings.WorkspacePages.Count || target == currentPageIndex) return;
+        if (pageTransitioning) ResetCarousel(true);
+        var (dx, dy) = StepToward(CurrentPage, Settings.WorkspacePages[target]);
+        CommitWorkspacePageChange(dx, dy, target, false);
+    }
+
     private void BeginCarouselTransition(int dx, int dy, int? target, bool createPage, double initialOffset)
     {
         if (IsWorkspaceNavigationBlocked) return;
@@ -464,7 +478,7 @@ public partial class MainWindow
         foreach (var card in PagePreviewArea.Children.OfType<WidgetCard>())
         {
             card.Width = Math.Clamp(card.Config.Width, 220, Math.Max(220, width));
-            card.Height = Math.Clamp(card.Config.Collapsed ? 42 : card.Config.Height, 42, Math.Max(42, height));
+            card.Height = card.Config.Collapsed ? 42 : Math.Clamp(card.Config.Height, 42, Math.Max(42, height));
             Canvas.SetLeft(card, Math.Clamp(card.Config.X, 0, Math.Max(0, width - card.Width)));
             Canvas.SetTop(card, Math.Clamp(card.Config.Y, 0, Math.Max(0, height - card.Height)));
         }
@@ -903,6 +917,696 @@ public partial class MainWindow
         }
     }
     internal bool CurrentWorkspacePageHasTimer => CurrentTimerWidget is not null;
+
+    internal AgentToolResult DeleteEmptyPagesFromAgent()
+    {
+        if (Settings.WorkspacePages.Count <= 1)
+            return AgentResult(false, L.T("pages.cannotDeleteOnly"));
+        var empty = Settings.WorkspacePages
+            .Select((page, index) => (page, index))
+            .Where(item => !item.page.HasContent)
+            .Select(item => item.index)
+            .ToList();
+        if (empty.Count == 0)
+            return AgentResult(false, L.T("agent.noEmptyPages"));
+        int keep = Settings.WorkspacePages.FindIndex(page => page.HasContent);
+        if (keep < 0) keep = 0;
+        empty.RemoveAll(index => index == keep);
+        if (empty.Count == 0)
+            return AgentResult(false, L.T("pages.cannotDeleteOnly"));
+        if (currentPageIndex != keep) JumpToWorkspacePage(keep);
+        foreach (int index in empty.OrderByDescending(index => index))
+        {
+            if (index < 0 || index >= Settings.WorkspacePages.Count) continue;
+            if (index == currentPageIndex) continue;
+            if (Settings.WorkspacePages[index].HasContent) continue;
+            DeleteWorkspacePage(index);
+        }
+        Pulse(PageDockSurface);
+        Status(L.T("agent.deletedEmptyPages", empty.Count));
+        return AgentResult(true, L.T("agent.deletedEmptyPages", empty.Count));
+    }
+
+    /// <summary>Deletes one page (empty or not), same as right-click on a page dot.</summary>
+    internal AgentToolResult DeletePageFromAgent(JsonElement args)
+    {
+        if (!TryAgentPage(args, out int index, out var error)) return error!;
+        if (Settings.WorkspacePages.Count <= 1)
+            return AgentResult(false, L.T("pages.cannotDeleteOnly"));
+        var page = Settings.WorkspacePages[index];
+        int count = page.WidgetCount;
+        string suffix = count == 0 ? "" : count == 1 ? L.T("pages.deleteSuffixOne") : L.T("pages.deleteSuffixMany", count);
+        if (!AgentPlanApproved
+            && Dialogs.Choose(this, L.T("pages.deleteTitle", page.Name.ToUpperInvariant(), suffix), [L.T("pages.deleteConfirm"), L.T("common.cancel")]) != 0)
+            return AgentResult(false, EsPages() ? "Cancelaste borrar la página." : "Page delete cancelled.");
+        string name = page.Name;
+        DeleteWorkspacePage(index);
+        return AgentResult(true, EsPages() ? $"Eliminé la página «{name}»." : $"Deleted page “{name}”.");
+    }
+
+    internal AgentToolResult SetWebKeepAliveFromAgent(JsonElement args)
+    {
+        var card = FindAgentCard(args) ?? cards.FirstOrDefault(item => item.Config.Kind == "web");
+        if (card is null || card.Config.Kind != "web")
+            return AgentResult(false, EsPages() ? "No hay widget web." : "No web widget.");
+        bool keep = true;
+        if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("keep_alive", out var flag)
+            && flag.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            keep = flag.GetBoolean();
+        else if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("keepalive", out flag)
+            && flag.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            keep = flag.GetBoolean();
+        card.SetKeepAlive(keep);
+        return AgentResult(true, keep
+            ? (EsPages() ? $"Keep-alive activado en «{card.Config.Title}»." : $"Keep-alive on for “{card.Config.Title}”.")
+            : (EsPages() ? $"Keep-alive desactivado en «{card.Config.Title}»." : $"Keep-alive off for “{card.Config.Title}”."));
+    }
+
+    internal AgentToolResult AddPageFromAgent()
+    {
+        if (pageTransitioning) return AgentResult(false, L.T("agent.pageBusy"));
+        if (!CurrentPage.HasContent)
+            return AgentResult(false, L.T("agent.pageAlreadyEmpty"));
+        int dx = 0, dy = 0;
+        if (CanCreateWorkspacePage(1, 0)) dx = 1;
+        else if (CanCreateWorkspacePage(0, 1)) dy = 1;
+        else if (CanCreateWorkspacePage(-1, 0)) dx = -1;
+        else if (CanCreateWorkspacePage(0, -1)) dy = -1;
+        else return AgentResult(false, L.T("pages.lastAlreadyEmpty"));
+        CommitWorkspacePageChange(dx, dy, null, true);
+        ShowCreatedWork(null);
+        return AgentResult(true, L.T("agent.pageCreated", (currentPageIndex + 1).ToString()));
+    }
+
+    internal AgentToolResult GotoPageFromAgent(JsonElement args)
+    {
+        int? index = ResolvePageIndexFromAgent(args);
+        if (index is null)
+            return AgentResult(false, EsPages() ? "No encontré esa página." : "Page not found.");
+        if (index.Value != currentPageIndex) JumpToWorkspacePage(index.Value);
+        Pulse(PageDockSurface);
+        var page = CurrentPage;
+        bool home = Settings.HomePageId == page.Id;
+        return AgentResult(true, EsPages()
+            ? $"Abrí «{page.Name}» (página {currentPageIndex + 1}){(home ? ", tu casa" : "")}."
+            : $"Opened “{page.Name}” (page {currentPageIndex + 1}){(home ? ", your home" : "")}.");
+    }
+
+    internal AgentToolResult RenamePageFromAgent(JsonElement args)
+    {
+        int? index = ResolvePageIndexFromAgent(args) ?? currentPageIndex;
+        if (index is null || index < 0 || index >= Settings.WorkspacePages.Count)
+            return AgentResult(false, EsPages() ? "No encontré esa página." : "Page not found.");
+        string name = TextArg(args, "name");
+        if (name.Length == 0) name = TextArg(args, "new_name");
+        if (name.Length == 0) name = TextArg(args, "title");
+        name = name.Trim();
+        if (name.Length == 0)
+            return AgentResult(false, EsPages() ? "Falta el nuevo nombre de la página." : "Missing the new page name.");
+        var page = Settings.WorkspacePages[index.Value];
+        string previous = page.Name;
+        page.Name = name;
+        bool makeHome = BoolArg(args, "home", IsHomeAlias(name));
+        if (makeHome) Settings.HomePageId = page.Id;
+        SaveState();
+        UpdatePageNavigation();
+        return AgentResult(true, EsPages()
+            ? $"Renombré la página {index.Value + 1}: «{previous}» → «{page.Name}»{(makeHome ? " (casa)" : "")}."
+            : $"Renamed page {index.Value + 1}: “{previous}” → “{page.Name}”{(makeHome ? " (home)" : "")}.");
+    }
+
+    internal AgentToolResult SetHomePageFromAgent(JsonElement args)
+    {
+        int? index = ResolvePageIndexFromAgent(args) ?? currentPageIndex;
+        if (index is null || index < 0 || index >= Settings.WorkspacePages.Count)
+            return AgentResult(false, EsPages() ? "No encontré esa página." : "Page not found.");
+        var page = Settings.WorkspacePages[index.Value];
+        Settings.HomePageId = page.Id;
+        SaveState();
+        return AgentResult(true, EsPages()
+            ? $"«{page.Name}» es ahora tu página principal (casa)."
+            : $"“{page.Name}” is now your home page.");
+    }
+
+    /// <summary>Resolves page by number, name, or home aliases (casa / principal / home).</summary>
+    private int? ResolvePageIndexFromAgent(JsonElement args)
+    {
+        if (args.ValueKind != JsonValueKind.Object) return null;
+
+        if (args.TryGetProperty("page", out var pageValue))
+        {
+            if (pageValue.ValueKind == JsonValueKind.Null) { /* fall through */ }
+            else if (pageValue.TryGetInt32(out int number))
+                return number >= 1 && number <= Settings.WorkspacePages.Count ? number - 1 : null;
+            else if (pageValue.ValueKind == JsonValueKind.String)
+            {
+                string raw = pageValue.GetString()?.Trim() ?? "";
+                if (int.TryParse(raw, out number))
+                    return number >= 1 && number <= Settings.WorkspacePages.Count ? number - 1 : null;
+                int? byName = FindPageIndexByNameOrAlias(raw);
+                if (byName is not null) return byName;
+            }
+        }
+
+        string name = TextArg(args, "name");
+        if (name.Length == 0) name = TextArg(args, "title");
+        if (name.Length > 0)
+        {
+            int? byName = FindPageIndexByNameOrAlias(name);
+            if (byName is not null) return byName;
+        }
+
+        if (BoolArg(args, "home", false) || IsHomeAlias(TextArg(args, "to")))
+            return FindHomePageIndex();
+
+        return null;
+    }
+
+    private int? FindPageIndexByNameOrAlias(string raw)
+    {
+        string needle = raw.Trim();
+        if (needle.Length == 0) return null;
+        if (IsHomeAlias(needle)) return FindHomePageIndex();
+
+        // "página 3" / "page 3"
+        var match = System.Text.RegularExpressions.Regex.Match(needle, @"^(?:p[aá]gina|page)\s*0*(\d+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (match.Success && int.TryParse(match.Groups[1].Value, out int number))
+            return number >= 1 && number <= Settings.WorkspacePages.Count ? number - 1 : null;
+
+        for (int i = 0; i < Settings.WorkspacePages.Count; i++)
+        {
+            if (string.Equals(Settings.WorkspacePages[i].Name, needle, StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+        for (int i = 0; i < Settings.WorkspacePages.Count; i++)
+        {
+            if (Settings.WorkspacePages[i].Name.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+        return null;
+    }
+
+    private int? FindHomePageIndex()
+    {
+        if (Settings.HomePageId is { } id)
+        {
+            int found = Settings.WorkspacePages.FindIndex(page => page.Id == id);
+            if (found >= 0) return found;
+        }
+        // Fallback: page named like home, else first page.
+        for (int i = 0; i < Settings.WorkspacePages.Count; i++)
+        {
+            if (IsHomeAlias(Settings.WorkspacePages[i].Name)) return i;
+        }
+        return Settings.WorkspacePages.Count > 0 ? 0 : null;
+    }
+
+    private static bool IsHomeAlias(string? value)
+    {
+        string key = (value ?? "").Trim().ToLowerInvariant();
+        return key is "casa" or "home" or "principal" or "inicio" or "main" or "página principal" or "pagina principal" or "página casa" or "pagina casa";
+    }
+
+    private static bool BoolArg(JsonElement args, string key, bool fallback)
+    {
+        if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty(key, out var value)) return fallback;
+        if (value.ValueKind is JsonValueKind.True or JsonValueKind.False) return value.GetBoolean();
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            string text = value.GetString()?.Trim().ToLowerInvariant() ?? "";
+            if (text is "true" or "1" or "yes" or "si" or "sí") return true;
+            if (text is "false" or "0" or "no") return false;
+        }
+        return fallback;
+    }
+
+    internal AgentToolResult FocusWidgetFromAgent(JsonElement args)
+    {
+        string title = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("title", out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()?.Trim() ?? "" : "";
+        if (title.Length == 0) return AgentResult(false, L.T("agent.widgetMissing"));
+        var match = Settings.WorkspacePages
+            .Select((page, index) => (page, index, widget: page.Widgets.FirstOrDefault(item => item.Title.Contains(title, StringComparison.OrdinalIgnoreCase))))
+            .FirstOrDefault(item => item.widget is not null);
+        if (match.widget is null) return AgentResult(false, L.T("agent.widgetMissing"));
+        if (match.index != currentPageIndex) JumpToWorkspacePage(match.index);
+        ShowCreatedWork(match.widget.Id);
+        return AgentResult(true, L.T("agent.showingWork") + " · " + match.widget.Title);
+    }
+
+    internal AgentToolResult RemoveTimerFromAgent(JsonElement args)
+    {
+        if (!TryAgentPage(args, out int index, out var error)) return error!;
+        if (index != currentPageIndex) JumpToWorkspacePage(index);
+        if (CurrentTimerWidget is null)
+            return AgentResult(false, EsPages() ? "Esa página no tiene temporizador." : "That page has no timer.");
+        RemoveTimerWidget();
+        Pulse(PageDockSurface);
+        return AgentResult(true, EsPages() ? $"Quité el temporizador de la página {currentPageIndex + 1}." : $"Removed the timer from page {currentPageIndex + 1}.");
+    }
+
+    internal AgentToolResult RemoveWidgetFromAgent(JsonElement args)
+    {
+        if (!TryAgentPage(args, out int pageIndex, out var error)) return error!;
+        if (pageIndex != currentPageIndex) JumpToWorkspacePage(pageIndex);
+        SyncWorkspaceForAgent();
+        string title = TextArg(args, "title");
+        string kind = TextArg(args, "kind").ToLowerInvariant();
+        kind = kind switch
+        {
+            "nota" or "note" or "notes" => "notes",
+            "tareas" or "todo" => "todo",
+            "hábito" or "habitos" or "hábitos" or "habits" => "habits",
+            "agenda" or "calendar" => "calendar",
+            "finanzas" or "finance" => "finance",
+            "stats" or "enfoque" => "stats",
+            _ => kind
+        };
+        var card = cards.FirstOrDefault(item =>
+            (title.Length > 0 && item.Config.Title.Contains(title, StringComparison.OrdinalIgnoreCase))
+            || (kind.Length > 0 && item.Config.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase))
+            || (title.Length > 0 && item.Config.Kind.Equals(title.ToLowerInvariant() switch
+            {
+                "nota" or "note" => "notes",
+                "tareas" or "todo" => "todo",
+                "hábitos" or "habitos" or "habits" => "habits",
+                "agenda" or "calendar" => "calendar",
+                "finanzas" or "finance" => "finance",
+                "stats" or "enfoque" => "stats",
+                _ => title
+            }, StringComparison.OrdinalIgnoreCase)));
+        if (card is null) return AgentResult(false, L.T("agent.widgetMissing"));
+        string name = card.Config.Title;
+        RemoveCard(card);
+        return AgentResult(true, EsPages() ? $"Quité {name}." : $"Removed {name}.");
+    }
+
+    /// <summary>Removes every content widget on the current (or named) page. Does not remove the agent chat.</summary>
+    internal AgentToolResult ClearWidgetsFromAgent(JsonElement args)
+    {
+        if (!TryAgentPage(args, out int pageIndex, out var error)) return error!;
+        if (pageIndex != currentPageIndex) JumpToWorkspacePage(pageIndex);
+        SyncWorkspaceForAgent();
+        bool includeTimer = false;
+        if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("include_timer", out var flag)
+            && flag.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            includeTimer = flag.GetBoolean();
+
+        var victims = cards.Where(card => card.Config.Kind != "agent").ToList();
+        if (victims.Count == 0 && !(includeTimer && CurrentTimerWidget is not null))
+            return AgentResult(true, EsPages()
+                ? $"La página {pageIndex + 1} ya no tiene widgets de contenido."
+                : $"Page {pageIndex + 1} already has no content widgets.");
+
+        var names = victims.Select(card => $"{card.Config.Kind}:{card.Config.Title}").ToList();
+        foreach (var card in victims) RemoveCard(card);
+        if (includeTimer && CurrentTimerWidget is not null)
+        {
+            names.Add("timer:POMODORO");
+            using var timerArgs = JsonDocument.Parse($"{{\"page\":{pageIndex + 1}}}");
+            RemoveTimerFromAgent(timerArgs.RootElement);
+        }
+        return AgentResult(true, EsPages()
+            ? $"Quité {names.Count} widget(s) de la página {pageIndex + 1}: {string.Join(", ", names)}."
+            : $"Removed {names.Count} widget(s) from page {pageIndex + 1}: {string.Join(", ", names)}.");
+    }
+
+    internal void SyncWorkspaceForAgent() => SaveCurrentWorkspacePage();
+
+    internal IReadOnlyList<object> DescribeCurrentScreenWidgets()
+    {
+        SyncWorkspaceForAgent();
+        return cards.Where(card => card.Config.Kind != "agent")
+            .Select(card => (object)new { card.Config.Id, card.Config.Kind, card.Config.Title })
+            .ToList();
+    }
+
+    internal string DescribeCurrentScreenForAgent()
+    {
+        SyncWorkspaceForAgent();
+        var widgets = cards.Where(card => card.Config.Kind != "agent")
+            .Select(card => $"{card.Config.Kind}:{card.Config.Title}")
+            .ToList();
+        string list = widgets.Count == 0
+            ? (EsPages() ? "(ninguno)" : "(none)")
+            : string.Join(", ", widgets);
+        string timer = CurrentTimerWidget is null
+            ? (EsPages() ? "no" : "no")
+            : (EsPages() ? "sí" : "yes");
+        return EsPages()
+            ? $"Página actual {currentPageIndex + 1}/{Settings.WorkspacePages.Count} «{CurrentPage.Name}»{(Settings.HomePageId == CurrentPage.Id ? " [casa]" : "")}. Widgets visibles ahora: {list}. Timer: {timer}."
+            : $"Current page {currentPageIndex + 1}/{Settings.WorkspacePages.Count} “{CurrentPage.Name}”{(Settings.HomePageId == CurrentPage.Id ? " [home]" : "")}. Widgets visible now: {list}. Timer: {timer}.";
+    }
+
+    internal AgentToolResult RenameWidgetFromAgent(JsonElement args)
+    {
+        var card = FindAgentCard(args);
+        if (card is null) return AgentResult(false, L.T("agent.widgetMissing"));
+        string previous = card.Config.Title;
+        string title = TextArg(args, "new_title");
+        if (title.Length == 0) title = TextArg(args, "name");
+        if (title.Length == 0) return AgentResult(false, EsPages() ? "Falta el nuevo título." : "Missing the new title.");
+        card.SetTitle(title);
+        return AgentResult(true, EsPages() ? $"Renombré «{previous}» a «{title}»." : $"Renamed “{previous}” to “{title}”.");
+    }
+
+    internal AgentToolResult CollapseWidgetFromAgent(JsonElement args)
+    {
+        var card = FindAgentCard(args);
+        if (card is null) return AgentResult(false, L.T("agent.widgetMissing"));
+        bool collapsed = true;
+        if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("collapsed", out var value)
+            && value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            collapsed = value.GetBoolean();
+        _ = card.SetCollapsedAsync(collapsed);
+        return AgentResult(true, collapsed
+            ? (EsPages() ? $"Contraté «{card.Config.Title}»." : $"Collapsed “{card.Config.Title}”.")
+            : (EsPages() ? $"Expandí «{card.Config.Title}»." : $"Expanded “{card.Config.Title}”."));
+    }
+
+    internal AgentToolResult ResizeWidgetFromAgent(JsonElement args)
+    {
+        var card = FindAgentCard(args);
+        if (card is null) return AgentResult(false, L.T("agent.widgetMissing"));
+        double width = card.Config.Width, height = card.Config.Height;
+        if (args.ValueKind == JsonValueKind.Object)
+        {
+            if (args.TryGetProperty("width", out var w) && w.TryGetDouble(out double left)) width = left;
+            if (args.TryGetProperty("height", out var h) && h.TryGetDouble(out double top)) height = top;
+        }
+        card.SetSize(width, height);
+        return AgentResult(true, EsPages()
+            ? $"Redimensioné «{card.Config.Title}» a {card.Config.Width:0}×{card.Config.Height:0}."
+            : $"Resized “{card.Config.Title}” to {card.Config.Width:0}×{card.Config.Height:0}.");
+    }
+
+    internal AgentToolResult SetWebUrlFromAgent(JsonElement args)
+    {
+        var card = FindAgentCard(args) ?? cards.FirstOrDefault(item => item.Config.Kind == "web");
+        if (card is null || card.Config.Kind != "web") return AgentResult(false, EsPages() ? "No hay widget web." : "No web widget.");
+        string url = TextArg(args, "url");
+        if (url.Length == 0) url = TextArg(args, "value");
+        if (!card.SetWebUrl(url)) return AgentResult(false, EsPages() ? "La URL debe ser https." : "URL must be https.");
+        return AgentResult(true, EsPages() ? $"URL: {card.Config.Value}" : $"URL set: {card.Config.Value}");
+    }
+
+    internal AgentToolResult ReloadWebFromAgent(JsonElement args)
+    {
+        var card = FindAgentCard(args) ?? cards.FirstOrDefault(item => item.Config.Kind == "web");
+        if (card is null || card.Config.Kind != "web") return AgentResult(false, EsPages() ? "No hay widget web." : "No web widget.");
+        card.ReloadWeb();
+        return AgentResult(true, EsPages() ? $"Recargué «{card.Config.Title}»." : $"Reloaded “{card.Config.Title}”.");
+    }
+
+    internal AgentToolResult FullscreenFromAgent(JsonElement args)
+    {
+        bool? want = null;
+        if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("on", out var value)
+            && value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            want = value.GetBoolean();
+        if (want is null || fullscreen != want.Value) ToggleFullscreen();
+        return AgentResult(true, fullscreen
+            ? (EsPages() ? "Pantalla completa activada." : "Fullscreen on.")
+            : (EsPages() ? "Pantalla completa desactivada." : "Fullscreen off."));
+    }
+
+    internal AgentToolResult DismissNotificationsFromAgent(JsonElement args)
+    {
+        string idText = TextArg(args, "id");
+        if (idText.Length > 0 && Guid.TryParse(idText, out var id))
+        {
+            if (!notifications.MarkRead(id))
+                return AgentResult(false, EsPages() ? "No encontré esa notificación." : "Notification not found.");
+            RefreshNotificationChrome();
+            return AgentResult(true, EsPages() ? "Notificación marcada como leída." : "Notification marked read.");
+        }
+        notifications.MarkAllRead();
+        RefreshNotificationChrome();
+        return AgentResult(true, EsPages() ? "Notificaciones marcadas como leídas." : "Notifications marked read.");
+    }
+
+    internal AgentToolResult DeleteLayoutFromAgent(JsonElement args)
+    {
+        string name = TextArg(args, "name");
+        if (name.Length == 0) name = TextArg(args, "title");
+        if (name.Length == 0 || !Settings.Layouts.ContainsKey(name))
+            return AgentResult(false, EsPages() ? "No encontré ese layout." : "Layout not found.");
+        if (!AgentPlanApproved
+            && Dialogs.Choose(this, EsPages() ? $"¿Borrar layout «{name}»?" : $"Delete layout “{name}”?",
+                [EsPages() ? "BORRAR" : "DELETE", L.T("common.cancel")]) != 0)
+            return AgentResult(false, EsPages() ? "Cancelaste borrar el layout." : "Layout delete cancelled.");
+        Settings.Layouts.Remove(name);
+        SaveState();
+        return AgentResult(true, EsPages() ? $"Layout borrado: {name}" : $"Layout deleted: {name}");
+    }
+
+    internal AgentToolResult OpenPanelFromAgent(JsonElement args)
+    {
+        string panel = TextArg(args, "panel");
+        if (panel.Length == 0) panel = TextArg(args, "name");
+        panel = panel.Trim().ToLowerInvariant();
+        switch (panel)
+        {
+            case "settings" or "ajustes" or "config":
+                ShowWorkspaceDialog(new SettingsWindow(this));
+                ApplyLiveSettings();
+                SaveState();
+                return AgentResult(true, EsPages() ? "Abrí ajustes." : "Opened settings.");
+            case "tasks" or "tareas" or "focus_tasks" or "enfoque":
+                ShowWorkspaceDialog(new TasksWindow(this));
+                return AgentResult(true, EsPages() ? "Abrí tareas de enfoque." : "Opened focus tasks.");
+            case "layouts" or "layout":
+                ShowWorkspaceDialog(new LayoutsWindow(this));
+                return AgentResult(true, EsPages() ? "Abrí layouts." : "Opened layouts.");
+            case "report" or "informe" or "historial":
+                ShowReportModal();
+                return AgentResult(true, EsPages() ? "Abrí el informe." : "Opened the report.");
+            case "agent" or "agente":
+                ShowAgentWidget();
+                return AgentResult(true, EsPages() ? "Abrí el agente." : "Opened the agent.");
+            case "notifications" or "notificaciones" or "inbox":
+                NotificationsPopup.IsOpen = true;
+                return AgentResult(true, EsPages() ? "Abrí las notificaciones." : "Opened notifications.");
+            default:
+                return AgentResult(false, EsPages()
+                    ? "Panel desconocido. Usa: settings, tasks, layouts, report, agent, notifications."
+                    : "Unknown panel. Use: settings, tasks, layouts, report, agent, notifications.");
+        }
+    }
+
+    internal AgentToolResult OpenDataFolderFromAgent()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Store.DirectoryPath) { UseShellExecute = true });
+            return AgentResult(true, Store.DirectoryPath);
+        }
+        catch (Exception ex)
+        {
+            return AgentResult(false, EsPages() ? $"No pude abrir la carpeta: {ex.Message}" : $"Could not open folder: {ex.Message}");
+        }
+    }
+
+    internal AgentToolResult SetCalendarViewFromAgent(JsonElement args)
+    {
+        string view = TextArg(args, "view");
+        if (view.Length == 0) view = TextArg(args, "mode");
+        var card = FindAgentCard(args) ?? cards.FirstOrDefault(item => item.Config.Kind == "calendar");
+        if (card is null)
+            return AgentResult(false, EsPages() ? "No hay widget de calendario en esta página." : "No calendar widget on this page.");
+        if (!card.SetCalendarView(view))
+            return AgentResult(false, EsPages() ? "Vista inválida. Usa month, week o agenda." : "Invalid view. Use month, week, or agenda.");
+        return AgentResult(true, EsPages() ? $"Vista del calendario: {view}." : $"Calendar view: {view}.");
+    }
+
+    internal AgentToolResult NavigateCalendarFromAgent(JsonElement args)
+    {
+        string to = TextArg(args, "to");
+        if (to.Length == 0) to = TextArg(args, "when");
+        if (to.Length == 0) to = TextArg(args, "direction");
+        var card = FindAgentCard(args) ?? cards.FirstOrDefault(item => item.Config.Kind == "calendar");
+        if (card is null)
+            return AgentResult(false, EsPages() ? "No hay widget de calendario." : "No calendar widget.");
+        if (!card.NavigateCalendar(to))
+            return AgentResult(false, EsPages() ? "Destino inválido. Usa prev, next, today o yyyy-MM." : "Invalid target. Use prev, next, today, or yyyy-MM.");
+        return AgentResult(true, EsPages() ? $"Calendario en: {to}." : $"Calendar at: {to}.");
+    }
+
+    internal AgentToolResult SetCalendarShowDoneFromAgent(JsonElement args)
+    {
+        bool show = true;
+        if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("show", out var flag)
+            && flag.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            show = flag.GetBoolean();
+        else if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("show_done", out var alt)
+            && alt.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            show = alt.GetBoolean();
+        var card = FindAgentCard(args) ?? cards.FirstOrDefault(item => item.Config.Kind == "calendar");
+        if (card is null)
+            return AgentResult(false, EsPages() ? "No hay widget de calendario." : "No calendar widget.");
+        card.SetCalendarShowDone(show);
+        return AgentResult(true, show
+            ? (EsPages() ? "Muestro hechos en el calendario." : "Showing completed calendar items.")
+            : (EsPages() ? "Oculto hechos en el calendario." : "Hiding completed calendar items."));
+    }
+
+    internal AgentToolResult ApplyRhythmFromAgent(JsonElement args)
+    {
+        string name = TextArg(args, "name");
+        if (name.Length == 0) name = TextArg(args, "rhythm");
+        name = name.Trim().ToLowerInvariant();
+        var preset = name switch
+        {
+            "classic" or "clasico" or "clásico" or "25" => (25, 5, 15, 4, "classic"),
+            "deep" or "profundo" or "50" => (50, 10, 20, 3, "deep"),
+            "sprint" or "15" => (15, 3, 10, 4, "sprint"),
+            "marathon" or "maraton" or "maratón" or "90" => (90, 20, 30, 2, "marathon"),
+            _ => (0, 0, 0, 0, "")
+        };
+        if (preset.Item5.Length == 0)
+            return AgentResult(false, EsPages()
+                ? "Ritmo desconocido. Usa classic, deep, sprint o marathon."
+                : "Unknown rhythm. Use classic, deep, sprint, or marathon.");
+        Settings.FocusMinutes = preset.Item1;
+        Settings.ShortMinutes = preset.Item2;
+        Settings.LongMinutes = preset.Item3;
+        Settings.LongInterval = preset.Item4;
+        ApplyLiveSettings();
+        SaveState();
+        return AgentResult(true, EsPages()
+            ? $"Ritmo {preset.Item5}: {preset.Item1} · {preset.Item2} · {preset.Item3}."
+            : $"Rhythm {preset.Item5}: {preset.Item1} · {preset.Item2} · {preset.Item3}.");
+    }
+
+    internal WidgetCard? ResolveNotesCardForAgent(string title)
+    {
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(new { title, kind = "notes" }));
+        return FindAgentCard(doc.RootElement);
+    }
+
+    internal AgentToolResult SaveLayoutFromAgent(JsonElement args)
+    {
+        string name = TextArg(args, "name");
+        if (name.Length == 0) name = TextArg(args, "title");
+        if (name.Length == 0) return AgentResult(false, EsPages() ? "Falta el nombre del layout." : "Missing layout name.");
+        SaveState();
+        var snapshot = JsonSerializer.Deserialize<List<WidgetConfig>>(JsonSerializer.Serialize(CurrentPage.Widgets)) ?? [];
+        Settings.Layouts[name] = snapshot;
+        SaveState();
+        return AgentResult(true, EsPages() ? $"Layout guardado: {name}" : $"Layout saved: {name}");
+    }
+
+    internal AgentToolResult LoadLayoutFromAgent(JsonElement args)
+    {
+        string name = TextArg(args, "name");
+        if (name.Length == 0) name = TextArg(args, "title");
+        if (name.Length == 0 || !Settings.Layouts.TryGetValue(name, out var layout))
+            return AgentResult(false, EsPages() ? "No encontré ese layout." : "Layout not found.");
+        LoadLayout(layout);
+        return AgentResult(true, EsPages() ? $"Layout cargado: {name}" : $"Layout loaded: {name}");
+    }
+
+    internal AgentToolResult ListLayoutsFromAgent()
+    {
+        var names = Settings.Layouts.Keys.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+        string summary = names.Count == 0
+            ? (EsPages() ? "No hay layouts guardados." : "No saved layouts.")
+            : string.Join(", ", names);
+        return new AgentToolResult(false, summary, JsonSerializer.Serialize(new { success = true, changed = false, summary, data = names }), true);
+    }
+
+    internal AgentToolResult NotificationsFromAgent(JsonElement args)
+    {
+        string command = TextArg(args, "command").ToLowerInvariant();
+        if (command is "dismiss" or "read" or "mark_read")
+        {
+            notifications.MarkAllRead();
+            RefreshNotificationChrome();
+            return AgentResult(true, EsPages() ? "Notificaciones marcadas como leídas." : "Notifications marked read.");
+        }
+        var items = notifications.History.Items.Take(20).Select(item => new
+        {
+            item.Id, item.Title, item.Read, item.ScheduledLocal, item.DeliveredLocal
+        }).ToList();
+        string summary = EsPages()
+            ? $"{items.Count} notificaciones · {notifications.History.Unread} sin leer"
+            : $"{items.Count} notifications · {notifications.History.Unread} unread";
+        return new AgentToolResult(false, summary, JsonSerializer.Serialize(new { success = true, changed = false, summary, data = items }), true);
+    }
+
+    private WidgetCard? FindAgentCard(JsonElement args)
+    {
+        string title = TextArg(args, "title");
+        string kind = TextArg(args, "kind").ToLowerInvariant();
+        kind = kind switch
+        {
+            "nota" or "note" or "notes" => "notes",
+            "tareas" or "todo" => "todo",
+            "hábito" or "habitos" or "hábitos" or "habits" => "habits",
+            "agenda" or "calendar" => "calendar",
+            "finanzas" or "finance" => "finance",
+            "stats" or "enfoque" => "stats",
+            "web" or "navegador" => "web",
+            "ventana" or "window" => "window",
+            _ => kind
+        };
+        if (title.Length == 0 && kind.Length == 0) return null;
+
+        bool Matches(WidgetConfig widget) =>
+            (title.Length > 0 && widget.Title.Contains(title, StringComparison.OrdinalIgnoreCase))
+            || (kind.Length > 0 && widget.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase));
+
+        // Prefer an explicit page when provided; otherwise search every page and jump.
+        if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("page", out _)
+            && TryAgentPage(args, out int pageIndex, out _)
+            && pageIndex >= 0)
+        {
+            if (pageIndex != currentPageIndex) JumpToWorkspacePage(pageIndex);
+            SyncWorkspaceForAgent();
+            return cards.FirstOrDefault(item => Matches(item.Config));
+        }
+
+        for (int index = 0; index < Settings.WorkspacePages.Count; index++)
+        {
+            var match = Settings.WorkspacePages[index].Widgets.FirstOrDefault(Matches);
+            if (match is null) continue;
+            if (index != currentPageIndex) JumpToWorkspacePage(index);
+            SyncWorkspaceForAgent();
+            return cards.FirstOrDefault(item => item.Config.Id == match.Id)
+                ?? cards.FirstOrDefault(item => Matches(item.Config));
+        }
+
+        return cards.FirstOrDefault(item => Matches(item.Config));
+    }
+
+    private bool TryAgentPage(JsonElement args, out int index, out AgentToolResult? error)
+    {
+        index = currentPageIndex;
+        error = null;
+        int page = currentPageIndex + 1;
+        if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("page", out var value))
+        {
+            if (value.ValueKind == JsonValueKind.Null) return true;
+            if (value.TryGetInt32(out int number)) page = number;
+            else if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out number)) page = number;
+        }
+        index = page - 1;
+        if (index < 0 || index >= Settings.WorkspacePages.Count)
+        {
+            error = AgentResult(false, L.T("agent.pageMissing", page));
+            return false;
+        }
+        return true;
+    }
+
+    private static string TextArg(JsonElement args, string key) =>
+        args.ValueKind == JsonValueKind.Object && args.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()?.Trim() ?? "" : "";
+
+    private static bool EsPages() => Strings.Culture.TwoLetterISOLanguageName == "es";
+
+    private static AgentToolResult AgentResult(bool changed, string summary) =>
+        new(changed, summary, JsonSerializer.Serialize(new { success = true, changed, summary }), true);
     internal bool EmptyPageIsFrameless => Welcome.BorderThickness == new Thickness(0);
     internal bool AddPageForDiagnostics() => AddBlankWorkspacePage();
     internal void AddTimerForDiagnostics() => AddTimerWidget();

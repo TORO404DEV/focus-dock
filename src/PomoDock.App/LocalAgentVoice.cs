@@ -14,9 +14,9 @@ internal sealed class LocalAgentVoice : IDisposable
 {
     private sealed record VoiceSpec(string Folder, string Model, string Url, long Bytes, string Sha256);
     private static readonly VoiceSpec Spanish = new(
-        "vits-piper-es_MX-ald-medium", "es_MX-ald-medium.onnx",
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-es_MX-ald-medium.tar.bz2",
-        67_196_497, "c60cf7bc853eb01a875fba0756523fecf9d9f46c763b19785d223fc981fb4fb6");
+        "vits-piper-es_MX-claude-high", "es_MX-claude-high.onnx",
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-es_MX-claude-high.tar.bz2",
+        67_207_890, "ec33fb689c248fe64810aab564cba97babf0f506672cfd404928d46e751a4721");
     private static readonly VoiceSpec English = new(
         "vits-piper-en_US-lessac-medium", "en_US-lessac-medium.onnx",
         "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-medium.tar.bz2",
@@ -29,6 +29,7 @@ internal sealed class LocalAgentVoice : IDisposable
     private WaveOutEvent? output;
     private AudioFileReader? reader;
     private CancellationTokenSource? speech;
+    private readonly SemaphoreSlim voiceGate = new(1, 1);
 
     public LocalAgentVoice(string dataPath) => root = Path.Combine(dataPath, "models", "voice");
 
@@ -38,23 +39,42 @@ internal sealed class LocalAgentVoice : IDisposable
         var activeSpeech = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         speech = activeSpeech;
         string cache = Path.Combine(root, "cache"); Directory.CreateDirectory(cache);
-        string wave = Path.Combine(cache, $"agent-{Guid.NewGuid():N}.wav");
+        await voiceGate.WaitAsync(activeSpeech.Token);
         try
         {
-            await RenderToWaveAsync(text, language, speed, wave, progress, activeSpeech.Token);
-            activeSpeech.Token.ThrowIfCancellationRequested();
-            reader = new AudioFileReader(wave);
-            output = new WaveOutEvent(); output.Init(reader);
-            var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            output.PlaybackStopped += (_, e) => { if (e.Exception is null) finished.TrySetResult(); else finished.TrySetException(e.Exception); };
-            using var registration = activeSpeech.Token.Register(() => { try { output?.Stop(); } catch { } });
-            output.Play(); await finished.Task;
+            var spec = language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? English : Spanish;
+            await EnsureVoiceAsync(spec, tts is null ? progress : null, activeSpeech.Token);
+            if (tts is null || loadedLanguage != spec.Folder)
+            {
+                tts?.Dispose();
+                tts = await Task.Run(() => Build(spec), activeSpeech.Token);
+                loadedLanguage = spec.Folder;
+            }
+            progress?.Report(.6);
+            var parts = SpokenParts(text);
+            if (parts.Count == 0) return;
+            async Task<string> Make(string sentence)
+            {
+                string wave = Path.Combine(cache, $"agent-{Guid.NewGuid():N}.wav");
+                await RenderReadyAsync(sentence, speed, wave, activeSpeech.Token);
+                return wave;
+            }
+            string current = await Make(parts[0]);
+            progress?.Report(.99);
+            for (int i = 0; i < parts.Count; i++)
+            {
+                activeSpeech.Token.ThrowIfCancellationRequested();
+                var next = i + 1 < parts.Count ? Make(parts[i + 1]) : null;
+                await PlayWaveAsync(current, activeSpeech);
+                try { if (File.Exists(current)) File.Delete(current); } catch { }
+                if (next is not null) current = await next;
+            }
         }
         finally
         {
             output?.Dispose(); output = null; reader?.Dispose(); reader = null;
-            try { if (File.Exists(wave)) File.Delete(wave); } catch { }
             if (ReferenceEquals(speech, activeSpeech)) speech = null;
+            voiceGate.Release();
             activeSpeech.Dispose();
         }
     }
@@ -69,13 +89,69 @@ internal sealed class LocalAgentVoice : IDisposable
             tts = await Task.Run(() => Build(spec), cancellationToken);
             loadedLanguage = spec.Folder;
         }
+        progress?.Report(.6);
+        await RenderReadyAsync(text, speed, wave, cancellationToken);
+        progress?.Report(1);
+    }
+
+    private async Task RenderReadyAsync(string text, double speed, string wave, CancellationToken cancellationToken)
+    {
         await Task.Run(() =>
         {
             var config = new OfflineTtsGenerationConfig { Sid = 0, Speed = (float)Math.Clamp(speed, 0.75, 1.4), SilenceScale = 0.18f };
-            var audio = tts.GenerateWithConfig(text.Length > 1200 ? text[..1200] : text, config, null);
+            string spoken = text.Length > 220 ? text[..220] : text;
+            var audio = tts!.GenerateWithConfig(spoken, config, null);
             cancellationToken.ThrowIfCancellationRequested();
             if (!audio.SaveToWaveFile(wave)) throw new InvalidOperationException("No se pudo crear el audio sintetizado.");
         }, cancellationToken);
+    }
+
+    private async Task PlayWaveAsync(string wave, CancellationTokenSource activeSpeech)
+    {
+        reader = new AudioFileReader(wave);
+        output = new WaveOutEvent(); output.Init(reader);
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        output.PlaybackStopped += (_, e) => { if (e.Exception is null) finished.TrySetResult(); else finished.TrySetException(e.Exception); };
+        using var registration = activeSpeech.Token.Register(() => { try { output?.Stop(); } catch { } });
+        output.Play();
+        await finished.Task;
+        output?.Dispose(); output = null; reader?.Dispose(); reader = null;
+    }
+
+    private static List<string> SpokenParts(string text)
+    {
+        text = text.Trim();
+        if (text.Length == 0) return [];
+        if (text.Length <= 140) return [text];
+        var parts = new List<string>();
+        var buffer = new System.Text.StringBuilder();
+        foreach (char c in text)
+        {
+            buffer.Append(c);
+            if (c is '.' or '!' or '?' or '…' && buffer.Length >= 32)
+            {
+                parts.Add(buffer.ToString().Trim());
+                buffer.Clear();
+                if (parts.Count >= 4) return parts;
+            }
+        }
+        if (buffer.Length > 0 && parts.Count < 4) parts.Add(buffer.ToString().Trim());
+        return parts.Where(part => part.Length > 0).ToList();
+    }
+
+    public async Task WarmAsync(string language, CancellationToken cancellationToken)
+    {
+        await voiceGate.WaitAsync(cancellationToken);
+        try
+        {
+            var spec = language.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? English : Spanish;
+            await EnsureVoiceAsync(spec, null, cancellationToken);
+            if (tts is not null && loadedLanguage == spec.Folder) return;
+            tts?.Dispose();
+            tts = await Task.Run(() => Build(spec), cancellationToken);
+            loadedLanguage = spec.Folder;
+        }
+        finally { voiceGate.Release(); }
     }
 
     public void Stop()
@@ -94,7 +170,7 @@ internal sealed class LocalAgentVoice : IDisposable
         config.Model.Vits.NoiseScale = 0.667f;
         config.Model.Vits.NoiseScaleW = 0.8f;
         config.Model.Vits.LengthScale = 1;
-        config.Model.NumThreads = 4; config.Model.Provider = "cpu"; config.MaxNumSentences = 2;
+        config.Model.NumThreads = Math.Max(4, Environment.ProcessorCount - 2); config.Model.Provider = "cpu"; config.MaxNumSentences = 1;
         return new OfflineTts(config);
     }
 
@@ -103,7 +179,7 @@ internal sealed class LocalAgentVoice : IDisposable
         string destination = Path.Combine(root, spec.Folder);
         if (File.Exists(Path.Combine(destination, spec.Model)) && File.Exists(Path.Combine(destination, "tokens.txt")))
         {
-            progress?.Report(1);
+            progress?.Report(.35);
             return;
         }
         Directory.CreateDirectory(root);

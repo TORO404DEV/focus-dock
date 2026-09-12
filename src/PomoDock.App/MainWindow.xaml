@@ -18,7 +18,7 @@
      <TextBlock x:Name="HeaderTimerText" Text="" FontFamily="Consolas" FontSize="18" FontWeight="Black" Foreground="{DynamicResource Accent}" Margin="18,0,0,0" VerticalAlignment="Center" TextWrapping="NoWrap" Visibility="Collapsed"/>
     </StackPanel>
     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-     <Button x:Name="AgentButton" Content="✦" Click="AgentClick" FontSize="15" Padding="6,3" ToolTip="Agente local"/>
+     <Button x:Name="AgentButton" Content="✦" Click="AgentClick" FontSize="15" Padding="6,3" ToolTip="Agente local · widget"/>
      <Button x:Name="ReportButton" Content="▥" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="{DynamicResource AccentInk}" FontSize="16" Padding="6,3"/>
      <Button x:Name="TasksButton" Content="☷" Click="TasksClick" FontSize="15" Padding="6,3"/>
      <Button x:Name="NotificationsButton" Content="🔔" Click="NotificationsClick" FontSize="13" Padding="6,3" ToolTip="Notificaciones"/>

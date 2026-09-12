@@ -72,7 +72,7 @@ internal static class AgendaVisuals
         void Sync() => label.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         box.TextChanged += (_, _) => Sync();
         Sync();
-        var wrap = new Grid();
+        var wrap = new Grid { MinWidth = 0 };
         wrap.Children.Add(box);
         wrap.Children.Add(label);
         return wrap;

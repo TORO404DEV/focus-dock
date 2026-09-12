@@ -253,11 +253,57 @@ internal sealed class CalendarWidget : Grid, IReskinnable
         Render();
     }
 
-    private void SetView(string view)
+    private void SetView(string view) => ApplyView(view);
+
+    internal void ApplyView(string view)
     {
         state.View = view;
         cursor = selected;
         dayPicked = false;
+        SaveState();
+        Render();
+    }
+
+    internal bool ApplyNavigate(string to)
+    {
+        string key = to.Trim().ToLowerInvariant();
+        if (key is "today" or "hoy")
+        {
+            GoToday();
+            return true;
+        }
+        if (key is "prev" or "previous" or "anterior" or "-1" or "back")
+        {
+            Move(-1);
+            return true;
+        }
+        if (key is "next" or "siguiente" or "+1" or "forward")
+        {
+            Move(1);
+            return true;
+        }
+        if (System.Text.RegularExpressions.Regex.IsMatch(to.Trim(), @"^\d{4}-\d{2}$")
+            && DateOnly.TryParseExact(to.Trim() + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var monthStart))
+        {
+            cursor = selected = monthStart;
+            dayPicked = false;
+            Render();
+            return true;
+        }
+        if (DateOnly.TryParse(to, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day)
+            || DateOnly.TryParse(to, System.Globalization.CultureInfo.CurrentCulture, System.Globalization.DateTimeStyles.None, out day))
+        {
+            cursor = selected = day;
+            dayPicked = false;
+            Render();
+            return true;
+        }
+        return false;
+    }
+
+    internal void ApplyShowDone(bool show)
+    {
+        state.ShowDone = show;
         SaveState();
         Render();
     }

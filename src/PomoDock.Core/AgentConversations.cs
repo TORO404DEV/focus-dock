@@ -37,6 +37,7 @@ public sealed class AgentChat
 public sealed class AgentChatLog
 {
     public int Version { get; set; } = 1;
+    public Guid? CurrentId { get; set; }
     public List<AgentChat> Chats { get; set; } = [];
 }
 
@@ -57,22 +58,62 @@ public sealed class AgentConversationStore
         Log.Chats ??= [];
     }
 
+    public IReadOnlyList<AgentChat> Listed =>
+        Log.Chats.OrderByDescending(chat => chat.UpdatedUtc).ToList();
+
     public AgentChat LatestOrNew()
     {
-        var latest = Log.Chats.OrderByDescending(chat => chat.UpdatedUtc).FirstOrDefault();
-        if (latest is not null) return latest;
-        var created = new AgentChat();
-        Log.Chats.Add(created);
-        return created;
+        if (Log.CurrentId is { } id && Log.Chats.FirstOrDefault(chat => chat.Id == id) is { } open)
+            return open;
+        var latest = Log.Chats.Where(chat => chat.Messages.Count > 0).OrderByDescending(chat => chat.UpdatedUtc).FirstOrDefault()
+            ?? Log.Chats.FirstOrDefault();
+        if (latest is not null)
+        {
+            Log.CurrentId = latest.Id;
+            return latest;
+        }
+        return StartNew();
     }
 
     public AgentChat StartNew()
     {
+        if (Log.Chats.FirstOrDefault(chat => chat.Id == Log.CurrentId) is { Messages.Count: 0 } blank)
+            return blank;
         var created = new AgentChat();
         Log.Chats.Insert(0, created);
+        Log.CurrentId = created.Id;
         Trim();
         Save();
         return created;
+    }
+
+    public AgentChat Open(Guid id)
+    {
+        var chat = Log.Chats.FirstOrDefault(item => item.Id == id) ?? LatestOrNew();
+        Log.CurrentId = chat.Id;
+        Save();
+        return chat;
+    }
+
+    public void Delete(Guid id)
+    {
+        Log.Chats.RemoveAll(chat => chat.Id == id);
+        if (Log.CurrentId == id) Log.CurrentId = null;
+        Save();
+    }
+
+    public void ForgetIfEmpty(AgentChat chat)
+    {
+        if (chat.Messages.Count > 0) return;
+        Log.Chats.RemoveAll(item => item.Id == chat.Id);
+        if (Log.CurrentId == chat.Id) Log.CurrentId = null;
+    }
+
+    public void Touch(AgentChat chat)
+    {
+        Log.CurrentId = chat.Id;
+        chat.UpdatedUtc = DateTime.UtcNow;
+        Save();
     }
 
     public void Save()
@@ -83,6 +124,11 @@ public sealed class AgentConversationStore
 
     private void Trim()
     {
-        Log.Chats = Log.Chats.OrderByDescending(chat => chat.UpdatedUtc).Take(Keep).ToList();
+        var keep = Log.Chats
+            .OrderBy(chat => chat.Id == Log.CurrentId ? 0 : 1)
+            .ThenByDescending(chat => chat.UpdatedUtc)
+            .Take(Keep)
+            .ToList();
+        Log.Chats = keep;
     }
 }
