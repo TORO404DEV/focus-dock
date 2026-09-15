@@ -1,0 +1,23 @@
+---
+description: Tras cada cambio de app, dejar PomoDock compilado, instalado y listo para probar
+alwaysApply: true
+---
+
+# Ship-ready tras cada update
+
+Cuando cambies código de PomoDock (App/Core/agente/installer/scripts), **no termines** solo con el diff. Deja el binario de prueba listo.
+
+## Pipeline obligatorio
+
+1. Cierra procesos `PomoDock` si están abiertos (para poder sobrescribir el exe).
+2. `dotnet publish` Release self-contained `win-x64` → `artifacts/publish/win-x64` (limpia la carpeta publish antes si hubo cambio de backends nativos).
+3. Ejecuta `scripts/install-start-menu.ps1` (wipe + copy a `%LOCALAPPDATA%\Programs\PomoDock` + acceso Inicio).
+4. Arranca `PomoDock.exe` instalado (o dile al usuario que abra **PomoDock** desde Inicio).
+5. Confirma en la respuesta que quedó instalado y cómo abrirlo.
+
+## Notas
+
+- El acceso Inicio apunta a `%LOCALAPPDATA%\Programs\PomoDock\PomoDock.exe`, no al publish del repo.
+- Tras cambios de LLamaSharp/backends, el install script debe limpiar nativos viejos (p. ej. `ggml-vulkan.dll` junto a `llama.dll`).
+- Si el usuario solo pide diseño/docs sin tocar la app, no hace falta publicar.
+- No uses `-ExecutionPolicy Bypass` si puedes evitarlo; corre el `.ps1` con la policy del usuario o `powershell -File`.
