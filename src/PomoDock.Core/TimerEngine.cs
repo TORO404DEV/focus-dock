@@ -81,4 +81,13 @@ public sealed class TimerEngine
         Running = false;
         Active.Pauses++;
     }
+
+    /// <summary>Attributes the active session to another task without ending or resetting the clock.</summary>
+    public void Rebind(WorkTask? task)
+    {
+        if (Active is null) return;
+        Active.Task = task?.Name ?? "Enfoque libre";
+        Active.TaskId = task?.Id;
+        Active.Project = task?.Project ?? "Sin proyecto";
+    }
 }

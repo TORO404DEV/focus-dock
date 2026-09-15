@@ -28,9 +28,7 @@ internal static class Dialogs
         // HWND surfaces. WPF ownership alone may leave a modal below one of
         // those surfaces, so lift every PomoDock modal when its HWND exists
         // and whenever it receives activation.
-        window.SourceInitialized += (_, _) => LiftModal(window);
-        window.ContentRendered += (_, _) => LiftModal(window);
-        window.Activated += (_, _) => LiftModal(window);
+        KeepAboveChrome(window);
         return window;
     }
     private static void LiftModal(Window window)
@@ -42,6 +40,18 @@ internal static class Dialogs
         // use the topmost band while they are open.
         Win32.SetWindowPos(handle, Win32.HWND_TOPMOST, 0, 0, 0, 0,
             Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_SHOWWINDOW);
+    }
+
+    /// <summary>Keeps a PomoDock dialog above timer/widget popup HWNDs.</summary>
+    public static void LiftAboveChrome(Window window) => LiftModal(window);
+
+    public static void KeepAboveChrome(Window window)
+    {
+        window.Topmost = true;
+        window.ShowInTaskbar = false;
+        window.SourceInitialized += (_, _) => LiftModal(window);
+        window.ContentRendered += (_, _) => LiftModal(window);
+        window.Activated += (_, _) => LiftModal(window);
     }
     public static void Modalize(Window window)
     {
@@ -87,11 +97,11 @@ internal static class Dialogs
     }
     public static int ChooseWidget(MainWindow owner)
     {
-        var window = Window(owner, L.T("widgets.addTitle"), 760, 740); window.MinWidth = 640; window.MinHeight = 640;
+        var window = Window(owner, L.T("widgets.addTitle"), 780, 820); window.MinWidth = 640; window.MinHeight = 680;
         var root = new Grid { Margin = new Thickness(28, 22, 28, 24) }; root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); window.Content = root;
         var intro = new StackPanel(); intro.Children.Add(Heading(L.T("widgets.addTitle"))); intro.Children.Add(new TextBlock { Text = L.T("widgets.addHelp"), FontSize = 12, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, -8, 0, 20) }); Grid.SetRow(intro, 0); root.Children.Add(intro);
         var guide = new TextBlock { Text = L.T("widgets.addGuide"), FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 8) }; Grid.SetRow(guide, 1); root.Children.Add(guide);
-        var launcher = new UniformGrid { Columns = 3, Rows = 3 };
+        var launcher = new UniformGrid { Columns = 3, Rows = 4 };
         var entries = new[]
         {
             ("▣", L.T("widgets.windowTitle"), L.T("widgets.windowHelp"), "1"),
@@ -102,7 +112,8 @@ internal static class Dialogs
             ("↻", L.T("widgets.habitsTitle"), L.T("widgets.habitsHelp"), "6"),
             ("▦", L.T("widgets.calendarTitle"), L.T("widgets.calendarHelp"), "7"),
             ("◈", L.T("widgets.financeTitle"), L.T("widgets.financeHelp"), "8"),
-            ("◷", L.T("widgets.timerTitle"), L.T("widgets.timerHelp"), "9")
+            ("†", L.T("widgets.mementoTitle"), L.T("widgets.mementoHelp"), "9"),
+            ("◷", L.T("widgets.timerTitle"), L.T("widgets.timerHelp"), "0")
         };
         int selected = -1;
         for (int i = 0; i < entries.Length; i++)
@@ -112,7 +123,7 @@ internal static class Dialogs
             content.Children.Add(new TextBlock { Text = entry.Item1, FontFamily = new FontFamily("Segoe UI Symbol"), FontSize = 34, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 6) });
             content.Children.Add(new TextBlock { Text = entry.Item2, FontSize = 13, FontWeight = FontWeights.Black, TextWrapping = TextWrapping.Wrap });
             content.Children.Add(new TextBlock { Text = entry.Item3, FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 7, 0, 0), TextWrapping = TextWrapping.Wrap });
-            var launch = new Button { Content = content, Tag = entry.Item4, MinHeight = 108, Margin = new Thickness(0, 0, 10, 10), Padding = new Thickness(16), HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Top, Background = (Brush)Application.Current.Resources["Surface"] };
+            var launch = new Button { Content = content, Tag = entry.Item4, MinHeight = 100, Margin = new Thickness(0, 0, 10, 10), Padding = new Thickness(16), HorizontalContentAlignment = HorizontalAlignment.Left, VerticalContentAlignment = VerticalAlignment.Top, Background = (Brush)Application.Current.Resources["Surface"] };
             if (index == entries.Length - 1 && !owner.CanAddTimerWidget)
             {
                 launch.IsEnabled = false;
@@ -125,7 +136,9 @@ internal static class Dialogs
         window.PreviewKeyDown += (_, e) =>
         {
             int key = e.Key is >= Key.D1 and <= Key.D9 ? (int)e.Key - (int)Key.D1
-                : e.Key is >= Key.NumPad1 and <= Key.NumPad9 ? (int)e.Key - (int)Key.NumPad1 : -1;
+                : e.Key is >= Key.NumPad1 and <= Key.NumPad9 ? (int)e.Key - (int)Key.NumPad1
+                : e.Key is Key.D0 or Key.NumPad0 ? 9
+                : -1;
             if (key < 0 || key >= entries.Length) return;
             selected = key;
             if (selected != entries.Length - 1 || owner.CanAddTimerWidget) window.DialogResult = true;
@@ -137,49 +150,65 @@ internal static class Dialogs
     {
         var availableWidth = owner.ActualWidth > 0 ? owner.ActualWidth - 32 : SystemParameters.WorkArea.Width * 0.82;
         var availableHeight = owner.ActualHeight > 0 ? owner.ActualHeight - 72 : SystemParameters.WorkArea.Height * 0.82;
-        var window = Window(owner, L.T("widgets.pickTitle"), Math.Clamp(availableWidth, 420, 700), Math.Clamp(availableHeight, 440, 600));
-        window.MinWidth = 420; window.MinHeight = 440;
-        TextBox filter = null!; ComboBox category = null!; Button refreshButton = null!; TextBlock summary = null!; ListBox list = null!; Button embed = null!;
+        var window = Window(owner, L.T("widgets.pickTitle"), Math.Clamp(availableWidth, 420, 720), Math.Clamp(availableHeight, 480, 640));
+        window.MinWidth = 420; window.MinHeight = 480;
+        TextBox filter = null!; ComboBox category = null!; Button refreshButton = null!; TextBlock heading = null!; TextBlock help = null!; TextBlock summary = null!; TextBlock hint = null!; ListBox list = null!; Button embed = null!; Button cancel = null!; Button openTab = null!; Button appTab = null!; TextBox urlBox = null!; FrameworkElement urlRow = null!;
         var candidates = new List<WindowCandidate>();
+        var apps = new List<AppLaunchTarget>();
+        bool appsMode = false;
+        bool launching = false;
         var grid = new Grid { Margin = new Thickness(24, 20, 24, 20) }; window.Content = grid;
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (int i = 0; i < 7; i++)
+            grid.RowDefinitions.Add(new RowDefinition { Height = i == 5 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
 
         var intro = new StackPanel();
-        intro.Children.Add(Heading(L.T("widgets.pickHeading")));
-        intro.Children.Add(new TextBlock { Text = L.T("widgets.pickHelp"), Foreground = (Brush)Application.Current.Resources["Muted"], FontSize = 12, Margin = new Thickness(0, -8, 0, 14) });
+        heading = Heading(L.T("widgets.pickHeading"));
+        help = new TextBlock { Text = L.T("widgets.pickHelp"), Foreground = (Brush)Application.Current.Resources["Muted"], FontSize = 12, Margin = new Thickness(0, -8, 0, 10), TextWrapping = TextWrapping.Wrap };
+        intro.Children.Add(heading); intro.Children.Add(help);
         Grid.SetRow(intro, 0); grid.Children.Add(intro);
+
+        var tabs = new UniformGrid { Columns = 2, Margin = new Thickness(0, 0, 0, 10) };
+        openTab = new Button { Content = L.T("widgets.pickOpenTab"), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 0, 6, 0), FontSize = 11, FontWeight = FontWeights.Bold };
+        appTab = new Button { Content = L.T("widgets.pickAppTab"), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(6, 0, 0, 0), FontSize = 11, FontWeight = FontWeights.Bold };
+        tabs.Children.Add(openTab); tabs.Children.Add(appTab);
+        Grid.SetRow(tabs, 1); grid.Children.Add(tabs);
 
         var toolbar = new Grid(); toolbar.ColumnDefinitions.Add(new ColumnDefinition()); toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         filter = new TextBox { Text = "", ToolTip = L.T("widgets.pickSearch"), Margin = new Thickness(0, 0, 8, 8), MinHeight = 38 };
         filter.SetValue(AutomationProperties.NameProperty, L.T("widgets.pickSearchName"));
         filter.TextChanged += (_, _) => Refresh(); Grid.SetColumn(filter, 0); toolbar.Children.Add(filter);
-        // The list filters on the chosen index, so a translated label never changes what it matches.
         category = new ComboBox { ItemsSource = new[] { L.T("widgets.pickAll"), L.T("widgets.pickBrowsers"), L.T("widgets.pickChat"), L.T("widgets.pickDev"), L.T("widgets.pickOther") }, SelectedIndex = 0, Width = 145, Margin = new Thickness(0, 4, 8, 10) };
         category.SelectionChanged += (_, _) => Refresh(); Grid.SetColumn(category, 1); toolbar.Children.Add(category);
-        refreshButton = Button(L.T("widgets.pickRefresh"), () => _ = LoadCandidates()); refreshButton.Padding = new Thickness(10, 8, 10, 8); Grid.SetColumn(refreshButton, 2); toolbar.Children.Add(refreshButton);
-        Grid.SetRow(toolbar, 1); grid.Children.Add(toolbar);
+        refreshButton = Button(L.T("widgets.pickRefresh"), () => _ = Reload()); refreshButton.Padding = new Thickness(10, 8, 10, 8); Grid.SetColumn(refreshButton, 2); toolbar.Children.Add(refreshButton);
+        Grid.SetRow(toolbar, 2); grid.Children.Add(toolbar);
 
-        summary = new TextBlock { FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 7) }; Grid.SetRow(summary, 2); grid.Children.Add(summary);
+        var urlGrid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        urlGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        urlGrid.ColumnDefinitions.Add(new ColumnDefinition());
+        urlGrid.Children.Add(new TextBlock { Text = L.T("widgets.pickUrl"), FontSize = 10, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
+        urlBox = new TextBox { MinHeight = 36, ToolTip = L.T("widgets.pickUrlHint") };
+        urlBox.SetValue(AutomationProperties.NameProperty, L.T("widgets.pickUrlName"));
+        Grid.SetColumn(urlBox, 1); urlGrid.Children.Add(urlBox);
+        urlRow = urlGrid; urlRow.Visibility = Visibility.Collapsed;
+        Grid.SetRow(urlRow, 3); grid.Children.Add(urlRow);
+
+        summary = new TextBlock { FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 7), TextWrapping = TextWrapping.Wrap }; Grid.SetRow(summary, 4); grid.Children.Add(summary);
         list = new ListBox { BorderThickness = new Thickness(1), Padding = new Thickness(6), SelectionMode = SelectionMode.Single, ItemTemplate = CandidateTemplate() };
         var selectedStyle = new Style(typeof(ListBoxItem)); selectedStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0))); selectedStyle.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0, 0, 0, 6))); selectedStyle.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
         var selectedTrigger = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true }; selectedTrigger.Setters.Add(new Setter(Control.BorderBrushProperty, (Brush)Application.Current.Resources["Ink"])); selectedTrigger.Setters.Add(new Setter(Control.BackgroundProperty, (Brush)Application.Current.Resources["Accent"])); selectedTrigger.Setters.Add(new Setter(Control.ForegroundProperty, (Brush)Application.Current.Resources["AccentInk"])); selectedStyle.Triggers.Add(selectedTrigger); list.ItemContainerStyle = selectedStyle;
-        Grid.SetRow(list, 3); grid.Children.Add(list);
+        Grid.SetRow(list, 5); grid.Children.Add(list);
 
-        var hint = new TextBlock { Text = L.T("widgets.pickNote"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 12, 0, 12), TextWrapping = TextWrapping.Wrap }; Grid.SetRow(hint, 4); grid.Children.Add(hint);
+        hint = new TextBlock { Text = L.T("widgets.pickNote"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 12, 0, 12), TextWrapping = TextWrapping.Wrap }; Grid.SetRow(hint, 6); grid.Children.Add(hint);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         WindowCandidate? selected = null;
-        embed = Button(L.T("widgets.pickEmbed"), () => { if (list.SelectedItem is WindowCandidate c) { selected = c; window.DialogResult = true; } }); embed.IsDefault = true; embed.Padding = new Thickness(14, 9, 14, 9); buttons.Children.Add(embed);
-        var cancel = Button(L.T("common.cancel"), () => window.Close()); cancel.IsCancel = true; buttons.Children.Add(cancel); Grid.SetRow(buttons, 5); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.Children.Add(buttons);
+        embed = Button(L.T("widgets.pickEmbed"), () => _ = ConfirmAsync()); embed.IsDefault = true; embed.Padding = new Thickness(14, 9, 14, 9); buttons.Children.Add(embed);
+        cancel = Button(L.T("common.cancel"), () => window.Close()); cancel.IsCancel = true; buttons.Children.Add(cancel);
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); Grid.SetRow(buttons, 7); grid.Children.Add(buttons);
 
-        // Matching runs on the position in the list, never on the label, so translating it is safe.
         static bool IsCategory(WindowCandidate candidate, int group)
         {
             var process = candidate.ProcessName.ToLowerInvariant();
-            bool browser = process is "brave" or "chrome" or "msedge" or "firefox" or "opera";
+            bool browser = process is "brave" or "chrome" or "msedge" or "firefox" or "opera" or "vivaldi";
             bool chat = process.Contains("telegram") || process.Contains("whatsapp") || process.Contains("discord") || process.Contains("slack");
             bool dev = process is "code" or "devenv" or "githubdesktop" or "notepad++" || process.Contains("studio");
             return group switch
@@ -191,20 +220,116 @@ internal static class Dialogs
                 _ => true
             };
         }
+        void PaintTab(Button button, bool on)
+        {
+            button.Background = (Brush)Application.Current.Resources[on ? "Chrome" : "Surface"];
+            button.Foreground = (Brush)Application.Current.Resources[on ? "ChromeInk" : "Ink"];
+        }
+        void UpdateUrlRow()
+        {
+            urlRow.Visibility = appsMode && list.SelectedItem is AppLaunchTarget { IsBrowser: true } ? Visibility.Visible : Visibility.Collapsed;
+        }
+        void SetMode(bool appsSelected)
+        {
+            if (launching) return;
+            appsMode = appsSelected;
+            PaintTab(openTab, !appsMode);
+            PaintTab(appTab, appsMode);
+            category.Visibility = appsMode ? Visibility.Collapsed : Visibility.Visible;
+            filter.ToolTip = L.T(appsMode ? "widgets.pickAppSearch" : "widgets.pickSearch");
+            filter.SetValue(AutomationProperties.NameProperty, L.T(appsMode ? "widgets.pickAppSearchName" : "widgets.pickSearchName"));
+            heading.Text = L.T(appsMode ? "widgets.pickAppHeading" : "widgets.pickHeading");
+            help.Text = L.T(appsMode ? "widgets.pickAppHelp" : "widgets.pickHelp");
+            hint.Text = L.T(appsMode ? "widgets.pickAppNote" : "widgets.pickNote");
+            embed.Content = L.T(appsMode ? "widgets.pickLaunch" : "widgets.pickEmbed");
+            Refresh();
+            if (appsMode && apps.Count == 0) _ = LoadApps();
+        }
         void Refresh()
         {
-            var query = filter.Text.Trim(); int group = Math.Max(0, category.SelectedIndex);
-            var visible = candidates.Where(w => (string.IsNullOrWhiteSpace(query) || w.ToString().Contains(query, StringComparison.OrdinalIgnoreCase)) && IsCategory(w, group)).ToList();
-            list.ItemsSource = visible; summary.Text = L.T("widgets.pickCount", visible.Count.ToString("00", System.Globalization.CultureInfo.InvariantCulture)); embed.IsEnabled = visible.Count > 0;
+            var query = filter.Text.Trim();
+            if (appsMode)
+            {
+                var visible = apps.Where(app => string.IsNullOrWhiteSpace(query) || app.ToString().Contains(query, StringComparison.OrdinalIgnoreCase) || app.ExePath.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+                list.ItemsSource = visible;
+                summary.Text = L.T("widgets.pickAppCount", visible.Count.ToString("00", System.Globalization.CultureInfo.InvariantCulture));
+                embed.IsEnabled = visible.Count > 0 && !launching;
+            }
+            else
+            {
+                int group = Math.Max(0, category.SelectedIndex);
+                var visible = candidates.Where(w => (string.IsNullOrWhiteSpace(query) || w.ToString().Contains(query, StringComparison.OrdinalIgnoreCase)) && IsCategory(w, group)).ToList();
+                list.ItemsSource = visible;
+                summary.Text = L.T("widgets.pickCount", visible.Count.ToString("00", System.Globalization.CultureInfo.InvariantCulture));
+                embed.IsEnabled = visible.Count > 0 && !launching;
+            }
+            UpdateUrlRow();
         }
         async Task LoadCandidates()
         {
             refreshButton.IsEnabled = false; summary.Text = L.T("widgets.pickSearching");
-            try { candidates = await Task.Run(WindowLease.Candidates); Refresh(); }
+            try { candidates = await Task.Run(WindowLease.Candidates); if (!appsMode) Refresh(); }
             finally { refreshButton.IsEnabled = true; }
         }
+        async Task LoadApps()
+        {
+            refreshButton.IsEnabled = false; summary.Text = L.T("widgets.pickAppSearching");
+            try
+            {
+                apps = AppLaunch.KnownInstalled();
+                if (appsMode) Refresh();
+                await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+                AppLaunch.InvalidateCatalog();
+                apps = AppLaunch.Catalog().ToList();
+                if (appsMode) Refresh();
+            }
+            finally { refreshButton.IsEnabled = true; }
+        }
+        Task Reload() => appsMode ? LoadApps() : LoadCandidates();
+        async Task ConfirmAsync()
+        {
+            if (launching) return;
+            if (appsMode)
+            {
+                if (list.SelectedItem is not AppLaunchTarget app)
+                {
+                    summary.Text = L.T("widgets.pickAppNeedPick");
+                    return;
+                }
+                launching = true;
+                embed.IsEnabled = false;
+                cancel.IsEnabled = false;
+                summary.Text = L.T("widgets.pickLaunching", app.Name);
+                try
+                {
+                    string typed = urlBox.Text.Trim();
+                    string? open = app.IsBrowser ? LaunchUrl.ForBrowser(typed, null) : null;
+                    selected = await AppLaunch.OpenNewWindowAsync(app, open, CancellationToken.None);
+                    window.DialogResult = true;
+                }
+                catch (Exception ex)
+                {
+                    summary.Text = ex.Message;
+                    launching = false;
+                    embed.IsEnabled = true;
+                    cancel.IsEnabled = true;
+                }
+            }
+            else if (list.SelectedItem is WindowCandidate c)
+            {
+                selected = c;
+                window.DialogResult = true;
+            }
+        }
+        openTab.Click += (_, _) => SetMode(false);
+        appTab.Click += (_, _) => SetMode(true);
+        list.SelectionChanged += (_, _) => UpdateUrlRow();
+        list.MouseDoubleClick += (_, _) => _ = ConfirmAsync();
+        list.PreviewKeyDown += (_, e) => { if (e.Key == Key.Enter) { _ = ConfirmAsync(); e.Handled = true; } };
         filter.PreviewKeyDown += (_, e) => { if (e.Key == Key.Enter && list.Items.Count > 0) { list.SelectedIndex = 0; list.Focus(); e.Handled = true; } };
-        Refresh(); window.Loaded += (_, _) => { Modalize(window); filter.Focus(); _ = LoadCandidates(); }; window.ShowDialog(); return selected;
+        SetMode(false);
+        window.Loaded += (_, _) => { Modalize(window); filter.Focus(); _ = LoadCandidates(); };
+        window.ShowDialog(); return selected;
     }
     private static DataTemplate CandidateTemplate()
     {

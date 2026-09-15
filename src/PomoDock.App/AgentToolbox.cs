@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Documents;
+using System.Windows.Threading;
+using PomoDock.App.Native;
 using PomoDock.Core;
 
 namespace PomoDock.App;
@@ -20,9 +22,15 @@ internal sealed record AgentToolResult(
     {
         Tool = tool,
         Summary = Summary,
+        PayloadJson = Json,
         UndoTool = UndoTool,
         UndoArgumentsJson = UndoArgumentsJson
     };
+}
+
+internal readonly record struct RetiredPlayback(bool Any, bool Fill, string App, nint[] Handles)
+{
+    public static RetiredPlayback Empty => new(false, false, "", []);
 }
 
 internal enum AgentToolKind { Query, Mutation, Destructive, Control, Unknown }
@@ -44,7 +52,30 @@ internal sealed class AgentToolbox
     public async Task<AgentToolResult> ExecuteAsync(string name, JsonElement args, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return await owner.Dispatcher.InvokeAsync(() => Execute(name.Trim().ToLowerInvariant(), args));
+        string tool = AgentCatalog.Canonical(name);
+        if (tool is not ("add_widget" or "workspace.add_widget" or "workspace.open" or "app.fullscreen" or "workspace.fill_widget"))
+            owner.AgentCreatedWidgetThisTurn = false;
+        if ((tool is "add_widget" or "workspace.add_widget" or "workspace.open") && IsWindowKind(args))
+        {
+            try { return await AddWindowWidgetAsync(args, cancellationToken); }
+            catch (Exception ex) { return Result(false, false, ex.Message); }
+        }
+        if (tool is "workspace.play_youtube")
+        {
+            try { return await PlayYoutubeAsync(args, cancellationToken); }
+            catch (Exception ex) { return Result(false, false, ex.Message); }
+        }
+        if (tool is "workspace.set_web_url")
+        {
+            try { return await SetWidgetUrlAsync(args, cancellationToken); }
+            catch (Exception ex) { return Result(false, false, ex.Message); }
+        }
+        if (tool is "finance.set_rate")
+        {
+            try { return await SetFinanceRateAsync(args, cancellationToken); }
+            catch (Exception ex) { return Result(false, false, ex.Message); }
+        }
+        return await owner.Dispatcher.InvokeAsync(() => Execute(tool, args));
     }
 
     private AgentToolResult Execute(string name, JsonElement args)
@@ -71,6 +102,7 @@ internal sealed class AgentToolbox
                 "delete_event" or "calendar.delete" => DeleteEvent(args),
                 "calendar.navigate" => owner.NavigateCalendarFromAgent(args),
                 "calendar.set_show_done" => owner.SetCalendarShowDoneFromAgent(args),
+                "calendar.snooze" => owner.SnoozeCalendarFromAgent(args),
                 "habits.search" => SearchHabits(args),
                 "add_habit" or "habits.create" => AddHabit(args),
                 "mark_habit" or "habits.mark" => MarkHabit(Required(args, "name"), Date(args, "date", DateOnly.FromDateTime(DateTime.Today)), Bool(args, "done", true)),
@@ -86,8 +118,8 @@ internal sealed class AgentToolbox
                 "workspace.move_widget" => MoveWidget(args),
                 "workspace.rename_widget" => owner.RenameWidgetFromAgent(args),
                 "workspace.collapse_widget" => owner.CollapseWidgetFromAgent(args),
+                "workspace.fill_widget" => owner.FillWidgetFromAgent(args),
                 "workspace.resize_widget" => owner.ResizeWidgetFromAgent(args),
-                "workspace.set_web_url" => owner.SetWebUrlFromAgent(args),
                 "workspace.reload_web" => owner.ReloadWebFromAgent(args),
                 "workspace.open" => AddWidget(args),
                 "workspace.add_page" => owner.AddPageFromAgent(),
@@ -107,6 +139,7 @@ internal sealed class AgentToolbox
                 "layouts.delete" => owner.DeleteLayoutFromAgent(args),
                 "app.fullscreen" => owner.FullscreenFromAgent(args),
                 "app.open_panel" => owner.OpenPanelFromAgent(args),
+                "app.hide_agent" => owner.HideAgentFromAgent(),
                 "app.open_data_folder" => owner.OpenDataFolderFromAgent(),
                 "notifications.list" => owner.NotificationsFromAgent(args),
                 "notifications.dismiss" => owner.DismissNotificationsFromAgent(args),
@@ -114,12 +147,15 @@ internal sealed class AgentToolbox
                 "todo.clear_done" => ClearDoneTodos(),
                 "todo.sort" => SortTodos(),
                 "todo.move" => MoveTodo(args),
+                "todo.set_filter" => owner.SetTodoFilterFromAgent(args),
                 "habits.restore" => RestoreHabit(Required(args, "name")),
                 "habits.delete" => DeleteHabitForever(Required(args, "name")),
                 "habits.set_target" => SetHabitTarget(args),
                 "habits.move" => MoveHabit(args),
                 "habits.set_count" => SetHabitCount(args),
+                "habits.navigate" => owner.NavigateHabitsFromAgent(args),
                 "finance.set_currency" => SetFinanceCurrency(args),
+                "finance.set_view" => owner.SetFinanceViewFromAgent(args),
                 "notes.set_color" => SetNoteColor(args),
                 "settings.apply_rhythm" => owner.ApplyRhythmFromAgent(args),
                 "focus_tasks.list" => ListFocusTasks(),
@@ -222,6 +258,8 @@ internal sealed class AgentToolbox
         var sessions = owner.Store.Sessions();
         var range = FocusRange(args, sessions);
         var summary = FocusHistory.Summarize(sessions, range, TimeZoneInfo.Local, Text(args, "project", ""));
+        var periodSessions = sessions.Where(session => session.Phase == Phase.Focus && Reports.MinutesIn(session, range.From, range.To, TimeZoneInfo.Local) > 0);
+        var apps = AppUsage.CombineSessions(periodSessions).Take(12).Select(app => new { app.Process, app.Title, minutes = Math.Round(app.Seconds / 60, 1), label = app.Label });
         var data = new
         {
             period = summary.Range.Period,
@@ -235,7 +273,8 @@ internal sealed class AgentToolbox
             completed = summary.Completed,
             partial = summary.Partial,
             days = summary.Days.Select(day => new { date = day.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), minutes = day.Minutes }),
-            projects = summary.Projects.Select(project => new { project = project.Project, minutes = project.Minutes, hours = Math.Round(project.Minutes / 60, 2), sessions = project.Sessions })
+            projects = summary.Projects.Select(project => new { project = project.Project, minutes = project.Minutes, hours = Math.Round(project.Minutes / 60, 2), sessions = project.Sessions }),
+            apps
         };
         string subject = summary.Project is null ? "enfoque" : $"proyecto {summary.Project}";
         return Result(true, false, $"Resumen del {subject}: {summary.Minutes:0.#} min ({Math.Round(summary.Minutes / 60, 2)} h) entre {summary.Range.From:dd/MM/yyyy} y {summary.Range.To:dd/MM/yyyy}", data);
@@ -245,7 +284,9 @@ internal sealed class AgentToolbox
     {
         var sessions = owner.Store.Sessions();
         var range = FocusRange(args, sessions);
-        var query = FocusHistory.Query(sessions, range, TimeZoneInfo.Local, Text(args, "project", ""), Int(args, "limit", 30));
+        var query = FocusHistory.Query(sessions, range, TimeZoneInfo.Local, Text(args, "project", ""), Int(args, "limit", 80));
+        var summary = FocusHistory.Summarize(sessions, range, TimeZoneInfo.Local, Text(args, "project", ""));
+        double minutes = summary.Minutes;
         var data = new
         {
             period = query.Range.Period,
@@ -254,6 +295,8 @@ internal sealed class AgentToolbox
             project = query.Project,
             totalMatching = query.Total,
             returned = query.Sessions.Count,
+            totalMinutes = minutes,
+            totalHours = Math.Round(minutes / 60, 2),
             sessions = query.Sessions.Select(session => new
             {
                 id = session.Id,
@@ -262,10 +305,13 @@ internal sealed class AgentToolbox
                 session.Project,
                 session.Task,
                 minutes = session.Minutes,
-                outcome = session.Outcome.ToString()
+                outcome = session.Outcome.ToString(),
+                apps = session.Apps.Select(app => new { app.Process, app.Title, minutes = Math.Round(app.Seconds / 60, 1), label = app.Label })
             })
         };
-        return Result(true, false, $"{query.Total} sesiones de enfoque encontradas", data);
+        return Result(true, false,
+            $"{query.Total} sesiones · {minutes:0.#} min ({Math.Round(minutes / 60, 2)} h)",
+            data);
     }
 
     private AgentToolResult CompareFocus(JsonElement args)
@@ -697,6 +743,150 @@ internal sealed class AgentToolbox
         return Result(true, true, $"Nota reabierta: {note.Title}", new { note.Id });
     }
 
+    private async Task<AgentToolResult> PlayYoutubeAsync(JsonElement args, CancellationToken cancellationToken)
+    {
+        string query = Text(args, "query", Text(args, "text", Text(args, "search", Text(args, "topic", ""))));
+        string url = Text(args, "url", Text(args, "value", ""));
+        if (query.Length == 0 && url.Length == 0)
+            return Result(false, false, "Indica la canción o el vídeo (query), por ejemplo «amor eterno natanael cano».");
+
+        string? watch = await YouTubePlay.ResolveWatchAsync(url.Length > 0 ? url : null, query, cancellationToken);
+        if (string.IsNullOrEmpty(watch))
+            return Result(false, false, query.Length > 0
+                ? $"No encontré un vídeo para «{query}»."
+                : "No pude resolver esa URL de YouTube.");
+
+        bool fill = WantsFill(args);
+        string app = Text(args, "app", "");
+        var retired = await owner.Dispatcher.InvokeAsync(owner.RetirePlaybackWidgets);
+        if (retired.Fill) fill = true;
+        if (app.Length == 0) app = retired.App.Length > 0 ? retired.App : "brave";
+        await MainWindow.WaitUntilWindowsGone(retired.Handles, cancellationToken);
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            app,
+            query,
+            url = watch,
+            fill,
+            title = Text(args, "title", "")
+        });
+        using var document = JsonDocument.Parse(payload);
+        var opened = await AddWindowWidgetAsync(document.RootElement, cancellationToken);
+        if (!opened.Success) return opened;
+        string summary = retired.Any
+            ? $"Cerré la reproducción anterior y abrí «{(query.Length > 0 ? query : watch)}»: {watch}"
+            : opened.Summary;
+        return Result(true, true, summary, new { query, url = watch, youtube_watch = true, fill, replaced = retired.Any });
+    }
+
+    private async Task<AgentToolResult> SetWidgetUrlAsync(JsonElement args, CancellationToken cancellationToken)
+    {
+        string url = Text(args, "url", Text(args, "value", ""));
+        string query = Text(args, "query", Text(args, "search", ""));
+        if (url.Length == 0 && query.Length == 0)
+            return Result(false, false, "Falta url o query.");
+
+        var card = await owner.Dispatcher.InvokeAsync(() =>
+        {
+            var named = owner.FindAgentCard(args);
+            if (named is not null) return named;
+            return owner.FindUrlWidgetOnCurrentScreen();
+        });
+        if (card is null)
+            return Result(false, false, "No hay un widget web o ventana en esta pantalla.");
+
+        if (query.Length > 0 || YouTubeWatch.IsYouTube(url) || YouTubeWatch.IsSearchResults(url))
+            return await PlayYoutubeAsync(args, cancellationToken);
+        var navigated = await owner.NavigateWidgetUrlAsync(card, url, cancellationToken);
+        return Result(navigated.Success, navigated.Changed, navigated.Summary);
+    }
+
+    private static bool IsWindowKind(JsonElement args)
+    {
+        string kind = Text(args, "kind", "").ToLowerInvariant();
+        return kind is "window" or "ventana" or "hwnd" or "app";
+    }
+
+    private async Task<AgentToolResult> AddWindowWidgetAsync(JsonElement args, CancellationToken cancellationToken)
+    {
+        string app = Text(args, "app", Text(args, "program", Text(args, "exe", "")));
+        string url = Text(args, "url", Text(args, "value", ""));
+        string query = Text(args, "query", Text(args, "search", Text(args, "topic", "")));
+        string title = Text(args, "title", "");
+        if (app.Length == 0 && url.Length == 0 && query.Length == 0)
+            return Result(false, false, "Para incrustar una ventana nueva indica el programa (app), por ejemplo brave, y opcionalmente url o query.");
+
+        bool youtubeRequest = query.Length > 0 || YouTubeWatch.IsYouTube(url);
+        bool fill = WantsFill(args);
+
+        var target = app.Length == 0 ? AppLaunch.FirstBrowser() : AppLaunch.Resolve(app);
+        if (target is null)
+            target = await owner.Dispatcher.InvokeAsync(() => app.Length == 0 ? AppLaunch.FirstBrowser(true) : AppLaunch.Resolve(app, true));
+        if (target is null)
+            return Result(false, false, app.Length == 0
+                ? "No encontré un navegador instalado (Brave, Chrome, Edge o Firefox)."
+                : $"No encontré el programa «{app}» instalado.");
+
+        string? open = target.IsBrowser
+            ? LaunchUrl.ForBrowser(url, query)
+            : target.Id == "spotify" && query.Length > 0 ? "spotify:search:" + Uri.EscapeDataString(query) : null;
+        bool youtubeWatch = false;
+        bool youtubeSearch = false;
+        if (target.IsBrowser && (open is not null || query.Length > 0))
+        {
+            string? watch = await YouTubePlay.ResolveWatchAsync(open, query, cancellationToken);
+            if (!string.IsNullOrEmpty(watch)) open = watch;
+            youtubeWatch = YouTubeWatch.IsWatch(open);
+            youtubeSearch = YouTubeWatch.IsSearchResults(open);
+        }
+
+        if (youtubeRequest || youtubeWatch || youtubeSearch)
+        {
+            var retired = await owner.Dispatcher.InvokeAsync(owner.RetirePlaybackWidgets);
+            if (retired.Any)
+            {
+                if (retired.Fill) fill = true;
+                await MainWindow.WaitUntilWindowsGone(retired.Handles, cancellationToken);
+            }
+        }
+
+        await owner.Dispatcher.InvokeAsync(() => owner.Status(L.T("widgets.launching", target.Name)));
+        var candidate = await AppLaunch.OpenNewWindowAsync(target, open, cancellationToken);
+        var card = await owner.Dispatcher.InvokeAsync(() =>
+        {
+            string name = title.Length > 0 ? title
+                : !string.IsNullOrWhiteSpace(candidate.Title) ? candidate.Title
+                : target.Name;
+            var created = owner.AddCard(new WidgetConfig { Kind = "window", Title = name, Value = candidate.ProcessName, Height = 480 }, true);
+            owner.ShowCreatedWork(created.Config.Id);
+            return created;
+        });
+        await owner.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+        await await owner.Dispatcher.InvokeAsync(async () => { await card.Attach(candidate.Handle); return 0; });
+        if (!string.IsNullOrEmpty(open))
+            await owner.Dispatcher.InvokeAsync(() => card.RememberHref(open));
+        if (fill)
+            await owner.Dispatcher.InvokeAsync(() => card.SetCanvasFill(true));
+        if (card.IsExternalAttached && (youtubeWatch || youtubeSearch))
+        {
+            try
+            {
+                await YouTubePlay.ActivateAsync(owner.Dispatcher, card.ForeignHandle, youtubeWatch, cancellationToken);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { }
+        }
+        await owner.Dispatcher.InvokeAsync(owner.LiftOverlaysAboveNatives);
+        string summary = card.IsExternalAttached
+            ? fill
+                ? $"Ventana de {target.Name} incrustada. Pantalla de lienzo activada."
+                : $"Ventana de {target.Name} incrustada."
+            : $"Abrí {target.Name}, pero no pude incrustar la ventana. Conéctala a mano desde el widget.";
+        if (card.IsExternalAttached && youtubeWatch) summary += " Primer resultado de YouTube abierto.";
+        return Result(card.IsExternalAttached, true, summary, new { card.Config.Id, app = target.Id, url = open, fill, youtube_watch = youtubeWatch });
+    }
+
     private AgentToolResult AddWidget(JsonElement args)
     {
         string kind = Required(args, "kind").ToLowerInvariant();
@@ -708,12 +898,18 @@ internal sealed class AgentToolbox
             "agenda" or "calendar" => "calendar",
             "finanzas" or "finance" => "finance",
             "stats" or "enfoque" or "focus" => "stats",
+            "memento" or "memento_mori" or "mementomori" or "mortalidad" => "memento",
             "web" or "navegador" or "browser" => "web",
             "ventana" or "window" => "window",
             "timer" or "pomodoro" or "temporizador" => "timer",
             _ => kind
         };
-        if (kind == "timer") return owner.AddTimerFromAgent();
+        if (kind == "timer")
+        {
+            var added = owner.AddTimerFromAgent();
+            if (WantsFill(args)) owner.SetTimerCanvasFill(true);
+            return added;
+        }
         if (kind == "web")
         {
             string url = Text(args, "url", Text(args, "value", "https://"));
@@ -721,31 +917,46 @@ internal sealed class AgentToolbox
                 throw new ArgumentException("El widget web necesita una URL https");
             string title = Text(args, "title", uri.Host);
             var config = new WidgetConfig { Kind = "web", Title = title, Value = uri.AbsoluteUri };
-            owner.AddCard(config, true);
+            var webCard = owner.AddCard(config, true);
             owner.ShowCreatedWork(config.Id);
-            return Result(true, true, $"Widget web añadido: {title}", new { config.Id, url = config.Value });
+            if (WantsFill(args)) webCard.SetCanvasFill(true);
+            return Result(true, true, WantsFill(args) ? $"Widget web añadido a pantalla de lienzo: {title}" : $"Widget web añadido: {title}", new { config.Id, url = config.Value, fill = WantsFill(args) });
         }
         if (kind == "window")
-            throw new InvalidOperationException("Para incrustar una ventana usa el menú + WIDGET → ventana (requiere elegir HWND en pantalla).");
-        if (kind is not ("notes" or "todo" or "habits" or "calendar" or "stats" or "finance"))
+            throw new InvalidOperationException("Para incrustar una ventana indica el programa (app), por ejemplo brave, y opcionalmente url o query.");
+        if (kind is not ("notes" or "todo" or "habits" or "calendar" or "stats" or "finance" or "memento"))
             throw new ArgumentException("Tipo de widget no permitido");
-        string widgetTitle = Text(args, "title", kind.ToUpperInvariant());
-        var card = new WidgetConfig { Kind = kind, Title = widgetTitle }; owner.AddCard(card, true);
-        owner.ShowCreatedWork(card.Id);
-        return Result(true, true, $"Widget añadido: {widgetTitle}", new { card.Id });
+        string widgetTitle = Text(args, "title", kind == "memento" ? L.T("widgets.kindMemento") : kind.ToUpperInvariant());
+        var created = owner.AddCard(new WidgetConfig { Kind = kind, Title = widgetTitle }, true);
+        if (kind == "memento")
+        {
+            string birth = Text(args, "birth", Text(args, "birth_date", Text(args, "birthday", "")));
+            if (birth.Length > 0 && MementoMoriCard.TryParseBirth(birth, out var date))
+            {
+                var data = MementoMoriCard.Read(created.Config);
+                data.BirthDate = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                if (args.TryGetProperty("expectancy", out var exp) && exp.TryGetInt32(out int years))
+                    data.ExpectancyYears = Math.Clamp(years, 40, 120);
+                MementoMoriCard.Write(created.Config, data);
+                created.Refresh();
+                owner.SaveState();
+            }
+        }
+        owner.ShowCreatedWork(created.Config.Id);
+        if (WantsFill(args)) created.SetCanvasFill(true);
+        return Result(true, true, WantsFill(args) ? $"Widget añadido a pantalla de lienzo: {widgetTitle}" : $"Widget añadido: {widgetTitle}", new { created.Config.Id, fill = WantsFill(args) });
     }
 
     private AgentToolResult MoveWidget(JsonElement args)
     {
-        string title = Required(args, "title");
-        var located = owner.Settings.WorkspacePages
-            .Select((page, index) => (page, index, widget: page.Widgets.FirstOrDefault(item => item.Title.Contains(title, StringComparison.OrdinalIgnoreCase))))
-            .FirstOrDefault(item => item.widget is not null);
-        if (located.widget is null)
-            throw new InvalidOperationException($"No encontré widget que coincida con '{title}'");
-        using var focusArgs = JsonDocument.Parse(JsonSerializer.Serialize(new { title = located.widget.Title }));
-        owner.FocusWidgetFromAgent(focusArgs.RootElement);
-        var config = located.widget;
+        if (owner.IsTimerAgentTarget(args))
+            return owner.MoveTimerFromAgent(args);
+        var card = owner.FindAgentCard(args);
+        if (card is null)
+            throw new InvalidOperationException(Text(args, "title", "").Length > 0
+                ? $"No encontré widget que coincida con '{Text(args, "title", "")}'"
+                : "No encontré ese widget.");
+        var config = card.Config;
         double previousX = config.X, previousY = config.Y;
         if (args.TryGetProperty("x", out var x) && x.TryGetDouble(out double left)) config.X = left;
         if (args.TryGetProperty("y", out var y) && y.TryGetDouble(out double top)) config.Y = top;
@@ -757,7 +968,8 @@ internal sealed class AgentToolbox
     private AgentToolResult AddFocusTask(JsonElement args)
     {
         var item = new WorkTask { Name = Required(args, "name"), Project = Text(args, "project", "Sin proyecto"), Estimate = Math.Clamp(Int(args, "estimate", 1), 1, 99) };
-        owner.Settings.Tasks.Add(item);
+        item.Touch();
+        owner.Settings.Tasks.Insert(0, item);
         if (!owner.Settings.Projects.Contains(item.Project, StringComparer.OrdinalIgnoreCase)) owner.Settings.Projects.Add(item.Project);
         owner.SaveState(); return Result(true, true, $"Tarea de enfoque creada: {item.Name}", new { item.Id });
     }
@@ -767,7 +979,7 @@ internal sealed class AgentToolbox
         string command = Text(args, "command", "");
         if (command.Length == 0)
             command = name.EndsWith("pause") ? "pause" : name.EndsWith("reset") ? "reset" : name.Contains("configure") ? "select" : "start";
-        return owner.RunTimerFromAgent(command, Text(args, "phase", "focus"), Text(args, "task", ""));
+        return owner.RunTimerFromAgent(command, Text(args, "phase", "focus"), Text(args, "task", ""), Int(args, "minutes", 5));
     }
 
     private AgentToolResult SetFocusDuration(int minutes)
@@ -786,8 +998,9 @@ internal sealed class AgentToolbox
             s.FocusMinutes, s.ShortMinutes, s.LongMinutes, s.LongInterval, s.DailyGoalMinutes,
             s.AutoBreak, s.AutoFocus, s.Sound, s.ButtonSounds, s.WhiteNoise, s.AlarmEnabled,
             s.WhiteNoiseVolume, s.AlarmVolume, s.EffectsVolume, s.AlarmRepeats,
-            s.Language, s.Dark, s.ReduceMotion, s.AlwaysOnTop, s.TimerAtBottom, s.Fullscreen,
+            s.Language, s.Dark, s.ReduceMotion, s.AlwaysOnTop, s.TimerAtBottom, s.StartWithWindows, s.Fullscreen,
             s.AgentVoiceEnabled, s.AgentVoiceSpeed, s.AgentMemoryEnabled, s.AgentSendVoiceOnRelease,
+            s.AgentListenEnabled, s.AgentWakeName,
             s.AccentColor, s.FocusColor, s.ShortBreakColor, s.LongBreakColor,
             s.FocusEndSound, s.BreakEndSound, s.ReminderSound, s.ClickSound, s.AmbientSound
         };
@@ -803,7 +1016,7 @@ internal sealed class AgentToolbox
             s.AutoBreak, s.AutoFocus, s.Sound, s.ButtonSounds, s.WhiteNoise, s.AlarmEnabled,
             s.WhiteNoiseVolume, s.AlarmVolume, s.EffectsVolume, s.Language, s.Dark,
             s.ReduceMotion, s.AlwaysOnTop, s.TimerAtBottom, s.AgentVoiceEnabled,
-            s.AgentVoiceSpeed, s.AgentMemoryEnabled, s.AgentSendVoiceOnRelease, s.AccentColor
+            s.AgentVoiceSpeed, s.AgentMemoryEnabled, s.AgentSendVoiceOnRelease, s.AgentListenEnabled, s.AccentColor
         };
         if (args.TryGetProperty("focus_minutes", out _)) s.FocusMinutes = Int(args, "focus_minutes", s.FocusMinutes);
         if (args.TryGetProperty("short_minutes", out _)) s.ShortMinutes = Int(args, "short_minutes", s.ShortMinutes);
@@ -824,10 +1037,13 @@ internal sealed class AgentToolbox
         if (args.TryGetProperty("reduce_motion", out _)) s.ReduceMotion = Bool(args, "reduce_motion", s.ReduceMotion);
         if (args.TryGetProperty("always_on_top", out _)) s.AlwaysOnTop = Bool(args, "always_on_top", s.AlwaysOnTop);
         if (args.TryGetProperty("timer_at_bottom", out _)) s.TimerAtBottom = Bool(args, "timer_at_bottom", s.TimerAtBottom);
+        if (args.TryGetProperty("start_with_windows", out _)) s.StartWithWindows = Bool(args, "start_with_windows", s.StartWithWindows);
         if (args.TryGetProperty("agent_voice_enabled", out _)) s.AgentVoiceEnabled = Bool(args, "agent_voice_enabled", s.AgentVoiceEnabled);
         if (args.TryGetProperty("agent_voice_speed", out var speed) && speed.TryGetDouble(out double pace)) s.AgentVoiceSpeed = pace;
         if (args.TryGetProperty("agent_memory_enabled", out _)) s.AgentMemoryEnabled = Bool(args, "agent_memory_enabled", s.AgentMemoryEnabled);
         if (args.TryGetProperty("agent_send_voice_on_release", out _)) s.AgentSendVoiceOnRelease = Bool(args, "agent_send_voice_on_release", s.AgentSendVoiceOnRelease);
+        if (args.TryGetProperty("agent_listen_enabled", out _)) s.AgentListenEnabled = Bool(args, "agent_listen_enabled", s.AgentListenEnabled);
+        if (args.TryGetProperty("agent_wake_name", out _)) s.AgentWakeName = Text(args, "agent_wake_name", s.AgentWakeName);
         if (args.TryGetProperty("accent_color", out _)) s.AccentColor = Text(args, "accent_color", s.AccentColor);
         if (args.TryGetProperty("focus_color", out _)) s.FocusColor = Text(args, "focus_color", s.FocusColor);
         if (args.TryGetProperty("short_break_color", out _)) s.ShortBreakColor = Text(args, "short_break_color", s.ShortBreakColor);
@@ -885,8 +1101,8 @@ internal sealed class AgentToolbox
     {
         var ledger = FinanceStore.For(owner.Store);
         string previous = ledger.Book.Currency;
-        string code = Required(args, "currency").Trim().ToUpperInvariant();
-        if (code.Length is < 1 or > 8) throw new ArgumentException("Código de moneda inválido");
+        string code = MoneyFx.Normalize(Required(args, "currency"));
+        if (!MoneyFx.IsSupported(code)) throw new ArgumentException("Usa USD o MXN");
         ledger.SetCurrency(code);
         return Result(true, true, $"Moneda: {code}", null, "finance.set_currency", JsonSerializer.Serialize(new { currency = previous }));
     }
@@ -970,20 +1186,32 @@ internal sealed class AgentToolbox
     private AgentToolResult SaveFocusTemplate(JsonElement args)
     {
         string name = Required(args, "name");
+        bool on = !Flag(args, "remove") && !Flag(args, "off") && Bool(args, "on", true);
+        if (!on)
+        {
+            var template = FindOne(owner.Settings.Tasks.Where(t => t.Template), x => x.Name, name, "plantilla de enfoque", x => x.Id);
+            owner.Settings.Tasks.Remove(template);
+            owner.SaveState();
+            return Result(true, true, $"Plantilla quitada: {template.Name}", null,
+                "focus_tasks.save_template", JsonSerializer.Serialize(new { name = template.Name }));
+        }
         var task = FindOne(owner.Settings.Tasks.Where(t => !t.Template), x => x.Name, name, "tarea de enfoque", x => x.Id);
         var existing = owner.Settings.Tasks.FirstOrDefault(other => other.Template && other.Name == task.Name && other.Project == task.Project);
         if (existing is not null)
             return Result(true, false, $"Ya era plantilla: {task.Name}");
         owner.Settings.Tasks.Add(new WorkTask { Name = task.Name, Project = task.Project, Estimate = task.Estimate, Template = true });
         owner.SaveState();
-        return Result(true, true, $"Plantilla guardada: {task.Name}");
+        return Result(true, true, $"Plantilla guardada: {task.Name}", null,
+            "focus_tasks.save_template", JsonSerializer.Serialize(new { name = task.Name, on = false }));
     }
 
     private AgentToolResult AddFocusFromTemplate(JsonElement args)
     {
         string name = Required(args, "name");
         var template = FindOne(owner.Settings.Tasks.Where(t => t.Template), x => x.Name, name, "plantilla de enfoque", x => x.Id);
-        owner.Settings.Tasks.Add(new WorkTask { Name = template.Name, Project = template.Project, Estimate = template.Estimate, Template = false });
+        var item = new WorkTask { Name = template.Name, Project = template.Project, Estimate = template.Estimate, Template = false };
+        item.Touch();
+        owner.Settings.Tasks.Insert(0, item);
         owner.SaveState();
         return Result(true, true, $"Tarea creada desde plantilla: {template.Name}", new { template.Name, template.Project });
     }
@@ -1049,7 +1277,9 @@ internal sealed class AgentToolbox
     {
         if (!owner.Settings.AgentMemoryEnabled) return Result(false, false, "La memoria personal está desactivada");
         string text = Required(args, "text");
-        string kind = Text(args, "kind", "preference");
+        string kind = Text(args, "kind", "");
+        if (kind.Length == 0 || (kind.Equals("preference", StringComparison.OrdinalIgnoreCase) && AgentIntent.GuessMemoryKind(text) == "skill"))
+            kind = AgentIntent.GuessMemoryKind(text);
         var item = confirm ? memory.Book.Remember(text, kind) : memory.Book.Propose(text, kind);
         if (confirm) item.Status = AgentMemoryStatus.Confirmed;
         memory.Save();
@@ -1073,10 +1303,13 @@ internal sealed class AgentToolbox
 
     private object FinanceSnapshot(DateOnly? day = null)
     {
-        var month = FinanceStore.For(owner.Store).Book.Month(day ?? DateOnly.FromDateTime(DateTime.Today));
+        var book = FinanceStore.For(owner.Store).Book;
+        var month = book.Month(day ?? DateOnly.FromDateTime(DateTime.Today));
         return new
         {
             from = month.Month.ToString("yyyy-MM"),
+            currency = book.Currency,
+            usdToMxn = book.UsdToMxn,
             income = month.Recorded.Income,
             expense = month.Recorded.Expense,
             net = month.Recorded.Net,
@@ -1111,13 +1344,13 @@ internal sealed class AgentToolbox
         var parsed = FinanceQuickAdd.Parse(Required(args, "text"), DateOnly.FromDateTime(DateTime.Today));
         if (parsed is RecurringMoney recurring)
         {
-            var saved = FinanceStore.For(owner.Store).AddRecurring(recurring.Title, recurring.Amount, recurring.Subscription, recurring.Category, recurring.Flow, recurring.DayOfMonth, recurring.Repeat);
-            return Result(true, true, $"{(saved.Subscription ? "Suscripción" : "Gasto fijo")} : {saved.Title} · {saved.Amount}", new { saved.Id });
+            var saved = FinanceStore.For(owner.Store).AddRecurring(recurring.Title, recurring.Amount, recurring.Subscription, recurring.Category, recurring.Flow, recurring.DayOfMonth, recurring.Repeat, recurring.Currency);
+            return Result(true, true, $"{(saved.Subscription ? "Suscripción" : "Gasto fijo")} : {saved.Title} · {saved.Amount} {saved.Currency}", new { saved.Id });
         }
         if (parsed is not MoneyEntry entry) return Result(false, false, "No pude interpretar el movimiento");
         var store = FinanceStore.For(owner.Store);
-        var added = store.AddEntry(entry.Flow, entry.Amount, entry.Title, entry.Date, entry.Category);
-        return Result(true, true, $"{(added.Flow == MoneyFlow.Income ? "Ingreso" : "Gasto")} : {added.Title} · {added.Amount}", new { added.Id },
+        var added = store.AddEntry(entry.Flow, entry.Amount, entry.Title, entry.Date, entry.Category, entry.Notes, entry.Currency);
+        return Result(true, true, $"{(added.Flow == MoneyFlow.Income ? "Ingreso" : "Gasto")} : {added.Title} · {added.Amount} {added.Currency}", new { added.Id },
             "finance.delete", JsonSerializer.Serialize(new { id = added.Id }));
     }
 
@@ -1169,6 +1402,41 @@ internal sealed class AgentToolbox
             return Result(false, false, "El usuario canceló la eliminación");
         foreach (var entry in victims) store.RemoveEntry(entry);
         return Result(true, true, $"Eliminé {victims.Count} gasto(s).");
+    }
+
+    private async Task<AgentToolResult> SetFinanceRateAsync(JsonElement args, CancellationToken cancellationToken)
+    {
+        bool refresh = Flag(args, "refresh")
+            || Text(args, "source", "").Equals("auto", StringComparison.OrdinalIgnoreCase)
+            || Text(args, "source", "").Equals("online", StringComparison.OrdinalIgnoreCase);
+        decimal? fetched = null;
+        if (refresh)
+        {
+            fetched = await FinanceRates.FetchUsdToMxnAsync(cancellationToken).ConfigureAwait(false);
+            if (fetched is null)
+                return Result(false, false, "No pude actualizar el tipo de cambio (sin red o el servicio no respondió).");
+        }
+        return await owner.Dispatcher.InvokeAsync(() => ApplyFinanceRate(fetched, args));
+    }
+
+    private AgentToolResult ApplyFinanceRate(decimal? fetched, JsonElement args)
+    {
+        var store = FinanceStore.For(owner.Store);
+        decimal previous = store.Book.UsdToMxn;
+        if (fetched is { } online)
+        {
+            store.SetRate(online, false);
+            return Result(true, true, $"Tipo de cambio USD/MXN: {store.Book.UsdToMxn.ToString("0.####", CultureInfo.InvariantCulture)}",
+                new { store.Book.UsdToMxn, source = "online" },
+                "finance.set_rate", JsonSerializer.Serialize(new { usd_to_mxn = previous }));
+        }
+        decimal rate = Dec(args, "usd_to_mxn", Dec(args, "rate", Dec(args, "value", 0)));
+        if (rate <= 0)
+            return Result(false, false, "Indica usd_to_mxn (número) o refresh:true.");
+        store.SetRate(rate, true);
+        return Result(true, true, $"Tipo de cambio USD/MXN: {store.Book.UsdToMxn.ToString("0.####", CultureInfo.InvariantCulture)}",
+            new { store.Book.UsdToMxn, source = "manual" },
+            "finance.set_rate", JsonSerializer.Serialize(new { usd_to_mxn = previous }));
     }
 
     private AgentToolResult FinanceArchive(JsonElement args)
@@ -1269,6 +1537,28 @@ internal sealed class AgentToolbox
     }
     private static string Text(JsonElement args, string key, string fallback) => args.ValueKind == JsonValueKind.Object && args.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? fallback : fallback;
     private static bool Bool(JsonElement args, string key, bool fallback) => args.ValueKind == JsonValueKind.Object && args.TryGetProperty(key, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : fallback;
+    private static bool Flag(JsonElement args, string key)
+    {
+        if (Bool(args, key, false)) return true;
+        string text = Text(args, key, "").Trim().ToLowerInvariant();
+        return text is "true" or "1" or "yes" or "si" or "sí" or "auto";
+    }
+    private static decimal Dec(JsonElement args, string key, decimal fallback)
+    {
+        if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty(key, out var value)) return fallback;
+        if (value.TryGetDecimal(out decimal number)) return number;
+        if (value.ValueKind == JsonValueKind.String
+            && decimal.TryParse(value.GetString()?.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out number))
+            return number;
+        return fallback;
+    }
+    private static bool WantsFill(JsonElement args)
+    {
+        if (Bool(args, "fill", false) || Bool(args, "fullscreen", false) || Bool(args, "canvas_fill", false) || Bool(args, "maximize", false))
+            return true;
+        string text = Text(args, "fill", Text(args, "fullscreen", ""));
+        return text.Equals("true", StringComparison.OrdinalIgnoreCase) || text.Equals("yes", StringComparison.OrdinalIgnoreCase);
+    }
     private static int Int(JsonElement args, string key, int fallback) => args.ValueKind == JsonValueKind.Object && args.TryGetProperty(key, out var value) && value.TryGetInt32(out int number) ? number : fallback;
     private static List<int> IntArray(JsonElement args, string key) =>
         args.ValueKind == JsonValueKind.Object && args.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.Array

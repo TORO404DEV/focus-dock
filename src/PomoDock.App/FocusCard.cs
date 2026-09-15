@@ -55,9 +55,15 @@ internal static class FocusCard
         // primary numbers until both their values and captions were clipped.
         bool showWeek = height >= 218;
         bool showFooter = height >= 310;
-        double metricSize = Math.Clamp(Math.Min(width * .105, height * (showWeek ? .19 : .26)), 27, 58);
-        double labelSize = Math.Clamp(metricSize * .34, 10.5, 14);
-        double iconSize = Math.Clamp(metricSize * .9, 26, 48);
+        // Prefer ~27px type, but never ask Clamp for min > max when the card is short
+        // (height * .2 can fall below 27 while still above the compact threshold).
+        double metricCap = Math.Max(12, Math.Min(96, height * .2));
+        double metricFloor = Math.Min(27, metricCap);
+        double metricSize = Math.Clamp(Math.Min(width * .12, height * (showWeek ? .16 : .22)), metricFloor, metricCap);
+        double labelCap = Math.Max(8, Math.Min(16, metricSize * .5));
+        double labelSize = Math.Clamp(metricSize * .34, Math.Min(10.5, labelCap), labelCap);
+        double iconCap = Math.Max(12, Math.Min(64, metricSize));
+        double iconSize = Math.Clamp(metricSize * .9, Math.Min(26, iconCap), iconCap);
 
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -121,8 +127,10 @@ internal static class FocusCard
     /// <summary>Even at the minimum card height, both primary metrics keep an icon and readable type.</summary>
     private static UIElement Compact(double minutes, int streak, double width, double height)
     {
-        double font = Math.Clamp(Math.Min(width / 8.4, height * .48), 21, 34);
-        double icon = Math.Clamp(font * .8, 20, 28);
+        double fontCap = Math.Max(12, Math.Min(34, height * .48));
+        double font = Math.Clamp(Math.Min(width / 8.4, height * .48), Math.Min(21, fontCap), fontCap);
+        double iconCap = Math.Max(10, Math.Min(28, font));
+        double icon = Math.Clamp(font * .8, Math.Min(20, iconCap), iconCap);
         var line = new Grid { VerticalAlignment = VerticalAlignment.Center };
         line.ColumnDefinitions.Add(new ColumnDefinition());
         line.ColumnDefinitions.Add(new ColumnDefinition());

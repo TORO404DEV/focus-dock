@@ -148,6 +148,7 @@ internal sealed class NotesEditor : Grid
         tools.Children.Add(ActionButton("＋", "Insertar fecha y hora", InsertTimestamp));
         tools.Children.Add(CommandButton("↶", L.T("notes.undo"), ApplicationCommands.Undo));
         tools.Children.Add(CommandButton("↷", L.T("notes.redo"), ApplicationCommands.Redo));
+        tools.Children.Add(ActionButton("☰", "Historial de notas", () => NotesHistory.Show(owner, config.Id), 32));
         return new Border
         {
             BorderBrush = (Brush)Application.Current.Resources["Line"],
@@ -547,7 +548,10 @@ internal sealed class NotesEditor : Grid
 
     private void PickColor()
     {
-        var picked = NoteSkin.Pick(owner, data.Color);
+        string? picked = null;
+        // Colour picker is a normal WPF dialog; without parking airspace popups the floating
+        // note HWND stays above it (LiftOverlaysAboveNatives keeps promoting those popups).
+        owner.RunModal(() => picked = NoteSkin.Pick(owner, data.Color));
         if (picked is null) return;
         SetColor(picked);
     }

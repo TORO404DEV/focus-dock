@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PomoDock — Second-monitor focus workspace for Windows</title>
-  <meta name="description" content="Open-source Windows workspace for a vertical second monitor: Pomodoro, tasks, habits, notes, calendar, finance, and a private agent. Local-first. MIT.">
+  <title>Pomodoro Timer for a Vertical Second Monitor — PomoDock</title>
+  <meta name="description" content="Open-source Pomodoro workspace for Windows. Timer, tasks, habits and a private agent on your vertical second monitor. Local-first. Import Pomofocus. MIT.">
   <meta name="theme-color" content="#171916">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://pomodock.com/en/">
@@ -13,46 +13,58 @@
   <link rel="alternate" hreflang="x-default" href="https://pomodock.com/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="PomoDock">
-  <meta property="og:title" content="PomoDock">
-  <meta property="og:description" content="Turn your second monitor into a focus workspace. Windows. Local-first. Open source.">
+  <meta property="og:title" content="Pomodoro Timer for a Vertical Second Monitor — PomoDock">
+  <meta property="og:description" content="Turn the unused screen into a Pomodoro workspace: timer, widgets, real Windows apps, and a local agent.">
   <meta property="og:url" content="https://pomodock.com/en/">
   <meta property="og:locale" content="en_US">
-  <meta property="og:locale:alternate" content="es_ES">
-  <meta property="og:image" content="https://pomodock.com/assets/screenshot-hero.webp">
-  <meta property="og:image:alt" content="PomoDock workspace on a vertical monitor">
+  <meta property="og:image" content="https://pomodock.com/assets/hero.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="PomoDock">
-  <meta name="twitter:description" content="Second-monitor focus workspace for Windows.">
-  <meta name="twitter:image" content="https://pomodock.com/assets/screenshot-hero.webp">
   <link rel="icon" href="../assets/pomodock-mark.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="../style.css">
-  <script src="../script.js" defer></script>
+  <link rel="stylesheet" href="../site.css?v=20260912e">
+  <script src="../script.js?v=20260912e" defer></script>
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "PomoDock",
-    "description": "Open-source Windows focus workspace for a vertical second monitor.",
     "applicationCategory": "DesktopEnhancementApplication",
     "operatingSystem": "Windows x64",
-    "softwareVersion": "0.2.1",
+    "softwareVersion": "0.3.0",
+    "description": "Open-source Pomodoro workspace for a vertical second monitor on Windows, with a private agent.",
     "url": "https://pomodock.com/en/",
-    "downloadUrl": "https://github.com/TORO404DEV/focus-dock/releases/download/v0.2.1/PomoDock-Setup-0.2.1.exe",
+    "downloadUrl": "https://github.com/TORO404DEV/focus-dock/releases/download/v0.3.0/PomoDock-Setup-0.3.0.exe",
     "codeRepository": "https://github.com/TORO404DEV/focus-dock",
     "license": "https://github.com/TORO404DEV/focus-dock/blob/main/LICENSE",
-    "image": "https://pomodock.com/assets/screenshot-hero.webp",
+    "image": "https://pomodock.com/assets/hero.png",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "How to use the Pomodoro Technique with PomoDock",
+    "step": [
+      {"@type": "HowToStep", "name": "Move PomoDock to the second monitor"},
+      {"@type": "HowToStep", "name": "Add the timer and the widgets you need"},
+      {"@type": "HowToStep", "name": "Start a 25-minute focus block"},
+      {"@type": "HowToStep", "name": "Take a short break when the alarm rings"},
+      {"@type": "HowToStep", "name": "Repeat until the work is done"}
+    ]
   }
   </script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-
   <header class="topbar">
-    <a class="brand" href="#top">
-      <img src="../assets/pomodock-mark.svg" width="28" height="28" alt="">
-      <span>PomoDock</span>
-    </a>
+    <a class="brand" href="#top"><img src="../assets/pomodock-mark.svg" width="22" height="22" alt=""><span>PomoDock</span></a>
+    <nav class="top-nav" aria-label="On this page">
+      <a href="#what">What</a>
+      <a href="#pomodoro">Pomodoro</a>
+      <a href="#features">Features</a>
+      <a href="#agent">Agent</a>
+      <a href="#faq">FAQ</a>
+    </nav>
     <div class="topbar-spacer"></div>
     <nav class="lang" aria-label="Language">
       <a class="is-active" href="./" lang="en" hreflang="en" aria-current="page" data-language="en">EN</a>
@@ -62,44 +74,158 @@
   </header>
 
   <main id="main">
-    <section class="hero" id="top">
-      <div class="hero-copy">
-        <p class="eyebrow">Windows · Open source · v0.2.1</p>
-        <h1 class="hero-brand">PomoDock</h1>
-        <p class="hero-line">Your second monitor, as a focus workspace. Timer, tools, pages—and a private agent that can run them.</p>
-        <div class="hero-actions">
-          <a class="button button-primary" href="https://github.com/TORO404DEV/focus-dock/releases/download/v0.2.1/PomoDock-Setup-0.2.1.exe">Download for Windows</a>
-          <a class="button button-ghost" href="https://github.com/TORO404DEV/focus-dock" target="_blank" rel="noreferrer">Source</a>
+    <div class="wrap">
+      <section class="intro" id="top">
+        <div>
+          <p class="eyebrow">Windows · Open source · 0.3.0</p>
+          <h1>Pomodoro for the second monitor.</h1>
+          <p class="lead">A local-first focus workspace: timer, tasks, habits, notes, calendar, finance—and a private agent that can run them. Built for the vertical screen beside the work.</p>
+        </div>
+        <div class="intro-actions">
+          <div class="hero-actions">
+            <a class="button button-primary" href="https://github.com/TORO404DEV/focus-dock/releases/download/v0.3.0/PomoDock-Setup-0.3.0.exe">Download for Windows</a>
+            <a class="button button-ghost" href="https://github.com/TORO404DEV/focus-dock" target="_blank" rel="noreferrer">Source</a>
+          </div>
+          <ul class="facts"><li>MIT</li><li>No account</li><li>Local-first</li></ul>
+        </div>
+      </section>
+
+      <figure class="shot">
+        <img src="../assets/hero.png?v=20260912e" data-motion="../assets/hero.gif" width="620" height="1102" alt="PomoDock Pomodoro workspace: timer, focus stats, tasks and habits on a vertical canvas" fetchpriority="high">
+        <figcaption>One page. Timer, stats, tasks, habits.</figcaption>
+      </figure>
+    </div>
+
+    <section class="block" id="what">
+      <div class="wrap prose">
+        <p class="kicker">What it is</p>
+        <h2>Your second monitor, as a focus workspace.</h2>
+        <p>PomoDock is an open-source Windows app for a <strong>vertical second monitor</strong>. The main screen stays on the work. The other screen holds the Pomodoro timer, the list, the habits, the notes, and—if you want—a live window from another app.</p>
+        <p>No account. No PomoDock server. Data lives in SQLite under <code>%LOCALAPPDATA%\PomoDock</code>. You can import a Pomofocus CSV so years of sessions are not thrown away.</p>
+      </div>
+    </section>
+
+    <section class="block" id="pomodoro">
+      <div class="wrap prose">
+        <p class="kicker">The method</p>
+        <h2>What is the Pomodoro Technique?</h2>
+        <p>The Pomodoro Technique is a time-management method by Francesco Cirillo. You break work into short, timed intervals—traditionally <strong>25 minutes of focus</strong>—separated by a short break. Each interval is a pomodoro, named after the tomato-shaped kitchen timer Cirillo used as a student.</p>
+        <p>The point is not a prettier clock. It is to work in a closed block, stop when the alarm rings, and come back. PomoDock keeps that rhythm on the second screen so the timer does not fight the editor for space.</p>
+        <h2>How to use the Pomodoro timer</h2>
+        <ol class="steps">
+          <li>Move PomoDock to the secondary / vertical monitor.</li>
+          <li>Add the timer. Optionally add tasks, habits, notes, or another app’s window.</li>
+          <li>Start focus (Space, when no text field is focused). Work for one pomodoro.</li>
+          <li>When the alarm rings, take the short break. After a few cycles, take a long break.</li>
+          <li>Repeat until the task is done. History, streaks and reports stay on this PC.</li>
+          <li>Optional: open the agent, set a DeepSeek key, and ask it to add a task or mark a habit.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="block" id="features">
+      <div class="wrap">
+        <p class="kicker">Kit</p>
+        <h2>What ships in 0.3.0</h2>
+        <div class="grid">
+          <article><h3>Pomodoro</h3><p>Focus, short break, long break. Rhythms, sounds, skip, and a focus history you can export.</p></article>
+          <article><h3>Pages</h3><p>An infinite grid of canvases. Drag empty space or use the page dock. Rename a page; mark one as home.</p></article>
+          <article><h3>Tasks &amp; To Do</h3><p>Estimates, priorities, dates. Sorted by recent use; switching missions asks whether to keep or save the timer.</p></article>
+          <article><h3>Habits</h3><p>Targets, streaks, XP, levels and a heat map. The board is a lens on a shared book.</p></article>
+          <article><h3>Notes</h3><p>Rich text, checklists, colour, searchable history. Closing a note does not delete it.</p></article>
+          <article><h3>Calendar</h3><p>Month, week, agenda. Repeating events and reminders that actually ring.</p></article>
+          <article><h3>Finance</h3><p>USD and MXN in the same book. Totals in the currency you pick. Rate, charts, periods.</p></article>
+          <article><h3>Memento &amp; startup</h3><p>A life-weeks widget. Optional open-at-sign-in that restores window, page, task, and timer.</p></article>
         </div>
       </div>
-      <div class="hero-visual" aria-hidden="false">
-        <img src="../assets/screenshot-hero.webp" width="1078" height="1918" alt="PomoDock on a vertical second monitor: Pomodoro, stats, tasks and habits on one page" fetchpriority="high">
+    </section>
+
+    <section class="block" id="agent">
+      <div class="wrap prose">
+        <p class="kicker">New in 0.2</p>
+        <h2>A private agent on the same canvas.</h2>
+        <p>Talk or type. The agent plans a change, you confirm, then it runs tools on this machine: todos, habits, notes, calendar, finance, widgets, pages, layouts, sounds, settings.</p>
+        <p>Reasoning can go through DeepSeek when you set an API key. The tools and the data stay local. Destructive steps ask first. Some things stay out of reach on purpose (the HWND picker, closing the app shell).</p>
+        <p class="muted">It is not a chatbot taped on the side. It is another widget that can operate the workspace you already see.</p>
       </div>
     </section>
 
-    <section class="strip" aria-labelledby="kit-title">
-      <h2 id="kit-title">On the canvas</h2>
-      <ul class="kit">
-        <li><strong>Pomodoro</strong><span>Focus, short break, long break. Your rhythm.</span></li>
-        <li><strong>Pages</strong><span>An infinite grid of canvases. Drag between them.</span></li>
-        <li><strong>Widgets</strong><span>Tasks, habits, notes, calendar, finance, stats, web.</span></li>
-        <li><strong>Windows</strong><span>Embed a real Windows app as a widget.</span></li>
-        <li><strong>Agent</strong><span>Talk or type. It plans, you confirm, it acts—locally, with DeepSeek when you choose.</span></li>
-        <li><strong>Yours</strong><span>No account. Data stays in %LOCALAPPDATA%\PomoDock.</span></li>
-      </ul>
+    <section class="block" id="why">
+      <div class="wrap">
+        <p class="kicker">Why this, not a tab</p>
+        <h2>Stop making the timer compete with the work.</h2>
+        <div class="split">
+          <article>
+            <h3>A Pomodoro site in a browser tab</h3>
+            <ul>
+              <li>Lives on the main screen</li>
+              <li>Gets buried under the editor</li>
+              <li>Usually one function: the clock</li>
+              <li>History locked in that site’s account</li>
+            </ul>
+          </article>
+          <article class="is-us">
+            <h3>PomoDock</h3>
+            <ul>
+              <li>Designed for the second monitor</li>
+              <li>Timer plus the rest of the kit</li>
+              <li>Real Windows windows as widgets</li>
+              <li>Local SQLite, MIT, optional agent</li>
+            </ul>
+          </article>
+        </div>
+      </div>
     </section>
 
-    <section class="cta">
-      <p>Put the second screen to work.</p>
-      <a class="button button-primary" href="https://github.com/TORO404DEV/focus-dock/releases/download/v0.2.1/PomoDock-Setup-0.2.1.exe">Download 0.2.1</a>
+    <section class="block" id="faq">
+      <div class="wrap">
+        <p class="kicker">Quick answers</p>
+        <h2>FAQ</h2>
+        <div class="faq">
+          <details open>
+            <summary>Is this a Pomodoro timer?</summary>
+            <p>Yes. Focus / short / long, with history. It is also the workspace around that timer: tasks, habits, notes, calendar, finance, and embedded apps.</p>
+          </details>
+          <details>
+            <summary>Can I import Pomofocus history?</summary>
+            <p>Yes. Export the report from Pomofocus, then import the CSV or TSV. Sessions map into native reports. Re-imports deduplicate; a safety copy is taken first.</p>
+          </details>
+          <details>
+            <summary>Do I need an account?</summary>
+            <p>No. Nothing is created on a PomoDock server. The workspace stays on your PC.</p>
+          </details>
+          <details>
+            <summary>What does the agent need?</summary>
+            <p>For chat, a DeepSeek API key in Settings. Voice dictation uses Whisper on-device. Tools never send your ledger or notes to “the cloud” as a product backend.</p>
+          </details>
+          <details>
+            <summary>Will Windows block the installer?</summary>
+            <p>The build is not code-signed. SmartScreen may warn; choose More info → Run anyway. Smart App Control can block unsigned local rebuilds.</p>
+          </details>
+          <details>
+            <summary>Is it free?</summary>
+            <p>MIT. The installer is free. DeepSeek, if you use the agent, is billed by them, not by PomoDock.</p>
+          </details>
+        </div>
+      </div>
     </section>
   </main>
 
+  <section class="cta">
+    <p class="kicker">Windows x64</p>
+    <h2>Put the second screen to work.</h2>
+    <p>Installer for the current user, Start Menu entry, no account.</p>
+    <div class="hero-actions">
+      <a class="button button-invert" href="https://github.com/TORO404DEV/focus-dock/releases/download/v0.3.0/PomoDock-Setup-0.3.0.exe">Download 0.3.0</a>
+      <a class="button button-ghost" href="https://github.com/TORO404DEV/focus-dock" target="_blank" rel="noreferrer">Star on GitHub</a>
+    </div>
+  </section>
+
   <footer class="site-footer">
     <p>MIT · TORO404DEV · 2026</p>
-    <nav aria-label="Footer">
+    <nav>
       <a href="https://github.com/TORO404DEV/focus-dock/releases">Releases</a>
-      <a href="https://github.com/TORO404DEV/focus-dock">Repository</a>
+      <a href="https://github.com/TORO404DEV/focus-dock/blob/main/LICENSE">License</a>
       <a href="../es/" lang="es" hreflang="es" data-language="es">Español</a>
     </nav>
   </footer>

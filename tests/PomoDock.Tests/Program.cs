@@ -69,12 +69,28 @@ Test("todo and habit widgets preserve completion state", () => {
 HabitTests.Run(Test, Equal, Assert);
 AgendaQuickAddTests.Run(Test, Equal, Assert);
 TodoSyncTests.Run(Test, Equal, Assert);
+AppUsageTests.Run(Test, Equal, Assert);
 NotificationHistoryTests.Run(Test, Equal, Assert);
+Test("widget canvas fill remembers and restores its previous size", () => {
+ var widget = new WidgetConfig { X = 40, Y = 80, Width = 280, Height = 200 };
+ widget.FillCanvas(720, 900);
+ Assert(widget.CanvasFill && widget.X == 0 && widget.Y == 0 && widget.Width == 720 && widget.Height == 900);
+ widget.RestoreFromCanvasFill();
+ Assert(!widget.CanvasFill && widget.X == 40 && widget.Y == 80 && widget.Width == 280 && widget.Height == 200);
+ widget.FillCanvas(720, 900);
+ widget.X = 12; widget.Width = 400;
+ widget.DropCanvasFillIfBoundsMoved(720, 900);
+ Assert(!widget.CanvasFill, "moving a filled widget leaves fill mode");
+});
 TodoTests.Run(Test, Equal, Assert);
 NoteArchiveTests.Run(Test, Equal, Assert);
 SoundLibraryTests.Run(Test, Equal, Assert);
 FocusHistoryTests.Run(Test, Equal, Assert);
 AgentCoreTests.Run(Test, Equal, Assert);
+LaunchUrlTests.Run(Test, Assert);
+AgentWakePhraseTests.Run(Test, Assert);
+YouTubeWatchTests.Run(Test, Assert);
+AgentListenVadTests.Run(Test, Assert);
 FinanceTests.Run(Test, Equal, Assert);
 Test("rich note metadata preserves color, document, and checklists", () => {
  var note = new NotesWidgetData { Color = "mint", DocumentXaml = "<Section><Paragraph>Idea</Paragraph></Section>", Checklists = [new() { ParagraphIndex = 0, IsChecked = true }], UpdatedUtc = utc.UtcDateTime };

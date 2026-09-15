@@ -5,7 +5,7 @@ using PomoDock.Core;
 
 namespace PomoDock.App;
 
-internal sealed record AgentRunResult(string Message, IReadOnlyList<AgentActionReceipt> Receipts, AgentPlan? Plan = null, bool NeedsApproval = false);
+internal sealed record AgentRunResult(string Message, IReadOnlyList<AgentActionReceipt> Receipts, AgentPlan? Plan = null, bool NeedsApproval = false, bool Silent = false);
 
 /// <summary>
 /// Observe, plan, then act. Queries run immediately. Writes wait for an approved <see cref="AgentPlan"/>.
@@ -47,12 +47,43 @@ internal sealed class PomoAgent
         if (TryScheduleDirect(request, out var scheduledPlan))
             return await FinishDirect(scheduledPlan, activity, cancellationToken);
 
+        if (AgentIntent.TryRemember(request, out var memoryFact))
+        {
+            var rememberPlan = new AgentPlan
+            {
+                Understood = Es() ? $"recordar: {memoryFact}" : $"remember: {memoryFact}",
+                Changes = Es() ? "1 recuerdo" : "1 memory",
+                Risk = AgentRisk.Write,
+                Message = Es() ? $"Voy a recordar: {memoryFact}" : $"I will remember: {memoryFact}",
+                Steps = [new AgentPlanStep { Tool = "memory.confirm", ArgumentsJson = JsonSerializer.Serialize(new { text = memoryFact, kind = AgentIntent.GuessMemoryKind(memoryFact) }), Risk = AgentRisk.Write, Label = memoryFact }]
+            };
+            return await FinishDirect(rememberPlan, activity, cancellationToken);
+        }
+
+        if (!useDeepSeek && AgentIntent.TryChangeSong(request, out var songQuery))
+        {
+            activity?.Report(new AgentNotice(AgentEventKind.Executing, Es() ? "YouTube · CAMBIAR CANCIÓN" : "YouTube · CHANGE SONG"));
+            using var arguments = JsonDocument.Parse(JsonSerializer.Serialize(new { query = songQuery }));
+            var played = await tools.ExecuteAsync("workspace.play_youtube", arguments.RootElement, cancellationToken);
+            return new AgentRunResult(played.Summary, played.Success ? [played.Receipt("workspace.play_youtube")] : []);
+        }
+
         if (AgentIntent.IsUpcomingCalendarQuery(request))
         {
             activity?.Report(new AgentNotice(AgentEventKind.Reading, Es() ? "Consultando · CALENDARIO" : "Reading · CALENDAR"));
             using var arguments = JsonDocument.Parse("{\"days\":3650,\"limit\":10,\"include_done\":false}");
             var result = await tools.ExecuteAsync("calendar.upcoming", arguments.RootElement, cancellationToken);
             return new AgentRunResult(result.Summary, result.Success ? [result.Receipt("calendar.upcoming")] : []);
+        }
+
+        if (AgentPresent.WantsFocusTable(request, history))
+        {
+            activity?.Report(new AgentNotice(AgentEventKind.Reading, L.T("agent.consultingFocus")));
+            string period = AgentPresent.GuessFocusPeriod(request, history);
+            using var arguments = JsonDocument.Parse($"{{\"period\":\"{period}\",\"limit\":120}}");
+            var result = await tools.ExecuteAsync("focus.query_sessions", arguments.RootElement, cancellationToken);
+            string table = AgentPresent.FormatFocusQuery(result.Json, Es());
+            return new AgentRunResult(table, result.Success ? [result.Receipt("focus.query_sessions")] : []);
         }
 
         // Regex shortcuts stay only as a fallback when there is no API key.
@@ -85,7 +116,7 @@ internal sealed class PomoAgent
         // day/hour boundaries, and follow-ups like "cuáles son" need the prior topic.
         string input = Opening(request, history, null);
 
-        for (int step = 0; step < 6; step++)
+        for (int step = 0; step < 8; step++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             activity?.Report(new AgentNotice(AgentEventKind.Interpreting, step == 0 ? L.T("agent.liveWait") : L.T("agent.liveWaitStep", step + 1)));
@@ -194,7 +225,7 @@ internal sealed class PomoAgent
                 guard.Remember(action, turn.Arguments, risk, "{\"success\":true,\"proposed\":true}", false, true);
                 input = $"""
                     PROPUESTA REGISTRADA, no ejecutada: {action} {turn.Arguments}.
-                    Sigue proponiendo pasos o termina con action=finish y un resumen del plan.
+                    Si alguna HABILIDAD APRENDIDA de MEMORIA aplica a esta petición y aún no tiene un paso, propónlo ahora (usa las tools del catálogo: app.hide_agent, finish con speak:false, fill, etc.). Si no falta nada, action=finish.
                     """;
                 continue;
             }
@@ -241,7 +272,7 @@ internal sealed class PomoAgent
 
             string summary = AgentReply.After(plan.Message, receipts, Es());
             activity?.Report(new AgentNotice(AgentEventKind.Done, L.T("agent.ready")));
-            return new AgentRunResult(summary, receipts);
+            return new AgentRunResult(summary, receipts, Silent: plan.Silent);
         }
         finally
         {
@@ -289,6 +320,25 @@ internal sealed class PomoAgent
             : turn.Message.Trim();
         if (pending.Count == 0 && queries.Count > 0)
             message = EnrichBareAnswer(message, queries);
+
+        // "haz una tabla" is a read of data already fetched — never a sticky note.
+        if (AgentPresent.WantsTable(request) && !AgentPresent.WantsANote(request)
+            && pending.Count > 0
+            && pending.All(step => AgentCatalog.Canonical(step.Tool) is "add_note" or "notes.create" or "notes.append"))
+        {
+            pending.Clear();
+            var focus = queries.LastOrDefault(receipt => receipt.Tool.StartsWith("focus.", StringComparison.OrdinalIgnoreCase));
+            if (focus?.PayloadJson is { Length: > 2 } payload)
+                message = AgentPresent.FormatFocusQuery(payload, Es());
+        }
+        else if (pending.Count == 0)
+        {
+            var focus = queries.LastOrDefault(receipt =>
+                string.Equals(receipt.Tool, "focus.query_sessions", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(receipt.PayloadJson));
+            if (focus is not null && (AgentPresent.WantsTable(request) || AgentPresent.LooksLikeGrid(message) is false && Regex.IsMatch(message, @"^\d+\s+sesiones", RegexOptions.IgnoreCase)))
+                message = AgentPresent.FormatFocusQuery(focus.PayloadJson!, Es());
+        }
         string said = string.IsNullOrWhiteSpace(turn.Understood) ? understood : turn.Understood.Trim();
         if (said.Length < 12 || said is "true" or "false" or "ok" or "yes")
             said = pending.Count == 0 ? message : (Es() ? "Voy a: " : "I will: ") + string.Join(Es() ? "; " : "; ", pending.Select(step => step.Label));
@@ -298,15 +348,19 @@ internal sealed class PomoAgent
             Message = message,
             Steps = pending,
             Risk = pending.Count == 0 ? AgentRisk.Read : pending.Max(step => step.Risk),
-            Changes = pending.Count == 0 ? "" : (Es() ? $"{pending.Count} cambio(s) previsto(s)" : $"{pending.Count} planned change(s)")
+            Changes = pending.Count == 0 ? "" : (Es() ? $"{pending.Count} cambio(s) previsto(s)" : $"{pending.Count} planned change(s)"),
+            Silent = WantsSilent(turn)
         };
         if (plan.CanAutoRun)
-            return await ExecuteAsync(plan, activity, cancellationToken);
+        {
+            var executed = await ExecuteAsync(plan, activity, cancellationToken);
+            return executed with { Silent = plan.Silent || executed.Silent };
+        }
         // Destructive / approval plans must never speak or store a "already done" message.
         if (plan.HasMutations && !AgentReply.AsksConfirmation(plan.Message))
             plan.Message = AgentReply.Pending(plan, Es());
         IReadOnlyList<AgentActionReceipt> receipts = pending.Count > 0 ? [] : queries;
-        return new AgentRunResult(plan.Message, receipts, plan, plan.HasMutations);
+        return new AgentRunResult(plan.Message, receipts, plan, plan.HasMutations, plan.Silent);
     }
 
     private static AgentRunResult Stop(IReadOnlyList<AgentActionReceipt> receipts, string spanish, string english) =>
@@ -729,7 +783,7 @@ internal sealed class PomoAgent
                 Changes = Es() ? "1 recuerdo" : "1 memory",
                 Risk = AgentRisk.Write,
                 Message = Es() ? $"Voy a recordar: {fact}" : $"I will remember: {fact}",
-                Steps = [new AgentPlanStep { Tool = "memory.confirm", ArgumentsJson = JsonSerializer.Serialize(new { text = fact }), Risk = AgentRisk.Write, Label = fact }]
+                Steps = [new AgentPlanStep { Tool = "memory.confirm", ArgumentsJson = JsonSerializer.Serialize(new { text = fact, kind = AgentIntent.GuessMemoryKind(fact) }), Risk = AgentRisk.Write, Label = fact }]
             };
             return true;
         }
@@ -781,13 +835,16 @@ internal sealed class PomoAgent
             IDIOMA: {Strings.Culture.TwoLetterISOLanguageName}
             PANTALLA ACTUAL (fuente de verdad; no inventes widgets):
             {screen}
-            MEMORIA:
-            {(string.IsNullOrWhiteSpace(memoryBlock) ? "(vacía)" : Trim(memoryBlock, 400))}
+            MEMORIA (las habilidades son órdenes permanentes: si aplican a ESTA petición, ejecútalas con tools; no las ignores):
+            {(string.IsNullOrWhiteSpace(memoryBlock) ? "(vacía)" : memoryBlock)}
             {thread}{(seededFocus is null ? "" : "DATOS REALES DE ENFOQUE:\n" + seededFocus + "\nUsa estos números. No llames focus.summarize otra vez. Termina con finish.\n")}PETICIÓN ACTUAL: {request}
             Si la petición es corta o anafórica («cuáles son», «y eso», «dímelos», «borra ese»), continúa el tema del HILO RECIENTE; no cambies a get_state ni a un resumen global.
             Si pide una nota, usa add_note con el texto que dictó (nunca dejes text vacío ni copies el título NOTAS). Si pide página nueva y una nota, workspace.add_page y luego add_note.
+            Si pide tabla, lista o detalle de sesiones/enfoque: consulta focus.query_sessions y termina con finish. NUNCA crees una nota para “haz una tabla”.
             Si pregunta por páginas vacías, workspace.delete_empty_pages. Nunca finish mintiendo que ya lo hiciste.
             Si pide eliminar/vaciar todos los widgets de la pantalla/página actual, usa workspace.clear_widgets. Solo propón remove_widget para títulos que aparezcan en PANTALLA ACTUAL.
+            Si piden enseñarte una habilidad o regla («cuando te diga…», «no lo olvides», «escríbelo en tu memoria»): memory.confirm con kind=skill y el texto completo. No ejecutes esa habilidad en el turno de enseñanza.
+            Las Habilidades de MEMORIA mandan sobre el atajo por defecto. Si una habilidad pide ocultar el chat: app.hide_agent. Si pide no hablar: finish {"speak":false}. Reproducir o cambiar canción/vídeo: workspace.play_youtube (si ya hay una en curso, esa tool cierra la ventana incrustada y su widget y abre Brave de nuevo con la pedida; si no hay, abre Brave). Añade fill:true u otros pasos SOLO si una habilidad o la petición lo piden.
             Página ≠ widget: «renombra/llama/nombra la página…» → workspace.rename_page. «ve a casa/principal/home» → workspace.goto con home:true o name. Nunca uses rename_widget ni focus para páginas.
             Si pregunta quién eres o qué puedes hacer, finish con un message natural (2-5 frases). No copies un párrafo memorizado ni empieces siempre igual.
             Finanzas: finance.add con text compacto tipo "-10 deepseek api" o "+2500 salario" — NUNCA copies la frase del usuario como título.
@@ -831,6 +888,21 @@ internal sealed class PomoAgent
 
     private static bool Es() => Strings.Culture.TwoLetterISOLanguageName == "es";
     private static string Trim(string text, int max) => text.Length <= max ? text : text[..max] + "…";
+
+    private static bool WantsSilent(AgentModelTurn turn)
+    {
+        if (turn.Arguments.ValueKind != JsonValueKind.Object) return false;
+        if (turn.Arguments.TryGetProperty("speak", out var speak))
+        {
+            if (speak.ValueKind == JsonValueKind.False) return true;
+            if (speak.ValueKind == JsonValueKind.String && speak.GetString() is "false" or "no" or "off" or "0") return true;
+        }
+        if (turn.Arguments.TryGetProperty("silent", out var silent)
+            && (silent.ValueKind == JsonValueKind.True
+                || (silent.ValueKind == JsonValueKind.String && silent.GetString() is "true" or "yes" or "on" or "1")))
+            return true;
+        return false;
+    }
 
     /// <summary>
     /// When the model answers with only a count ("3 hábitos.") but the tool already returned names,

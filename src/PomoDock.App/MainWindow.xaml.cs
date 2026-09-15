@@ -27,7 +27,10 @@ public partial class MainWindow : Window
     internal bool AgentPlanApproved { get; set; }
     public TimerEngine Timer { get; }
     public SoundEngine Sounds { get; }
+    private readonly AppUsageWatch appUsage = new();
     private readonly DispatcherTimer ticker = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer overlayZ = new() { Interval = TimeSpan.FromMilliseconds(160) };
+    private int overlayLiftPause;
     private List<WidgetCard> cards = [];
     private readonly Dictionary<WidgetCard, Popup> overlayCards = [];
     private readonly Dictionary<WidgetCard, Popup> interactionOverlays = [];
@@ -49,8 +52,16 @@ public partial class MainWindow : Window
     private Popup? reportPopup;
     private AgentWindow? agentWindow;
     private WidgetCard? agentCard;
+    private AgentWakeListen? wakeListen;
+    private int agentListenPause;
+    private readonly DispatcherTimer listenPulse = new() { Interval = TimeSpan.FromMilliseconds(80) };
+    internal Guid? LastCreatedWidgetId { get; private set; }
+    internal bool AgentCreatedWidgetThisTurn { get; set; }
     private readonly List<Popup> reportBackdrops = [];
     private ReportWindow? reportContent;
+    private bool reportHidTimerOverlay;
+    private WidgetCard[] reportHiddenOverlays = [];
+    private WidgetCard[] reportHiddenInteractionOverlays = [];
     private bool timerPointerPressed, timerWantsFront;
     private readonly VoiceDictation voiceDictation;
     public bool DiagnosticMode { get; }
@@ -71,11 +82,18 @@ public partial class MainWindow : Window
         DiagnosticMode = diagnostic;
         Store = new(data ?? DataPath);
         Settings = Store.Read<Settings>("settings") ?? new(); Settings.Validate();
+        // Remember the last focus task across restarts until the user clears it on purpose.
+        selectedTask = Settings.SelectedTaskId is { } remembered
+            ? Settings.Tasks.FirstOrDefault(task => task.Id == remembered && !task.Template)
+            : null;
         // The language has to be on before anything draws itself, or the first paint speaks Spanish.
         Strings.Use(Settings.Language);
         Timer = new(Settings);
         Sounds = new(Settings);
         InitializeComponent();
+        ReportButton.Content = ChromeIcon.Report();
+        TasksButton.Content = ChromeIcon.Tasks();
+        PageMapButton.Content = ChromeIcon.PageMap();
         voiceDictation = VoiceDictation.Attach(this);
         InitializeNotifications();
         ApplyLanguage();
@@ -91,23 +109,36 @@ public partial class MainWindow : Window
         Width = Math.Max(MinWidth, Settings.WindowWidth); Height = Math.Max(MinHeight, Settings.WindowHeight);
         Left = Settings.WindowLeft; Top = Settings.WindowTop;
         Topmost = Settings.AlwaysOnTop;
-        foregroundCallback = (_, _, _, _, _, _, _) => Dispatcher.BeginInvoke(UpdateHotkey);
+        foregroundCallback = (_, _, _, _, _, _, _) => Dispatcher.BeginInvoke(() =>
+        {
+            UpdateHotkey();
+            appUsage.Observe(Timer.Running && Timer.Phase == Phase.Focus, DateTimeOffset.UtcNow);
+        });
         Loaded += OnLoaded;
         LocationChanged += (_, _) => UpdateOverlayPositions();
         SizeChanged += (_, _) => UpdateOverlayPositions();
         StateChanged += (_, _) => UpdateOverlayPositions();
         PreviewKeyDown += OnKey;
         Closing += OnClosing;
+        listenPulse.Tick += (_, _) =>
+        {
+            AgentButton.Opacity = 0.48 + 0.52 * (0.5 + 0.5 * Math.Sin(Monotonic * 8));
+        };
         Timer.GapDetected += () => Status(L.T("status.gapDetected"));
         Timer.Finished += OnFinished;
         if (Store.Read<Session>("checkpoint") is { } checkpoint && !Store.Sessions().Any(s => s.Id == checkpoint.Id))
         { Timer.Restore(checkpoint); Status(L.T("status.recovered")); }
         ticker.Tick += (_, _) =>
         {
-            Timer.Tick(DateTimeOffset.UtcNow, Monotonic); UpdateTimer();
+            Timer.Tick(DateTimeOffset.UtcNow, Monotonic);
+            appUsage.Observe(Timer.Running && Timer.Phase == Phase.Focus, DateTimeOffset.UtcNow);
+            UpdateTimer();
             if (++ticks % 15 == 0) SaveState();
-            if (ticks % 5 == 0) foreach (var card in cards.ToArray()) card.Refresh();
+            if (ticks % 5 == 0 && !IsReportModalOpen && !pageMapOpen)
+                foreach (var card in cards.ToArray()) card.Refresh();
+            if (overlayLiftPause == 0) LiftOverlaysAboveNatives();
         };
+        overlayZ.Tick += (_, _) => { if (overlayLiftPause == 0) LiftOverlaysAboveNatives(); };
         statusReset.Tick += (_, _) => { statusReset.Stop(); UpdatePageMeta(); };
         PageDock.PreviewMouseWheel += (_, e) =>
         {
@@ -128,11 +159,14 @@ public partial class MainWindow : Window
         { Left = screen.WorkingArea.Left + 30; Top = screen.WorkingArea.Top + 30; }
         var source = HwndSource.FromHwnd(hwnd); source?.AddHook(WindowMessages);
         focusHook = Win32.SetWinEventHook(3, 3, 0, foregroundCallback, 0, 0, 0);
-        InitializeWorkspacePages(); ticker.Start(); UpdateHotkey();
+        InitializeWorkspacePages(); ticker.Start(); overlayZ.Start(); UpdateHotkey();
         if (Settings.AgentWidgetVisible) ShowAgentWidget();
+        SyncAgentListen();
         // Calendar reminders ring on their own clock: they never depend on a widget being visible.
         AgendaReminders.For(Store).Attach(this);
         if (Settings.Fullscreen) ToggleFullscreen();
+        else if (Settings.WindowMaximized) WindowState = WindowState.Maximized;
+        ResumeTimerIfNeeded();
         // The guardian is this same program started again. A host that merely embeds the window
         // (a preview harness, a test runner) would be relaunched with arguments it does not know,
         // and could not recover anyone's windows anyway.
@@ -146,7 +180,19 @@ public partial class MainWindow : Window
                 Process.Start(start)?.Dispose();
             }
             catch (Exception ex) { Status(L.T("status.recoveryFailed", ex.Message)); }
+            WindowsStartup.Sync(Settings.StartWithWindows);
         }
+    }
+
+    /// <summary>Picks up a pomodoro that was running when the app last saved state.</summary>
+    private void ResumeTimerIfNeeded()
+    {
+        if (DiagnosticMode || !Settings.TimerWasRunning || Timer.Active is null || Timer.Running) return;
+        Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask);
+        if (Timer.Phase == Phase.Focus) Sounds.StartNoise();
+        appUsage.Observe(Timer.Phase == Phase.Focus, DateTimeOffset.UtcNow);
+        UpdateTimer();
+        Status(L.T("status.running"));
     }
     private void PowerChanged(object sender, PowerModeChangedEventArgs e)
     {
@@ -156,11 +202,28 @@ public partial class MainWindow : Window
     {
         SaveCurrentWorkspacePage();
         if (!fullscreen && WindowState == WindowState.Normal) { Settings.WindowLeft = Left; Settings.WindowTop = Top; Settings.WindowWidth = Width; Settings.WindowHeight = Height; }
+        if (!fullscreen) Settings.WindowMaximized = WindowState == WindowState.Maximized;
         Settings.Fullscreen = fullscreen;
+        Settings.SelectedTaskId = selectedTask?.Id;
+        if (!exiting) Settings.TimerWasRunning = Timer.Running;
         Store.Write("settings", Settings); Store.Write("checkpoint", Timer.Active);
+    }
+
+    /// <summary>Sets the focus task. Only free-focus (null) or picking another task clears the previous one.</summary>
+    private void SetSelectedTask(WorkTask? task)
+    {
+        selectedTask = task;
+        task?.Touch();
+        Settings.SelectedTaskId = task?.Id;
     }
     private void OnFinished(Session session)
     {
+        if (session.Phase == Phase.Focus)
+        {
+            session.Apps = appUsage.Take(DateTimeOffset.UtcNow);
+            if (session.TaskId is { } id)
+                Settings.Tasks.FirstOrDefault(task => task.Id == id)?.Touch(session.Ended);
+        }
         Store.Complete(session);
         if (session.Outcome != Outcome.Completed) return;
         Sounds.StopNoise();
@@ -176,6 +239,7 @@ public partial class MainWindow : Window
                 if (next == Phase.Focus) Sounds.StartNoise();
             }
             AnimateTimer(); UpdateTimer(); SaveState();
+            AnnounceTimerComplete(session.Phase, next);
         });
     }
     /// <summary>
@@ -209,14 +273,20 @@ public partial class MainWindow : Window
     private void StartClick(object sender, RoutedEventArgs e) { Sounds.Button(Timer.Running ? "pause" : "start"); ToggleTimer(); }
     internal void ToggleTimer()
     {
-        if (Timer.Running) { Timer.Pause(DateTimeOffset.UtcNow, Monotonic); Sounds.StopNoise(); Status(L.T("status.paused")); }
+        if (Timer.Running)
+        {
+            Timer.Pause(DateTimeOffset.UtcNow, Monotonic);
+            appUsage.Observe(false, DateTimeOffset.UtcNow);
+            Sounds.StopNoise();
+            Status(L.T("status.paused"));
+        }
         else
         {
             // Starting the next phase acknowledges the alarm that announced the previous one.
-            // Alarm voices are tracked separately, so the start click and ambience remain intact.
-            Sounds.StopAlarm();
+            AcknowledgeTimerAlerts();
             Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask);
             if (Timer.Phase == Phase.Focus) Sounds.StartNoise();
+            appUsage.Observe(Timer.Phase == Phase.Focus, DateTimeOffset.UtcNow);
             Status(L.T("status.running"));
         }
         UpdateTimer(); SaveState();
@@ -245,36 +315,88 @@ public partial class MainWindow : Window
     {
         var now = DateTime.Now;
         var culture = Strings.Culture;
-        HeaderDateText.Text = now.ToString("ddd dd MMM yyyy", culture).ToUpper(culture);
+        HeaderDateText.Text = now.ToString("ddd d MMM", culture).ToUpper(culture);
         HeaderTimeText.Text = now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
         // Always show how much of the active pomodoro remains — not only wall-clock time.
         if (Timer.Running || Timer.Active is not null)
         {
             var remaining = TimeSpan.FromSeconds(Math.Ceiling(Timer.Remaining));
-            string mark = Timer.Running ? "▶" : "❚❚";
-            HeaderTimerText.Text = $"{mark} {(int)remaining.TotalMinutes:00}:{remaining.Seconds:00}";
-            HeaderTimerText.Visibility = Visibility.Visible;
-            HeaderTimerText.ToolTip = Timer.Phase == Phase.Focus ? L.T("timer.phaseFocusName")
-                : Timer.Phase == Phase.ShortBreak ? L.T("timer.phaseShort")
-                : L.T("timer.phaseLong");
+            string mark = Timer.Running ? "❚❚" : "▶";
+            HeaderTimerButton.Content = $"{mark} {(int)remaining.TotalMinutes:00}:{remaining.Seconds:00}";
+            HeaderTimerButton.Visibility = Visibility.Visible;
+            HeaderTimerButton.SetResourceReference(Control.ForegroundProperty, Timer.Running ? "Ink" : "Muted");
+            HeaderTimerButton.ToolTip = Timer.Running ? L.T("chrome.headerTimerPause") : L.T("chrome.headerTimerResume");
         }
         else
         {
-            HeaderTimerText.Text = "";
-            HeaderTimerText.ToolTip = null;
-            HeaderTimerText.Visibility = Visibility.Collapsed;
+            HeaderTimerButton.Content = "";
+            HeaderTimerButton.ToolTip = null;
+            HeaderTimerButton.Visibility = Visibility.Collapsed;
         }
+    }
+    private void HeaderTimerClick(object sender, RoutedEventArgs e)
+    {
+        Sounds.Button(Timer.Running ? "pause" : "start");
+        ToggleTimer();
+        e.Handled = true;
     }
     private void TasksClick(object sender, RoutedEventArgs e)
     {
         var dialog = new TasksWindow(this, selectedTask); ShowWorkspaceDialog(dialog);
         if (dialog.SelectionChanged)
         {
-            Sounds.StopNoise();
-            Timer.Pause(DateTimeOffset.UtcNow, Monotonic); Timer.Finish(Outcome.Partial, DateTimeOffset.UtcNow);
-            selectedTask = dialog.SelectedTask; Status(L.T("status.contextUpdated"));
+            string? status = null;
+            bool applied = false;
+            RunModal(() => applied = TryApplyTaskSwitch(dialog.SelectedTask, out status));
+            if (applied && status is not null) Status(status);
         }
+        // Deleted while selected → drop it; otherwise keep the remembered task.
+        if (selectedTask is not null && !Settings.Tasks.Any(task => task.Id == selectedTask.Id))
+            SetSelectedTask(null);
         UpdateTimer(); SaveState();
+    }
+
+    /// <summary>
+    /// Applies a task/project change. If a pomodoro is in progress, asks whether to close it
+    /// under the previous task or keep the clock and move it to the new one.
+    /// </summary>
+    private bool TryApplyTaskSwitch(WorkTask? next, out string status)
+    {
+        status = L.T("status.contextUpdated");
+        if (selectedTask?.Id == next?.Id)
+        {
+            SetSelectedTask(next);
+            return true;
+        }
+
+        if (Timer.Active is null)
+        {
+            SetSelectedTask(next);
+            return true;
+        }
+
+        int choice = Dialogs.Choose(this, L.T("tasks.switchTimerTitle"),
+        [
+            L.T("tasks.switchTimerSavePrevious"),
+            L.T("tasks.switchTimerKeepMoving"),
+            L.T("common.cancel")
+        ]);
+        if (choice is < 0 or 2) return false;
+
+        if (choice == 0)
+        {
+            Sounds.StopNoise();
+            Timer.Pause(DateTimeOffset.UtcNow, Monotonic);
+            Timer.Finish(Outcome.Partial, DateTimeOffset.UtcNow);
+            SetSelectedTask(next);
+            status = L.T("status.contextUpdated");
+            return true;
+        }
+
+        Timer.Rebind(next);
+        SetSelectedTask(next);
+        status = L.T("status.contextMoved");
+        return true;
     }
     private void ReportClick(object sender, RoutedEventArgs e) => ShowReportModal();
 
@@ -307,6 +429,7 @@ public partial class MainWindow : Window
         Settings.AgentWidgetVisible = true;
         ArrangeCards();
         Panel.SetZIndex(agentCard, 20);
+        if (IsLoaded && !pageTransitioning) BringCardToFront(agentCard);
         SaveState();
     }
 
@@ -316,7 +439,11 @@ public partial class MainWindow : Window
         PersistWidget(agentCard, false);
         Settings.AgentWidget = agentCard.Config;
         Settings.AgentWidgetVisible = false;
+        // Collapse first: HideOverlay can run layout, and SyncAgentAirspace
+        // would otherwise float the chat again while it is still Visible.
         agentCard.Visibility = Visibility.Collapsed;
+        HideInteractionOverlay(agentCard);
+        HideOverlay(agentCard);
         SaveState();
     }
 
@@ -337,6 +464,121 @@ public partial class MainWindow : Window
         agentWindow ??= new AgentWindow(this, HideAgentWidget);
     }
 
+    internal void SetAgentListenEnabled(bool on)
+    {
+        Settings.AgentListenEnabled = on;
+        SaveState();
+        SyncAgentListen();
+    }
+
+    internal void SyncAgentListen()
+    {
+        try
+        {
+            if (Settings.AgentListenEnabled)
+            {
+                wakeListen ??= new AgentWakeListen(this);
+                wakeListen.Changed -= OnAgentListenChanged;
+                wakeListen.Changed += OnAgentListenChanged;
+                wakeListen.Logged -= OnAgentListenLog;
+                wakeListen.Logged += OnAgentListenLog;
+                wakeListen.SetEnabled(true);
+            }
+            else wakeListen?.SetEnabled(false);
+        }
+        catch (Exception ex)
+        {
+            Settings.AgentListenEnabled = false;
+            try { wakeListen?.SetEnabled(false); } catch { }
+            Status(ex.Message);
+        }
+        PaintAgentListen();
+    }
+
+    internal void PauseAgentListen()
+    {
+        agentListenPause++;
+        if (agentListenPause == 1) wakeListen?.Pause();
+    }
+
+    internal void ResumeAgentListen()
+    {
+        agentListenPause = Math.Max(0, agentListenPause - 1);
+        if (agentListenPause == 0) wakeListen?.Resume();
+    }
+
+    internal void HandleWakeCommand(string command)
+    {
+        if (command.Length == 0)
+        {
+            Status(L.T("agent.listenHearing"));
+            return;
+        }
+        Status(L.T("agent.listenHeard", command));
+        Sounds.Button("click");
+        ShowAgentWidget();
+        EnsureAgentHost();
+        agentWindow!.AcceptSpoken(command);
+    }
+
+    internal void PaintAgentListen()
+    {
+        bool on = Settings.AgentListenEnabled;
+        var state = wakeListen?.State ?? AgentListenState.Off;
+        bool live = on && state is AgentListenState.Armed or AgentListenState.Working;
+        if (on)
+        {
+            AgentButton.Background = (Brush)FindResource("Ink");
+            AgentButton.Foreground = (Brush)FindResource("Paper");
+            AgentButton.ToolTip = L.T("agent.openListening");
+        }
+        else
+        {
+            AgentButton.ClearValue(System.Windows.Controls.Control.BackgroundProperty);
+            AgentButton.ClearValue(System.Windows.Controls.Control.ForegroundProperty);
+            AgentButton.ToolTip = L.T("agent.open");
+        }
+        if (live && !Settings.ReduceMotion)
+        {
+            if (!listenPulse.IsEnabled) listenPulse.Start();
+        }
+        else
+        {
+            listenPulse.Stop();
+            AgentButton.Opacity = 1;
+        }
+        agentWindow?.PaintListen();
+    }
+
+    private void OnAgentListenChanged() => PaintAgentListen();
+
+    internal IReadOnlyList<AgentListenLogEntry> ListenLog => wakeListen?.History ?? [];
+
+    internal void OnAgentListenLog(AgentListenLogEntry entry)
+    {
+        string line = FormatListenLog(entry);
+        Status(line);
+        agentWindow?.AppendListenLog(entry);
+    }
+
+    internal static string FormatListenLog(AgentListenLogEntry entry)
+    {
+        string body = entry.Kind switch
+        {
+            AgentListenLogKind.Music => L.T("agent.listenLogMusic"),
+            AgentListenLogKind.Noise => string.IsNullOrWhiteSpace(entry.Detail) ? L.T("agent.listenLogNoise") : L.T("agent.listenLogNoiseDetail", entry.Detail),
+            AgentListenLogKind.Transcript => L.T("agent.listenLogHeard", entry.Detail),
+            AgentListenLogKind.Wake => L.T("agent.listenLogWake", entry.Detail),
+            AgentListenLogKind.Command => L.T("agent.listenLogCommand", entry.Detail),
+            AgentListenLogKind.Armed => L.T("agent.listenLogArmed"),
+            AgentListenLogKind.Timeout => L.T("agent.listenLogTimeout"),
+            AgentListenLogKind.Error => L.T("agent.listenLogError", entry.Detail),
+            AgentListenLogKind.Miss => L.T("agent.listenLogMiss", entry.Detail),
+            _ => entry.Detail
+        };
+        return $"{entry.At:HH:mm:ss}  {body}";
+    }
+
     internal void ShowCreatedWork(Guid? widgetId)
     {
         Status(L.T("agent.showingWork"));
@@ -349,14 +591,27 @@ public partial class MainWindow : Window
                 Pulse(card);
             }
         }
-        else Pulse(PageDockSurface);
-        if (agentCard is { Visibility: Visibility.Visible }) Panel.SetZIndex(agentCard, 20);
+        else PulsePageChrome();
+        SyncAgentAirspace();
     }
 
     private void ShowReportModal()
     {
-        if (reportPopup is { IsOpen: true } existing) { BringPopupToFront(existing); return; }
+        if (reportPopup is { IsOpen: true } existing)
+        {
+            BringReportLayerToFront();
+            return;
+        }
         CancelTimerGesture();
+        // Timer/widget overlays are independent HWNDs; without parking them the
+        // floating pomodoro (and Brave chrome) sit above the report popup.
+        reportHidTimerOverlay = timerOverlay is not null;
+        reportHiddenOverlays = overlayCards.Keys.ToArray();
+        reportHiddenInteractionOverlays = interactionOverlays.Keys.ToArray();
+        HideTimerOverlay();
+        foreach (var card in reportHiddenInteractionOverlays) HideInteractionOverlay(card);
+        foreach (var card in reportHiddenOverlays) HideOverlay(card);
+
         var report = new ReportWindow(this);
         reportContent = report;
         var panel = report.TakeModalContent(HideReportModal, 1, 1);
@@ -389,8 +644,9 @@ public partial class MainWindow : Window
         reportPopup = popup;
         UpdateReportModalPosition();
         foreach (var shade in reportBackdrops) { shade.IsOpen = true; BringPopupToFront(shade); }
-        popup.Opened += (_, _) => { UpdateReportModalPosition(); BringPopupToFront(popup); Keyboard.Focus(panel); };
+        popup.Opened += (_, _) => { UpdateReportModalPosition(); BringReportLayerToFront(); Keyboard.Focus(panel); };
         popup.IsOpen = true;
+        BringReportLayerToFront();
     }
 
     private void HideReportModal()
@@ -402,7 +658,25 @@ public partial class MainWindow : Window
         foreach (var shade in reportBackdrops) { shade.IsOpen = false; shade.Child = null; }
         reportBackdrops.Clear();
         reportContent = null;
-        if (!exiting) Focus();
+        if (!exiting)
+        {
+            foreach (var card in reportHiddenOverlays.Where(card => cards.Contains(card) || card == agentCard))
+                ShowOverlay(card);
+            foreach (var card in reportHiddenInteractionOverlays.Where(card => cards.Contains(card) || card == agentCard))
+                ShowInteractionOverlay(card);
+            if (reportHidTimerOverlay && CurrentTimerWidget is not null) ShowTimerOverlay();
+            SyncAgentAirspace();
+            Focus();
+        }
+        reportHidTimerOverlay = false;
+        reportHiddenOverlays = [];
+        reportHiddenInteractionOverlays = [];
+    }
+
+    private void BringReportLayerToFront()
+    {
+        foreach (var shade in reportBackdrops) BringPopupToFront(shade);
+        if (reportPopup is not null) BringPopupToFront(reportPopup);
     }
 
     private void UpdateReportModalPosition()
@@ -421,16 +695,25 @@ public partial class MainWindow : Window
             var shade = reportBackdrops[i];
             var left = viewport.Left + Math.Floor(viewport.Width / 2) * (i % 2);
             var top = viewport.Top + Math.Floor(viewport.Height / 2) * (i / 2);
-            shade.HorizontalOffset = left / dpi.DpiScaleX;
-            shade.VerticalOffset = top / dpi.DpiScaleY;
+            double horizontal = left / dpi.DpiScaleX;
+            double vertical = top / dpi.DpiScaleY;
             var child = (FrameworkElement)shade.Child;
-            child.Width = (i % 2 == 0 ? Math.Floor(viewport.Width / 2) : Math.Ceiling(viewport.Width / 2)) / dpi.DpiScaleX;
-            child.Height = (i / 2 == 0 ? Math.Floor(viewport.Height / 2) : Math.Ceiling(viewport.Height / 2)) / dpi.DpiScaleY;
+            double width = (i % 2 == 0 ? Math.Floor(viewport.Width / 2) : Math.Ceiling(viewport.Width / 2)) / dpi.DpiScaleX;
+            double height = (i / 2 == 0 ? Math.Floor(viewport.Height / 2) : Math.Ceiling(viewport.Height / 2)) / dpi.DpiScaleY;
+            // Assigning identical offsets still forces a Popup HWND move and flashes the modal.
+            if (Math.Abs(shade.HorizontalOffset - horizontal) > .5) shade.HorizontalOffset = horizontal;
+            if (Math.Abs(shade.VerticalOffset - vertical) > .5) shade.VerticalOffset = vertical;
+            if (Math.Abs(child.Width - width) > .5) child.Width = width;
+            if (Math.Abs(child.Height - height) > .5) child.Height = height;
         }
-        panel.Width = Math.Max(1, Math.Min(820, viewport.Width / dpi.DpiScaleX - 32));
-        panel.Height = Math.Max(1, Math.Min(880, Math.Min(viewport.Height - 40 * dpi.DpiScaleY, screen.Height * .70) / dpi.DpiScaleY));
-        reportPopup.HorizontalOffset = (viewport.Left + (viewport.Width - panel.Width * dpi.DpiScaleX) / 2) / dpi.DpiScaleX;
-        reportPopup.VerticalOffset = (viewport.Top + (viewport.Height - panel.Height * dpi.DpiScaleY) / 2) / dpi.DpiScaleY;
+        double panelWidth = Math.Max(1, Math.Min(820, viewport.Width / dpi.DpiScaleX - 32));
+        double panelHeight = Math.Max(1, Math.Min(880, Math.Min(viewport.Height - 40 * dpi.DpiScaleY, screen.Height * .70) / dpi.DpiScaleY));
+        double panelLeft = (viewport.Left + (viewport.Width - panelWidth * dpi.DpiScaleX) / 2) / dpi.DpiScaleX;
+        double panelTop = (viewport.Top + (viewport.Height - panelHeight * dpi.DpiScaleY) / 2) / dpi.DpiScaleY;
+        if (Math.Abs(panel.Width - panelWidth) > .5) panel.Width = panelWidth;
+        if (Math.Abs(panel.Height - panelHeight) > .5) panel.Height = panelHeight;
+        if (Math.Abs(reportPopup.HorizontalOffset - panelLeft) > .5) reportPopup.HorizontalOffset = panelLeft;
+        if (Math.Abs(reportPopup.VerticalOffset - panelTop) > .5) reportPopup.VerticalOffset = panelTop;
     }
 
     internal bool IsReportModalOpen => reportPopup is { IsOpen: true };
@@ -449,9 +732,16 @@ public partial class MainWindow : Window
                 width >= panel.ActualWidth * dpi.DpiScaleX - 2 && height >= panel.ActualHeight * dpi.DpiScaleY - 2;
         }
     }
-    internal string HeaderClockText => string.IsNullOrWhiteSpace(HeaderTimerText.Text)
-        ? $"{HeaderDateText.Text} {HeaderTimeText.Text}"
-        : $"{HeaderDateText.Text} {HeaderTimeText.Text} {HeaderTimerText.Text}";
+    internal string HeaderClockText
+    {
+        get
+        {
+            string timer = HeaderTimerButton.Content as string ?? "";
+            return string.IsNullOrWhiteSpace(timer)
+                ? $"{HeaderDateText.Text} {HeaderTimeText.Text}"
+                : $"{HeaderDateText.Text} {HeaderTimeText.Text} {timer}";
+        }
+    }
     internal int ReportVisibleSessionCount => reportContent?.VisibleSessionCount ?? 0;
     internal FrameworkElement? ReportModalSurface => reportPopup?.Child as FrameworkElement;
     internal void ShowReportForDiagnostics() => ShowReportModal();
@@ -460,7 +750,12 @@ public partial class MainWindow : Window
     internal void HideReportForDiagnostics() => HideReportModal();
     private void SettingsClick(object sender, RoutedEventArgs e) { ShowWorkspaceDialog(new SettingsWindow(this)); ApplyLiveSettings(); SaveState(); }
     /// <summary>Puts a settings change on screen at once, so the panel shows its effect while it is open.</summary>
-    public void ApplyLiveSettings() { Settings.Validate(); Strings.Use(Settings.Language); ApplyLanguage(); ApplyTimerPosition(); ApplyTheme(); Topmost = Settings.AlwaysOnTop; UpdateTimer(); Sounds.Refresh(); }
+    public void ApplyLiveSettings()
+    {
+        Settings.Validate(); Strings.Use(Settings.Language); ApplyLanguage(); ApplyTimerPosition(); ApplyTheme();
+        Topmost = Settings.AlwaysOnTop; UpdateTimer(); Sounds.Refresh(); SyncAgentListen();
+        WindowsStartup.Sync(Settings.StartWithWindows);
+    }
 
     /// <summary>
     /// The shell's own words. Everything else redraws itself from <see cref="L"/> when it is built,
@@ -475,15 +770,19 @@ public partial class MainWindow : Window
         CloseButton.ToolTip = L.T("chrome.closeRelease");
         ReportButton.ToolTip = L.T("chrome.report");
         AgentButton.ToolTip = L.T("agent.open");
+        PaintAgentListen();
         TasksButton.ToolTip = L.T("chrome.tasks");
         RefreshNotificationChrome();
         SettingsButton.ToolTip = L.T("chrome.settings");
         FullscreenButton.ToolTip = L.T("chrome.fullscreen");
+        PageMapButton.ToolTip = L.T("chrome.pageMap");
+        SyncPageMapButton();
         AddWidgetButton.ToolTip = L.T("chrome.addWidget");
         WelcomeTitle.Text = L.T("pages.emptyTitle");
         WelcomeAddButton.Content = L.T("pages.addFirst");
         WelcomeHint.Text = L.T("pages.swipeHint");
         RemoveTimerButton.ToolTip = L.T("timer.removeFromPage");
+        SyncTimerFillChrome();
         TimerHeaderTitle.Text = L.T("timer.pomodoro");
         TimerHeaderHint.Text = L.T("timer.dragToMove");
         FocusButton.Content = L.T("timer.pomodoro");
@@ -499,27 +798,38 @@ public partial class MainWindow : Window
     /// <summary>
     /// Workspace cards sometimes live in independent popup HWNDs so they can overlap embedded
     /// applications. Those surfaces must leave while one of our own dialogs is open or they can
-    /// sit above Tasks, Settings or Layouts. Their exact visible set is restored afterwards.
+    /// sit above Tasks, Settings, Layouts or the post-it colour picker. Their exact visible set
+    /// is restored afterwards.
     /// </summary>
-    private void ShowWorkspaceDialog(Window dialog)
+    private bool WorkspaceDialogOpen =>
+        OwnedWindows.Cast<Window>().Any(window => window.IsVisible);
+
+    /// <summary>Parks airspace popups for the duration of any modal (dialog ShowDialog, etc.).</summary>
+    internal void RunModal(Action modal)
     {
         bool timerWasFloating = timerOverlay is not null;
         var floatingCards = overlayCards.Keys.ToArray();
         var floatingHandles = interactionOverlays.Keys.ToArray();
         HideTimerOverlay();
+        // Always-on-top main chrome can still paint the embedded timer above a non-topmost dialog.
+        TimerFrame.Visibility = Visibility.Collapsed;
         foreach (var card in floatingHandles) HideInteractionOverlay(card);
         foreach (var card in floatingCards) HideOverlay(card);
-        try { dialog.ShowDialog(); }
+        try { modal(); }
         finally
         {
+            TimerFrame.Visibility = Visibility.Visible;
             if (!exiting)
             {
-                foreach (var card in floatingCards.Where(cards.Contains)) ShowOverlay(card);
-                foreach (var card in floatingHandles.Where(cards.Contains)) ShowInteractionOverlay(card);
+                foreach (var card in floatingCards.Where(card => cards.Contains(card) || card == agentCard)) ShowOverlay(card);
+                foreach (var card in floatingHandles.Where(card => cards.Contains(card) || card == agentCard)) ShowInteractionOverlay(card);
                 if (timerWasFloating && CurrentTimerWidget is not null) ShowTimerOverlay();
+                SyncAgentAirspace();
             }
         }
     }
+
+    private void ShowWorkspaceDialog(Window dialog) => RunModal(() => dialog.ShowDialog());
     private static Color ParseColor(string value, Color fallback)
     {
         try { return (Color)ColorConverter.ConvertFromString(value); } catch { return fallback; }
@@ -696,7 +1006,9 @@ public partial class MainWindow : Window
         if (CurrentTimerWidget is { } config)
         {
             config.X = x; config.Y = y; config.Width = width; config.Height = height;
+            config.DropCanvasFillIfBoundsMoved(WidgetArea.ActualWidth, WidgetArea.ActualHeight);
             CurrentPage.TimerPositionCustomized = true;
+            SyncTimerFillChrome();
         }
         UpdateTimerOverlayPosition();
     }
@@ -706,6 +1018,49 @@ public partial class MainWindow : Window
         if (!timerResizing) return;
         timerResizing = false; timerResizeEdge = ""; CurrentPage.TimerPositionCustomized = true; SaveState();
         QueueTimerPromotion();
+    }
+
+    private void TimerFillClick(object sender, RoutedEventArgs e)
+    {
+        ToggleTimerCanvasFill();
+        e.Handled = true;
+    }
+
+    internal void ToggleTimerCanvasFill()
+    {
+        if (CurrentTimerWidget is null) return;
+        SetTimerCanvasFill(!CurrentTimerWidget.CanvasFill);
+    }
+
+    internal void SetTimerCanvasFill(bool fill)
+    {
+        if (CurrentTimerWidget is null) return;
+        if (fill)
+        {
+            ClearCanvasFillsExcept(CurrentTimerWidget);
+            CurrentTimerWidget.FillCanvas(WidgetArea.ActualWidth, WidgetArea.ActualHeight);
+            CurrentPage.TimerPositionCustomized = true;
+        }
+        else if (CurrentTimerWidget.CanvasFill) CurrentTimerWidget.RestoreFromCanvasFill();
+        ArrangeCards();
+        BringTimerToFront();
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (CurrentTimerWidget?.CanvasFill == true) BringTimerToFront();
+        }, DispatcherPriority.Input);
+        AgentCreatedWidgetThisTurn = false;
+        SaveState();
+    }
+
+    private void SyncTimerFillChrome()
+    {
+        if (TimerFillButton is null) return;
+        bool filled = CurrentTimerWidget?.CanvasFill == true;
+        TimerFillButton.Content = filled ? ChromeIcon.Restore() : ChromeIcon.Expand();
+        TimerFillButton.ToolTip = L.T(filled ? "widgets.canvasRestore" : "widgets.canvasFill");
+        TimerFillButton.Visibility = CurrentTimerWidget is null ? Visibility.Collapsed : Visibility.Visible;
+        if (RemoveTimerButton is not null && RemoveTimerButton.Content is not Viewbox)
+            RemoveTimerButton.Content = ChromeIcon.Close();
     }
 
     private void ArrangeTimerWidget()
@@ -720,22 +1075,37 @@ public partial class MainWindow : Window
         }
         TimerFrame.Visibility = Visibility.Visible;
         config.Kind = "timer"; if (string.IsNullOrWhiteSpace(config.Title)) config.Title = "POMODORO";
+        if (cards.Concat(agentCard is not null ? [agentCard] : Array.Empty<WidgetCard>()).Any(card => card.Config.CanvasFill && !card.Config.Collapsed))
+        {
+            TimerFrame.Visibility = Visibility.Hidden;
+            HideTimerOverlay();
+            SyncTimerFillChrome();
+            return;
+        }
         double canvasWidth = WidgetArea.ActualWidth > 0 ? WidgetArea.ActualWidth : 720;
         double canvasHeight = WidgetArea.ActualHeight > 0 ? WidgetArea.ActualHeight : 720;
         double maxWidth = Math.Max(360, canvasWidth), maxHeight = Math.Max(300, canvasHeight);
-        if (config.Width <= 0) config.Width = Math.Min(560, maxWidth);
-        if (config.Height <= 0) config.Height = Math.Min(360, maxHeight);
-        if (!CurrentPage.TimerPositionCustomized)
+        if (config.CanvasFill)
         {
-            config.X = 12;
-            config.Y = Settings.TimerAtBottom ? Math.Max(12, canvasHeight - config.Height - 12) : 12;
+            config.ApplyCanvasFillIfNeeded(canvasWidth, canvasHeight);
         }
-        config.Width = Math.Clamp(config.Width, 360, maxWidth);
-        config.Height = Math.Clamp(config.Height, 300, maxHeight);
-        config.X = Math.Clamp(config.X, 0, Math.Max(0, canvasWidth - config.Width));
-        config.Y = Math.Clamp(config.Y, 0, Math.Max(0, canvasHeight - config.Height));
+        else
+        {
+            if (config.Width <= 0) config.Width = Math.Min(560, maxWidth);
+            if (config.Height <= 0) config.Height = Math.Min(360, maxHeight);
+            if (!CurrentPage.TimerPositionCustomized)
+            {
+                config.X = 12;
+                config.Y = Settings.TimerAtBottom ? Math.Max(12, canvasHeight - config.Height - 12) : 12;
+            }
+            config.Width = Math.Clamp(config.Width, 360, maxWidth);
+            config.Height = Math.Clamp(config.Height, 300, maxHeight);
+            config.X = Math.Clamp(config.X, 0, Math.Max(0, canvasWidth - config.Width));
+            config.Y = Math.Clamp(config.Y, 0, Math.Max(0, canvasHeight - config.Height));
+        }
         TimerFrame.Width = config.Width; TimerFrame.Height = config.Height;
         Canvas.SetLeft(TimerFrame, config.X); Canvas.SetTop(TimerFrame, config.Y);
+        SyncTimerFillChrome();
         UpdateTimerOverlayPosition();
     }
 
@@ -765,7 +1135,12 @@ public partial class MainWindow : Window
         else if (choice == 5) AddCard(new() { Kind = "habits", Title = L.T("widgets.kindHabits") }, true);
         else if (choice == 6) AddCard(new() { Kind = "calendar", Title = "AGENDA" }, true);
         else if (choice == 7) AddCard(new() { Kind = "finance", Title = L.T("widgets.kindFinance") }, true);
-        else if (choice == 8) AddTimerWidget();
+        else if (choice == 8)
+        {
+            var card = AddCard(new() { Kind = "memento", Title = L.T("widgets.kindMemento") }, true);
+            card.PromptMementoBirth();
+        }
+        else if (choice == 9) AddTimerWidget();
     }
     private void AddWindowClick(object sender, RoutedEventArgs e)
     {
@@ -781,17 +1156,22 @@ public partial class MainWindow : Window
         if (config.Width <= 0)
         {
             var twoColumnWidth = (canvasWidth - 40) / 2;
-            config.Width = canvasWidth >= 560 ? Math.Max(240, twoColumnWidth) : Math.Max(280, canvasWidth - 24);
+            config.Width = config.Kind == "memento"
+                ? Math.Max(320, Math.Min(420, canvasWidth - 24))
+                : canvasWidth >= 560 ? Math.Max(240, twoColumnWidth) : Math.Max(280, canvasWidth - 24);
         }
         if (config.Height <= 0) config.Height = config.Kind switch
         {
             "stats" => 260,
+            "memento" => 380,
             "notes" => 360,
             "todo" => 400,
             "habits" => 390,
             "calendar" => 520,
-            "finance" => 460,
+            "finance" => 580,
             "agent" => 520,
+            "window" => 420,
+            "web" => 360,
             _ => 300
         };
         if (newPlacement)
@@ -804,6 +1184,8 @@ public partial class MainWindow : Window
             config.Y = Math.Max(0, (viewportHeight - config.Height) / 2);
         }
         var card = new WidgetCard(this, config); cards.Add(card); WidgetArea.Children.Add(card);
+        LastCreatedWidgetId = config.Id;
+        AgentCreatedWidgetThisTurn = true;
         ArrangeCards();
         // On top of everything else — the timer included — so it is never born hidden under one.
         if (IsLoaded && !pageTransitioning) BringCardToFront(card);
@@ -829,23 +1211,51 @@ public partial class MainWindow : Window
         if (next < 0 || next >= cards.Count) return;
         cards.RemoveAt(index); cards.Insert(next, card); ArrangeCards(); SaveState();
     }
+    internal void ClearCanvasFillsExcept(WidgetConfig? keep)
+    {
+        if (CurrentTimerWidget is { } timer && timer != keep && timer.CanvasFill)
+            timer.RestoreFromCanvasFill();
+        foreach (var card in cards.Concat(agentCard is not null ? [agentCard] : Array.Empty<WidgetCard>()))
+        {
+            if (card.Config != keep && card.Config.CanvasFill)
+            {
+                card.Config.RestoreFromCanvasFill();
+                card.SyncFillChrome();
+            }
+        }
+    }
+
     public void ArrangeCards()
     {
         Welcome.Visibility = cards.Count == 0 && CurrentTimerWidget is null ? Visibility.Visible : Visibility.Collapsed;
         Welcome.Width = Math.Max(1, WidgetArea.ActualWidth); Welcome.Height = Math.Max(1, WidgetArea.ActualHeight);
-        foreach (var card in cards.Concat(agentCard is { Visibility: Visibility.Visible } ? [agentCard] : Array.Empty<WidgetCard>()))
+        var filledCard = cards.Concat(agentCard is { Visibility: not Visibility.Collapsed } ? [agentCard] : Array.Empty<WidgetCard>())
+            .FirstOrDefault(card => card.Config.CanvasFill && !card.Config.Collapsed);
+        bool timerFilled = CurrentTimerWidget is { CanvasFill: true };
+        bool isolating = filledCard is not null || timerFilled;
+        foreach (var card in cards.Concat(agentCard is not null ? [agentCard] : Array.Empty<WidgetCard>()))
         {
+            bool hide = isolating && card != filledCard && card != agentCard;
+            card.SetFillPeerHidden(hide);
+            if (hide)
+            {
+                HideOverlay(card);
+                HideInteractionOverlay(card);
+            }
+            if (hide) continue;
+            card.Config.ApplyCanvasFillIfNeeded(WidgetArea.ActualWidth, WidgetArea.ActualHeight);
             double minW = card.Config.Kind == "agent" ? 260 : 220;
-            double minH = card.Config.Collapsed ? 42 : card.Config.Kind == "agent" ? 280 : 42;
+            double minH = card.Config.Collapsed ? 50 : card.Config.Kind == "agent" ? 280 : 50;
             card.Width = Math.Clamp(card.Config.Width, minW, Math.Max(minW, WidgetArea.ActualWidth));
             card.Height = card.Config.Collapsed
-                ? 42
+                ? 50
                 : Math.Clamp(card.Config.Height, minH, Math.Max(minH, WidgetArea.ActualHeight));
             Canvas.SetLeft(card, Math.Clamp(card.Config.X, 0, Math.Max(0, WidgetArea.ActualWidth - card.Width)));
             Canvas.SetTop(card, Math.Clamp(card.Config.Y, 0, Math.Max(0, WidgetArea.ActualHeight - card.Height)));
         }
         if (agentCard is { Visibility: Visibility.Visible }) Panel.SetZIndex(agentCard, 20);
         ArrangeTimerWidget();
+        SyncAgentAirspace();
         UpdateOverlayPositions();
     }
     private void WidgetAreaSizeChanged(object sender, SizeChangedEventArgs e) => ArrangeCards();
@@ -864,14 +1274,19 @@ public partial class MainWindow : Window
         foreach (var other in cards) Panel.SetZIndex(other, 0);
         Panel.SetZIndex(card, card.Config.Kind == "agent" ? 20 : 1);
         if (agentCard is { Visibility: Visibility.Visible } && card != agentCard) Panel.SetZIndex(agentCard, 20);
-        if (cards.Any(c => c.HasNativeSurface))
+        bool natives = AnyExposedNative;
+        if (natives)
         {
-            if (card.HasNativeSurface)
+            if (card.HasExposedNativeSurface)
             {
                 foreach (var other in cards.Where(c => c != card)) HideOverlay(other);
                 card.BringExternalToFront();
             }
-            else ShowOverlay(card);
+            else
+            {
+                ShowOverlay(card);
+                ClaimOverlayKeyboard(card);
+            }
         }
         if (interactionOverlays.ContainsKey(card))
         {
@@ -879,21 +1294,28 @@ public partial class MainWindow : Window
             BringInteractionOverlayToFront(card);
         }
         else ShowInteractionOverlay(card);
+        SyncAgentAirspace(claimKeyboard: card == agentCard);
+        LiftOverlaysAboveNatives();
     }
 
     private void BringTimerToFront()
     {
         if (exiting || !IsEnabled || IsReportModalOpen) return;
         timerWantsFront = true;
-        foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
-        foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
+        foreach (var card in interactionOverlays.Keys.ToArray())
+            if (card != agentCard) HideInteractionOverlay(card);
+        foreach (var card in overlayCards.Keys.ToArray())
+            if (card != agentCard) HideOverlay(card);
         foreach (var other in cards) Panel.SetZIndex(other, 0);
         Panel.SetZIndex(TimerFrame, 20);
-        if (cards.Any(c => c.HasNativeSurface)) ShowTimerOverlay();
+        if (AnyExposedNative) ShowTimerOverlay();
+        else HideTimerOverlay();
+        SyncAgentAirspace();
     }
 
     private void ShowTimerOverlay()
     {
+        if (IsReportModalOpen || pageMapOpen || WorkspaceDialogOpen) return;
         if (timerOverlay is not null)
         {
             // Keep the same native surface and mouse capture throughout a
@@ -901,15 +1323,16 @@ public partial class MainWindow : Window
             UpdateTimerOverlayPosition(); BringPopupToFront(timerOverlay); return;
         }
         if (timerPointerPressed || timerResizing || TimerFrame.IsMouseCaptureWithin) return;
-        if (TimerFrame.Parent == WidgetArea) WidgetArea.Children.Remove(TimerFrame);
         var popup = new Popup
         {
-            Child = TimerFrame, AllowsTransparency = true, StaysOpen = true,
+            AllowsTransparency = true, StaysOpen = true,
             Placement = PlacementMode.Absolute, PlacementTarget = WidgetArea, PopupAnimation = PopupAnimation.None,
             Focusable = false
         };
         timerOverlay = popup;
         popup.Opened += (_, _) => BringPopupToFront(popup);
+        DetachFromLogicalParent(TimerFrame);
+        popup.Child = TimerFrame;
         popup.IsOpen = true;
         UpdateTimerOverlayPosition(); BringPopupToFront(timerOverlay);
     }
@@ -917,28 +1340,45 @@ public partial class MainWindow : Window
     private void HideTimerOverlay()
     {
         if (timerOverlay is null) return;
-        timerOverlay.IsOpen = false; timerOverlay.Child = null; timerOverlay = null;
+        var popup = timerOverlay;
+        popup.IsOpen = false;
+        popup.Child = null;
+        timerOverlay = null;
+        DetachFromLogicalParent(TimerFrame);
         if (!WidgetArea.Children.Contains(TimerFrame)) WidgetArea.Children.Add(TimerFrame);
         Panel.SetZIndex(TimerFrame, 20);
         ArrangeTimerWidget();
     }
     private void ShowOverlay(WidgetCard card)
     {
+        if (IsReportModalOpen || pageMapOpen || WorkspaceDialogOpen) return;
         if (overlayCards.TryGetValue(card, out var existing))
         {
-            // Re-opening the popup recreates its native surface after an
-            // embedded HWND may have changed the desktop z-order. Bring the
-            // complete PomoDock card back above that native child as one unit.
-            existing.IsOpen = false; existing.IsOpen = true; UpdateOverlayPosition(card); BringPopupToFront(existing); return;
+            // Recreating the popup HWND blinks the card and swallows the click,
+            // so the caret never lands in the composer. Lift the live surface.
+            if (!ReferenceEquals(existing.Child, card))
+            {
+                DetachFromLogicalParent(card);
+                existing.Child = card;
+            }
+            if (!existing.IsOpen) existing.IsOpen = true;
+            UpdateOverlayPosition(card);
+            BringPopupToFront(existing);
+            return;
         }
-        if (card.Parent == WidgetArea) WidgetArea.Children.Remove(card);
         var popup = new Popup
         {
-            Child = card, AllowsTransparency = true, StaysOpen = true, Placement = PlacementMode.Absolute,
-            PopupAnimation = PopupAnimation.None, Focusable = false, IsOpen = true
+            AllowsTransparency = true, StaysOpen = true, Placement = PlacementMode.Absolute,
+            PopupAnimation = PopupAnimation.None, Focusable = false
         };
-        popup.Opened += (_, _) => BringPopupToFront(popup);
+        // Opening the popup runs layout, which re-enters ArrangeCards → ShowOverlay.
+        // Own the card in the dictionary before Child/IsOpen so the nested call
+        // reuses this popup instead of parenting the card a second time.
         overlayCards[card] = popup;
+        popup.Opened += (_, _) => BringPopupToFront(popup);
+        DetachFromLogicalParent(card);
+        popup.Child = card;
+        popup.IsOpen = true;
         UpdateOverlayPosition(card);
         // Popup is a separate WPF HWND. It must be explicitly lifted above
         // hosted application windows; WPF Panel.ZIndex alone cannot cross the
@@ -947,10 +1387,35 @@ public partial class MainWindow : Window
     }
     private void HideOverlay(WidgetCard card)
     {
-        if (!overlayCards.Remove(card, out var popup)) return;
-        popup.IsOpen = false; popup.Child = null;
+        if (overlayCards.TryGetValue(card, out var popup))
+        {
+            popup.IsOpen = false;
+            popup.Child = null;
+            overlayCards.Remove(card);
+        }
+        if (card.Parent == WidgetArea) return;
+        DetachFromLogicalParent(card);
         if (!WidgetArea.Children.Contains(card)) WidgetArea.Children.Add(card);
-        Panel.SetZIndex(card, 0);
+        Panel.SetZIndex(card, card.Config.Kind == "agent" ? 20 : 0);
+    }
+
+    private static void DetachFromLogicalParent(FrameworkElement element)
+    {
+        switch (element.Parent)
+        {
+            case Popup popup:
+                popup.Child = null;
+                break;
+            case Panel panel:
+                panel.Children.Remove(element);
+                break;
+            case Decorator decorator when ReferenceEquals(decorator.Child, element):
+                decorator.Child = null;
+                break;
+            case ContentControl content when ReferenceEquals(content.Content, element):
+                content.Content = null;
+                break;
+        }
     }
     private void UpdateOverlayPositions()
     {
@@ -972,6 +1437,7 @@ public partial class MainWindow : Window
     internal void UpdateCardInteractionOverlayPosition(WidgetCard card) => UpdateInteractionOverlayPosition(card);
     private void ShowInteractionOverlay(WidgetCard card)
     {
+        if (IsReportModalOpen || pageMapOpen || WorkspaceDialogOpen) return;
         if (interactionOverlays.TryGetValue(card, out var existing))
         {
             // Reopening tears down and recreates the popup window under the cursor, which
@@ -1018,10 +1484,139 @@ public partial class MainWindow : Window
         var screen = WidgetArea.PointToScreen(new Point(Canvas.GetLeft(card), Canvas.GetTop(card))); var dpi = VisualTreeHelper.GetDpi(this);
         popup.HorizontalOffset = screen.X / dpi.DpiScaleX; popup.VerticalOffset = screen.Y / dpi.DpiScaleY; popup.Width = card.Width; popup.Height = card.Height;
     }
-    private static void BringPopupToFront(Popup popup)
+    private void BringPopupToFront(Popup popup)
     {
-        if (popup.Child is Visual visual && PresentationSource.FromVisual(visual) is HwndSource source)
-            Win32.SetWindowPos(source.Handle, Win32.HWND_TOP, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
+        if (popup.Child is not Visual visual || PresentationSource.FromVisual(visual) is not HwndSource source)
+            return;
+        nint handle = source.Handle;
+        EnsurePopupOwned(handle);
+        const uint flags = Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE;
+        // Chromium video uses a hardware overlay that sits above ordinary owned popups.
+        // Stay TOPMOST while PomoDock (or a hosted child) is the foreground app.
+        if (AnyExposedNative && ForegroundIsOurs())
+        {
+            Win32.SetWindowPos(handle, Win32.HWND_TOPMOST, 0, 0, 0, 0, flags);
+            return;
+        }
+        Win32.SetWindowPos(handle, Win32.HWND_NOTOPMOST, 0, 0, 0, 0, flags);
+        Win32.SetWindowPos(handle, Win32.HWND_TOP, 0, 0, 0, 0, flags);
+    }
+
+    private void EnsurePopupOwned(nint handle)
+    {
+        if (hwnd == 0 || handle == 0) return;
+        nint owner = Win32.GetWindowLongPtr(handle, Win32.GWLP_HWNDPARENT);
+        if (owner != hwnd) Win32.SetWindowLongPtr(handle, Win32.GWLP_HWNDPARENT, hwnd);
+        long style = Win32.GetWindowLongPtr(handle, Win32.GWL_STYLE).ToInt64();
+        if ((style & Win32.WS_CHILD) == 0) return;
+        Win32.SetParent(handle, 0);
+        Win32.SetWindowLongPtr(handle, Win32.GWL_STYLE, (nint)((style & ~Win32.WS_CHILD) | Win32.WS_POPUP));
+        Win32.SetWindowLongPtr(handle, Win32.GWLP_HWNDPARENT, hwnd);
+        Win32.SetWindowPos(handle, Win32.HWND_TOP, 0, 0, 0, 0,
+            Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_FRAMECHANGED);
+    }
+
+    private bool ForegroundIsOurs()
+    {
+        nint fg = Win32.GetForegroundWindow();
+        if (fg == 0 || hwnd == 0) return IsActive;
+        if (fg == hwnd || Win32.IsChild(hwnd, fg)) return true;
+        if (Win32.GetAncestor(fg, Win32.GA_ROOT) == hwnd) return true;
+        if (Win32.GetWindowLongPtr(fg, Win32.GWLP_HWNDPARENT) == hwnd) return true;
+        foreach (var popup in overlayCards.Values.Concat(interactionOverlays.Values))
+        {
+            if (popup.Child is Visual visual && PresentationSource.FromVisual(visual) is HwndSource source && source.Handle == fg)
+                return true;
+        }
+        if (timerOverlay?.Child is Visual timerVisual && PresentationSource.FromVisual(timerVisual) is HwndSource timerSource && timerSource.Handle == fg)
+            return true;
+        foreach (var popup in reportBackdrops.Append(reportPopup).OfType<Popup>())
+        {
+            if (popup.Child is Visual reportVisual && PresentationSource.FromVisual(reportVisual) is HwndSource reportSource && reportSource.Handle == fg)
+                return true;
+        }
+        return false;
+    }
+
+    internal IDisposable PauseOverlayLift()
+    {
+        overlayLiftPause++;
+        return new OverlayLiftScope(this);
+    }
+
+    private sealed class OverlayLiftScope : IDisposable
+    {
+        private MainWindow? window;
+        public OverlayLiftScope(MainWindow window) => this.window = window;
+        public void Dispose()
+        {
+            if (window is null) return;
+            window.overlayLiftPause = Math.Max(0, window.overlayLiftPause - 1);
+            window = null;
+        }
+    }
+
+    /// <summary>
+    /// Hosted apps call HWND_TOP on their own child. That lands between the widget
+    /// chrome (WPF) and the agent popup unless we restack overlays afterwards.
+    /// While the focus report is open, overlays are parked — restacking the report
+    /// popups every tick made the whole modal flash.
+    /// </summary>
+    internal void LiftOverlaysAboveNatives()
+    {
+        if (exiting || !IsLoaded || overlayLiftPause > 0 || IsReportModalOpen || pageMapOpen) return;
+        if (overlayCards.Count == 0 && interactionOverlays.Count == 0 && timerOverlay is null) return;
+        foreach (var popup in overlayCards.Values.Concat(interactionOverlays.Values))
+            BringPopupToFront(popup);
+        if (timerOverlay is not null) BringPopupToFront(timerOverlay);
+        if (agentCard is { Visibility: Visibility.Visible } && overlayCards.TryGetValue(agentCard, out var agentPopup))
+            BringPopupToFront(agentPopup);
+    }
+
+    private bool AnyExposedNative => cards.Any(card => card.HasExposedNativeSurface);
+
+    internal void NotifyNativeSurfaceChanged() => SyncAgentAirspace();
+
+    private void SyncAgentAirspace(bool claimKeyboard = false)
+    {
+        if (agentCard is null || exiting || !IsLoaded || pageTransitioning || pageMapOpen || IsReportModalOpen) return;
+        if (agentCard.Visibility != Visibility.Visible || overlayLiftPause > 0)
+        {
+            HideOverlay(agentCard);
+            return;
+        }
+        if (!AnyExposedNative)
+        {
+            HideOverlay(agentCard);
+            return;
+        }
+        ShowOverlay(agentCard);
+        if (claimKeyboard) ClaimOverlayKeyboard(agentCard);
+        LiftOverlaysAboveNatives();
+        if (interactionOverlays.ContainsKey(agentCard))
+            BringInteractionOverlayToFront(agentCard);
+    }
+
+    private void ClaimOverlayKeyboard(WidgetCard card)
+    {
+        if (!overlayCards.TryGetValue(card, out var popup)) return;
+        if (TryClaimPopupKeyboard(popup)) return;
+        void OnOpened(object? sender, EventArgs e)
+        {
+            popup.Opened -= OnOpened;
+            TryClaimPopupKeyboard(popup);
+        }
+        popup.Opened += OnOpened;
+    }
+
+    private bool TryClaimPopupKeyboard(Popup popup)
+    {
+        if (popup.Child is not Visual visual || PresentationSource.FromVisual(visual) is not HwndSource source)
+            return false;
+        nint target = source.Handle;
+        foreach (var card in cards) card.YieldExternalKeyboard(target);
+        Win32.SetFocus(target);
+        return true;
     }
     public void LoadLayout(List<WidgetConfig> widgets)
     {
@@ -1034,6 +1629,7 @@ public partial class MainWindow : Window
     {
         if (!fullscreen)
         {
+            HidePageMap();
             normalRect = new(Left, Top, Width, Height); previousState = WindowState;
             var bounds = System.Windows.Forms.Screen.FromHandle(hwnd).Bounds;
             WindowState = WindowState.Normal; ResizeMode = ResizeMode.NoResize;
@@ -1065,6 +1661,7 @@ public partial class MainWindow : Window
     }
     private void OnKey(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && pageMapOpen) { HidePageMap(); e.Handled = true; return; }
         if (e.Key == Key.Escape && NotificationsPopup.IsOpen) { NotificationsPopup.IsOpen = false; e.Handled = true; return; }
         if (e.Key == Key.Escape && agentCard is { Visibility: Visibility.Visible } && Keyboard.FocusedElement is not TextBoxBase and not PasswordBox)
         {
@@ -1073,6 +1670,7 @@ public partial class MainWindow : Window
         if (e.Key == Key.Escape && reportPopup is { IsOpen: true }) { HideReportModal(); e.Handled = true; return; }
         if (e.Key == Key.F11 && !hotkeyRegistered) { ToggleFullscreen(); e.Handled = true; }
         if (e.Key == Key.Escape && fullscreen) { ToggleFullscreen(); e.Handled = true; }
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && e.Key == Key.M) { TogglePageMap(); e.Handled = true; return; }
         // While a note, a task or any field holds the caret the keyboard belongs to it:
         // a rich note is a RichTextBox, not a TextBox, so space used to start the timer
         // instead of being typed, and Ctrl+arrows changed page instead of moving a word.
@@ -1089,7 +1687,12 @@ public partial class MainWindow : Window
     {
         pageSwipePoll.Stop();
         CancelTimerGesture(); CloseNotificationCenter();
+        HidePageMap();
+        timerAlertSnooze?.Stop();
         agentWindow?.Shutdown();
+        wakeListen?.Dispose();
+        wakeListen = null;
+        listenPulse.Stop();
         HideAgentWidget();
         HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll(); voiceDictation.Dispose();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
@@ -1099,8 +1702,10 @@ public partial class MainWindow : Window
             foreach (var card in pageCards.Values.SelectMany(value => value).Concat(cards).Distinct()) card.Release();
         }
         catch (Exception ex) { e.Cancel = true; Status(ex.Message); return; }
+        Settings.TimerWasRunning = Timer.Running;
+        exiting = true;
         Sounds.StopNoise(); Timer.Pause(DateTimeOffset.UtcNow, Monotonic); SaveState();
-        exiting = true; ticker.Stop(); statusReset.Stop(); SystemEvents.PowerModeChanged -= PowerChanged;
+        ticker.Stop(); overlayZ.Stop(); statusReset.Stop(); SystemEvents.PowerModeChanged -= PowerChanged;
         Win32.UnregisterHotKey(hwnd, 11); if (focusHook != 0) Win32.UnhookWinEvent(focusHook);
         Sounds.Dispose(); Store.Dispose();
     }
@@ -1119,7 +1724,16 @@ public partial class MainWindow : Window
     internal void BeginVoiceDraftForDiagnostics(string text) => voiceDictation.BeginProvisionalForDiagnostics(text);
     internal void UpdateVoiceDraftForDiagnostics(string text) => voiceDictation.UpdateProvisionalForDiagnostics(text);
     internal bool TimerOverlayIsVisible => timerOverlay is not null;
+    internal bool AgentOverlayIsOpen => agentCard is not null && overlayCards.TryGetValue(agentCard, out var popup) && popup.IsOpen;
+    internal WidgetCard? AgentCardForDiagnostics => agentCard;
+    internal nint AgentOverlayHwndForDiagnostics()
+    {
+        if (agentCard is null || !overlayCards.TryGetValue(agentCard, out var popup) || popup.Child is not Visual visual)
+            return 0;
+        return PresentationSource.FromVisual(visual) is HwndSource source ? source.Handle : 0;
+    }
     internal void FloatTimerForDiagnostics() => BringTimerToFront();
+    internal void ForceTimerOverlayForDiagnostics() => ShowTimerOverlay();
     internal void HideTimerForDiagnostics() => HideTimerOverlay();
     internal void ShowWorkspaceDialogForDiagnostics(Window dialog) => ShowWorkspaceDialog(dialog);
 
@@ -1131,7 +1745,7 @@ public partial class MainWindow : Window
         return new AgentToolResult(true, "Widget de temporizador añadido", JsonSerializer.Serialize(new { success = true, changed = true, summary = "Widget de temporizador añadido" }));
     }
 
-    internal AgentToolResult RunTimerFromAgent(string command, string phase, string task)
+    internal AgentToolResult RunTimerFromAgent(string command, string phase, string task, int minutes = 5)
     {
         command = command.Trim().ToLowerInvariant();
         if (command is "select" or "start")
@@ -1150,13 +1764,13 @@ public partial class MainWindow : Window
                 || task.Trim().Equals("libre", StringComparison.OrdinalIgnoreCase)
                 || task.Trim().Equals("none", StringComparison.OrdinalIgnoreCase)
                 || task.Trim().Equals("clear", StringComparison.OrdinalIgnoreCase))
-                selectedTask = null;
+                SetSelectedTask(null);
             else
             {
                 var matches = Settings.Tasks.Where(item => !item.Done && item.Name.Contains(task, StringComparison.OrdinalIgnoreCase)).ToList();
                 if (matches.Count != 1)
                     return new AgentToolResult(false, $"Necesito un título de tarea de enfoque más específico para '{task}'", JsonSerializer.Serialize(new { success = false, changed = false, summary = $"Coincidencias de tarea: {matches.Count}" }), false);
-                selectedTask = matches[0];
+                SetSelectedTask(matches[0]);
             }
         }
         string summary;
@@ -1171,13 +1785,17 @@ public partial class MainWindow : Window
             case "select":
                 summary = "Fase seleccionada"; break;
             case "free" or "clear_task":
-                selectedTask = null;
+                SetSelectedTask(null);
                 summary = "Enfoque libre"; break;
+            case "snooze" or "posponer":
+                return SnoozeTimerAlertFromAgent(minutes);
             case "start":
                 if (!Timer.Running)
                 {
-                    Sounds.StopAlarm(); Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask);
+                    AcknowledgeTimerAlerts();
+                    Timer.Start(DateTimeOffset.UtcNow, Monotonic, selectedTask);
                     if (Timer.Phase == Phase.Focus) Sounds.StartNoise();
+                    appUsage.Observe(Timer.Phase == Phase.Focus, DateTimeOffset.UtcNow);
                 }
                 summary = "Temporizador iniciado"; break;
             default:

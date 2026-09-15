@@ -29,10 +29,23 @@ internal sealed class NotificationStore
         return item;
     }
 
+    public ReminderNotification AddAlert(string kind, string cueKey, string title, DateTime delivered)
+    {
+        var item = History.AddAlert(kind, cueKey, title, delivered);
+        Save();
+        return item;
+    }
+
     public void MarkAllRead()
     {
         if (History.Unread == 0) return;
         History.MarkAllRead();
+        Save();
+    }
+
+    public void MarkKindRead(string kind)
+    {
+        if (History.MarkKindRead(kind) == 0) return;
         Save();
     }
 

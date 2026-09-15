@@ -51,5 +51,42 @@ internal static class FinanceTests
             var month = book.Month(today);
             assert(month.Subscriptions.Count == 0 && month.RecurringExpense == 0, "only live recurring costs count");
         });
+
+        test("quick add reads usd and mxn on the same line", () =>
+        {
+            var pesos = FinanceQuickAdd.Parse("+25000 mxn salario", today) as MoneyEntry;
+            assert(pesos is { Flow: MoneyFlow.Income, Currency: "MXN" } && pesos.Amount == 25000m, "mxn salary");
+            var dollars = FinanceQuickAdd.Parse("-20 usd chatgpt", today) as MoneyEntry;
+            assert(dollars is { Flow: MoneyFlow.Expense, Currency: "USD", Category: "ai" } && dollars.Amount == 20m, "usd chatgpt");
+            var fallback = FinanceQuickAdd.Parse("-400 uber", today, "MXN") as MoneyEntry;
+            assert(fallback is { Currency: "MXN" } && fallback.Amount == 400m, "draft currency when the line is silent");
+        });
+
+        test("a mixed book converts totals into the display currency", () =>
+        {
+            var book = new FinanceBook { Currency = "MXN", UsdToMxn = 20m };
+            book.Add(MoneyFlow.Income, 20000, "Sueldo", new DateOnly(2026, 9, 1), "salary", currency: "MXN");
+            book.Add(MoneyFlow.Expense, 20, "ChatGPT", new DateOnly(2026, 9, 2), "ai", currency: "USD");
+            var mxn = book.Month(today);
+            equal(20000, (double)mxn.Recorded.Income);
+            equal(400, (double)mxn.Recorded.Expense);
+            equal(19600, (double)mxn.Recorded.Net);
+            book.Currency = "USD";
+            var usd = book.Month(today);
+            equal(1000, (double)usd.Recorded.Income);
+            equal(20, (double)usd.Recorded.Expense);
+            equal(980, (double)usd.Recorded.Net);
+        });
+
+        test("surplus streak counts consecutive green months", () =>
+        {
+            var book = new FinanceBook { Currency = "USD" };
+            book.Add(MoneyFlow.Income, 100, "Jul", new DateOnly(2026, 7, 1), "salary");
+            book.Add(MoneyFlow.Income, 100, "Ago", new DateOnly(2026, 8, 1), "salary");
+            book.Add(MoneyFlow.Expense, 40, "Ago cafe", new DateOnly(2026, 8, 4), "food");
+            book.Add(MoneyFlow.Expense, 200, "Sep", new DateOnly(2026, 9, 2), "food");
+            assert(book.SurplusStreak(new DateOnly(2026, 8, 15)) == 2, "july and august were green");
+            assert(book.SurplusStreak(today) == 0, "september is red so the streak breaks");
+        });
     }
 }

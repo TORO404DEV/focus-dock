@@ -134,8 +134,8 @@ public sealed class Store : IDisposable
             if (s.TrimStart().StartsWith('=') || s.TrimStart().StartsWith('+') || s.TrimStart().StartsWith('-') || s.TrimStart().StartsWith('@')) s = "'" + s;
             return "\"" + s.Replace("\"", "\"\"") + "\"";
         }
-        var lines = new List<string> { "id,start_utc,end_utc,phase,outcome,project,task,minutes,planned_minutes,pauses,note" };
-        lines.AddRange(sessions.Select(s => string.Join(",", s.Id, s.Started.ToString("O"), s.Ended.ToString("O"), s.Phase, s.Outcome, Cell(s.Project), Cell(s.Task), (s.Seconds / 60).ToString("F3", CultureInfo.InvariantCulture), (s.PlannedSeconds / 60).ToString("F2", CultureInfo.InvariantCulture), s.Pauses, Cell(s.Note))));
+        var lines = new List<string> { "id,start_utc,end_utc,phase,outcome,project,task,minutes,planned_minutes,pauses,note,apps" };
+        lines.AddRange(sessions.Select(s => string.Join(",", s.Id, s.Started.ToString("O"), s.Ended.ToString("O"), s.Phase, s.Outcome, Cell(s.Project), Cell(s.Task), (s.Seconds / 60).ToString("F3", CultureInfo.InvariantCulture), (s.PlannedSeconds / 60).ToString("F2", CultureInfo.InvariantCulture), s.Pauses, Cell(s.Note), Cell(AppUsage.Summarize(s.Apps ?? [], 8)))));
         File.WriteAllLines(path, lines, new UTF8Encoding(true));
     }
     public void Dispose() => db.Dispose();

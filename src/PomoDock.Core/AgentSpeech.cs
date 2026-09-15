@@ -13,6 +13,7 @@ public static class AgentSpeech
         int cut = IndexOf(value, "ACCIONES REALIZADAS");
         if (cut < 0) cut = IndexOf(value, "COMPLETED ACTIONS");
         if (cut >= 0) value = value[..cut].Trim();
+        value = AgentPresent.SpokenLead(value, spanish);
 
         value = Regex.Replace(value, @"```[\s\S]*?```", " ");
         value = Regex.Replace(value, @"\{[^{}]*\}", " ");

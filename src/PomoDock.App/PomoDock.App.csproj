@@ -4,7 +4,7 @@
     <UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\PomoDock.ico</ApplicationIcon>
-    <AssemblyName>PomoDock</AssemblyName><Version>0.2.1</Version>
+    <AssemblyName>PomoDock</AssemblyName><Version>0.3.0</Version>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
   </PropertyGroup>

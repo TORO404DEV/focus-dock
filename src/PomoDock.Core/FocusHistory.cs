@@ -7,7 +7,7 @@ namespace PomoDock.Core;
 public sealed record FocusDateRange(string Period, DateOnly From, DateOnly To);
 public sealed record FocusDayTotal(DateOnly Date, double Minutes);
 public sealed record FocusProjectTotal(string Project, double Minutes, int Sessions);
-public sealed record FocusSessionSlice(Guid Id, DateTimeOffset Started, DateTimeOffset Ended, string Project, string Task, double Minutes, Outcome Outcome);
+public sealed record FocusSessionSlice(Guid Id, DateTimeOffset Started, DateTimeOffset Ended, string Project, string Task, double Minutes, Outcome Outcome, IReadOnlyList<SessionAppUse> Apps);
 public sealed record FocusHistorySummary(
     FocusDateRange Range,
     string? Project,
@@ -93,7 +93,7 @@ public static class FocusHistory
         var slices = Slice(Filter(source, project), range, zone)
             .OrderByDescending(item => item.Started)
             .ToList();
-        return new FocusHistoryQuery(range, CleanProject(project), slices.Count, slices.Take(Math.Clamp(limit, 1, 100)).ToList());
+        return new FocusHistoryQuery(range, CleanProject(project), slices.Count, slices.Take(Math.Clamp(limit, 1, 200)).ToList());
     }
 
     public static DateOnly? EarliestDay(IEnumerable<Session> sessions, TimeZoneInfo zone)
@@ -129,7 +129,8 @@ public static class FocusHistory
                 DisplayProject(session.Project),
                 string.IsNullOrWhiteSpace(session.Task) ? "Enfoque libre" : session.Task.Trim(),
                 Round(minutes),
-                session.Outcome);
+                session.Outcome,
+                session.Apps ?? []);
         }
     }
 

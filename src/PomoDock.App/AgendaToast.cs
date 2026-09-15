@@ -25,6 +25,8 @@ internal sealed class AgendaToast : Window
     private readonly DispatcherTimer life = new() { Interval = TimeSpan.FromSeconds(55) };
     private readonly MainWindow owner;
     private readonly EventHandler ownerClosed;
+    private readonly bool alert;
+    private readonly ReminderCue? reminder;
     private bool leaving;
 
     /// <summary>Raises a reminder card. Older cards step aside when the corner fills up.</summary>
@@ -37,6 +39,22 @@ internal sealed class AgendaToast : Window
         Reflow();
     }
 
+    /// <summary>Raises a standalone alert (pomodoro complete) with the same quick actions as a reminder.</summary>
+    public static void PresentAlert(MainWindow owner, string lead, string title, string detail, string color, IReadOnlyList<AlertAction> actions)
+    {
+        while (open.Count >= 4) open[0].Leave();
+        var toast = new AgendaToast(owner, alert: true);
+        toast.Content = toast.AlertCard(lead, title, detail, color, actions);
+        open.Add(toast);
+        toast.Show();
+        Reflow();
+    }
+
+    public static void DismissAlerts()
+    {
+        foreach (var toast in open.Where(item => item.alert).ToArray()) toast.Leave();
+    }
+
     /// <summary>Closes every card, used when PomoDock itself is closing.</summary>
     public static void CloseAll()
     {
@@ -45,10 +63,19 @@ internal sealed class AgendaToast : Window
 
     internal static int OpenCount => open.Count;
     internal static AgendaToast? Newest => open.Count == 0 ? null : open[^1];
+    internal static ReminderCue? NewestReminder =>
+        open.LastOrDefault(item => item.reminder is not null)?.reminder;
 
-    private AgendaToast(MainWindow owner, ReminderCue cue, DateTime now, Action<ReminderCue, int> snooze, Action<ReminderCue> complete)
+    internal static void DismissReminder(ReminderCue cue)
+    {
+        foreach (var toast in open.Where(item => item.reminder?.Key == cue.Key).ToArray())
+            toast.Leave();
+    }
+
+    private AgendaToast(MainWindow owner, bool alert = false)
     {
         this.owner = owner;
+        this.alert = alert;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -64,7 +91,6 @@ internal sealed class AgendaToast : Window
         var area = SystemParameters.WorkArea;
         Left = area.Right - CardWidth - 18;
         Top = area.Bottom - 200;
-        Content = Card(cue, now, snooze, complete);
 
         SourceInitialized += (_, _) => HideFromSwitcher();
         SizeChanged += (_, _) => Reflow();
@@ -83,6 +109,13 @@ internal sealed class AgendaToast : Window
             Reflow();
         };
         Loaded += (_, _) => Enter();
+    }
+
+    private AgendaToast(MainWindow owner, ReminderCue cue, DateTime now, Action<ReminderCue, int> snooze, Action<ReminderCue> complete)
+        : this(owner)
+    {
+        reminder = cue;
+        Content = Card(cue, now, snooze, complete);
     }
 
     private UIElement Card(ReminderCue cue, DateTime now, Action<ReminderCue, int> snooze, Action<ReminderCue> complete)
@@ -175,6 +208,94 @@ internal sealed class AgendaToast : Window
         return frame;
     }
 
+    private UIElement AlertCard(string lead, string title, string detail, string color, IReadOnlyList<AlertAction> actions)
+    {
+        var frame = new Border
+        {
+            BorderBrush = AgendaVisuals.Resource("Edge"),
+            BorderThickness = new Thickness(2),
+            Background = AgendaVisuals.Resource("Surface")
+        };
+        var layout = new Grid();
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
+        layout.ColumnDefinitions.Add(new ColumnDefinition());
+        layout.Children.Add(new Border { Background = AgendaVisuals.Solid(color) });
+
+        var stack = new StackPanel { Margin = new Thickness(15, 12, 12, 13) };
+        Grid.SetColumn(stack, 1);
+
+        var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition());
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.Children.Add(new TextBlock
+        {
+            Text = lead,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 10,
+            FontWeight = FontWeights.Bold,
+            Foreground = AgendaVisuals.Solid(color),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        var close = new Button
+        {
+            Content = "×",
+            FontSize = 15,
+            Padding = new Thickness(8, 0, 8, 2),
+            Margin = new Thickness(0),
+            BorderThickness = new Thickness(0),
+            Background = Brushes.Transparent,
+            ToolTip = L.T("agenda.dismiss")
+        };
+        close.Click += (_, _) => Leave();
+        Grid.SetColumn(close, 1);
+        header.Children.Add(close);
+        stack.Children.Add(header);
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = title,
+            FontSize = 18,
+            FontWeight = FontWeights.Black,
+            TextWrapping = TextWrapping.Wrap,
+            MaxHeight = 52,
+            Margin = new Thickness(0, 6, 0, 4)
+        });
+        if (detail.Length > 0)
+            stack.Children.Add(new TextBlock { Text = detail, FontFamily = new FontFamily("Consolas"), FontSize = 11, FontWeight = FontWeights.Bold });
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        foreach (var action in actions)
+        {
+            var button = new Button
+            {
+                Content = action.Label,
+                FontSize = 11,
+                Padding = new Thickness(11, 7, 11, 7)
+            };
+            if (action.Primary)
+            {
+                button.Background = AgendaVisuals.Resource("Ink");
+                button.Foreground = AgendaVisuals.Resource("Paper");
+                button.Padding = new Thickness(12, 7, 12, 7);
+            }
+            var run = action.Run;
+            button.Click += (_, _) => { run(); Leave(); };
+            row.Children.Add(button);
+        }
+        stack.Children.Add(row);
+
+        layout.Children.Add(stack);
+        frame.Child = layout;
+        frame.PreviewMouseLeftButtonUp += (_, e) =>
+        {
+            if (e.OriginalSource is DependencyObject source && Ancestor<Button>(source) is not null) return;
+            if (owner.WindowState == WindowState.Minimized) owner.WindowState = WindowState.Normal;
+            owner.Activate();
+        };
+        frame.Cursor = Cursors.Hand;
+        return frame;
+    }
+
     private static T? Ancestor<T>(DependencyObject source) where T : DependencyObject => Ancestors.Find<T>(source);
 
     /// <summary>Keeps the card out of Alt+Tab: it is a notification, not a window to switch to.</summary>
@@ -219,3 +340,5 @@ internal sealed class AgendaToast : Window
         }
     }
 }
+
+internal readonly record struct AlertAction(string Label, Action Run, bool Primary = false);

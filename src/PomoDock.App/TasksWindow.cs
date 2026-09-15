@@ -8,8 +8,8 @@ using PomoDock.Core;
 namespace PomoDock.App;
 
 /// <summary>
-/// A compact task cockpit: projects stay in their own rail, while adding, finding and focusing a
-/// task happen in one clear work area. Large collections never turn into a wall of project chips.
+/// Mission desk: pick what to focus on first. Creating tasks and browsing projects stay secondary
+/// so a long backlog does not bury the next action.
 /// </summary>
 public sealed class TasksWindow : Window
 {
@@ -20,43 +20,56 @@ public sealed class TasksWindow : Window
     private readonly WorkTask? current;
     /// <summary>Finished pomodoros per task, read once: none can finish while this is open.</summary>
     private readonly Dictionary<Guid, int> finished;
+    /// <summary>Most recent focus end per task — backfills recency for tasks saved before timestamps.</summary>
+    private readonly Dictionary<Guid, DateTimeOffset> lastFocus;
+    private readonly Dictionary<Guid, int> listIndex = new();
 
     private readonly TextBox newName = new();
     private readonly ComboBox newProject = new();
     private readonly Counter newEstimate = new(1);
     private readonly TextBox search = new();
+    private readonly ComboBox projectFilter = new();
     private readonly StackPanel projectList = new();
     private readonly StackPanel projectActions = new();
     private readonly StackPanel frequentHost = new();
-    private readonly TextBlock taskSummary = new();
+    private readonly StackPanel suggestHost = new();
     private readonly StackPanel list = new();
+    private readonly TextBlock taskSummary = new();
+    private readonly Border createHost = new();
     private readonly ScrollViewer projectScroller = new();
+    private readonly Grid projectRailHost = new();
 
     /// <summary>The project the list is narrowed to, or null for all of them.</summary>
     private string? filter;
     private WorkTask? editing;
     private bool showDone;
+    private bool creating;
+    private bool showCatalog;
 
     public WorkTask? SelectedTask { get; private set; }
     public bool SelectionChanged { get; private set; }
     internal bool ProjectRailScrollsForDiagnostics => projectScroller.ScrollableHeight > 0;
     internal int VisibleProjectRowsForDiagnostics => projectList.Children.Count;
-    internal int VisibleTaskRowsForDiagnostics => list.Children.Count;
+    internal int VisibleTaskRowsForDiagnostics => list.Children.Count + suggestHost.Children.Count;
 
     public TasksWindow(MainWindow owner, WorkTask? current = null)
     {
         this.owner = owner;
         this.current = current;
-        Owner = owner; Title = L.T("tasks.title"); Width = 700; Height = 720; MinWidth = 560; MinHeight = 500;
+        Owner = owner; Title = L.T("tasks.title"); Width = 720; Height = 740; MinWidth = 560; MinHeight = 520;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; WindowStyle = WindowStyle.None; AllowsTransparency = true;
         Background = Brushes.Transparent; ResizeMode = ResizeMode.CanResizeWithGrip;
-        // A window of our own gets no Window style, so its content would inherit black text.
         SetResourceReference(ForegroundProperty, "Ink");
+        Dialogs.KeepAboveChrome(this);
 
         finished = owner.Store.Sessions()
             .Where(s => s.TaskId is not null && s.Phase == Phase.Focus && s.Outcome == Outcome.Completed)
             .GroupBy(s => s.TaskId!.Value)
             .ToDictionary(group => group.Key, group => group.Count());
+        lastFocus = owner.Store.Sessions()
+            .Where(s => s.TaskId is not null && s.Phase == Phase.Focus)
+            .GroupBy(s => s.TaskId!.Value)
+            .ToDictionary(group => group.Key, group => group.Max(session => session.Ended));
 
         var page = new Grid { Margin = new Thickness(18, 15, 18, 14) };
         page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -64,13 +77,15 @@ public sealed class TasksWindow : Window
         page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         page.Children.Add(Intro());
 
-        var workspace = new Grid { Margin = new Thickness(0, 14, 0, 0) };
-        workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(174) });
-        workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) });
+        var workspace = new Grid { Margin = new Thickness(0, 12, 0, 0) };
+        workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         workspace.ColumnDefinitions.Add(new ColumnDefinition());
-        workspace.Children.Add(ProjectRail());
+        projectRailHost.Children.Add(ProjectRail());
+        projectRailHost.Width = 0;
+        projectRailHost.Visibility = Visibility.Collapsed;
+        workspace.Children.Add(projectRailHost);
         var tasks = TaskArea();
-        Grid.SetColumn(tasks, 2);
+        Grid.SetColumn(tasks, 1);
         workspace.Children.Add(tasks);
         Grid.SetRow(workspace, 1);
         page.Children.Add(workspace);
@@ -80,30 +95,41 @@ public sealed class TasksWindow : Window
         page.Children.Add(footer);
         Content = page;
 
-        // Escape backs out one step: first out of an open editor, then out of the window.
         KeyDown += (_, e) =>
         {
             if (e.Key != Key.Escape || e.Handled) return;
-            if (editing is not null) { editing = null; Render(); } else Close();
+            if (editing is not null) { editing = null; Render(); }
+            else if (creating) { creating = false; RenderCreate(); }
+            else Close();
             e.Handled = true;
         };
-        Loaded += (_, _) => newName.Focus();
+        Loaded += (_, _) =>
+        {
+            if (current is null && !creating) search.Focus();
+            else if (creating) newName.Focus();
+        };
         Render();
         Dialogs.Modalize(this);
+        Dialogs.LiftAboveChrome(this);
     }
 
     // ------------------------------------------------------------------ layout
 
     private UIElement Intro()
     {
+        var stack = new StackPanel();
         var line = new Grid();
         line.ColumnDefinitions.Add(new ColumnDefinition());
         line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var words = new StackPanel();
         var heading = Dialogs.Heading(L.T("tasks.heading"));
-        heading.FontSize = 22;
-        heading.Margin = new Thickness(0, 0, 0, 3);
+        heading.FontSize = 24;
+        heading.Margin = new Thickness(0, 0, 0, 2);
         words.Children.Add(heading);
+        int streak = FocusStreak();
+        var score = Text(streak <= 0 ? L.T("tasks.scoreFresh") : L.T("tasks.scoreStreak", streak), 12, "Muted", FontWeights.Bold);
+        score.Margin = new Thickness(0, 0, 0, 4);
+        words.Children.Add(score);
         var hint = Text(L.T("tasks.hint"), 11.5, "Muted");
         hint.TextWrapping = TextWrapping.Wrap;
         words.Children.Add(hint);
@@ -112,16 +138,67 @@ public sealed class TasksWindow : Window
         var free = Dialogs.Button(current is null ? L.T("tasks.freeFocusCurrent") : L.T("tasks.freeFocusChoose"), () => Choose(null));
         free.ToolTip = L.T("tasks.freeFocusTip");
         free.Padding = new Thickness(11, 6, 11, 6);
-        free.VerticalAlignment = VerticalAlignment.Center;
+        free.VerticalAlignment = VerticalAlignment.Top;
         Grid.SetColumn(free, 1);
         line.Children.Add(free);
-        return line;
+        stack.Children.Add(line);
+
+        if (current is { } mission)
+        {
+            var missionCard = new Border
+            {
+                Margin = new Thickness(0, 12, 0, 0),
+                Padding = new Thickness(14, 12, 12, 12),
+                BorderThickness = new Thickness(2)
+            };
+            missionCard.SetResourceReference(Border.BackgroundProperty, "Ink");
+            missionCard.SetResourceReference(Border.BorderBrushProperty, "Ink");
+            var missionGrid = new Grid();
+            missionGrid.ColumnDefinitions.Add(new ColumnDefinition());
+            missionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var missionWords = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            var label = Text(L.T("tasks.continueLabel"), 10.5, "Paper", FontWeights.Bold);
+            label.Opacity = .75;
+            label.Margin = new Thickness(0, 0, 0, 4);
+            missionWords.Children.Add(label);
+            var title = Text(mission.Name, 18, "Paper", FontWeights.Black);
+            title.TextWrapping = TextWrapping.Wrap;
+            missionWords.Children.Add(title);
+            if (mission.Project != NoProject)
+            {
+                var project = Text(ProjectLabel(mission.Project), 12, "Paper");
+                project.Opacity = .8;
+                project.Margin = new Thickness(0, 3, 0, 0);
+                missionWords.Children.Add(project);
+            }
+            missionGrid.Children.Add(missionWords);
+            var continueBtn = Dialogs.Button(L.T("tasks.continue"), () => Choose(mission));
+            continueBtn.Padding = new Thickness(18, 10, 18, 10);
+            continueBtn.FontSize = 14;
+            continueBtn.FontWeight = FontWeights.Bold;
+            continueBtn.SetResourceReference(BackgroundProperty, "Paper");
+            continueBtn.SetResourceReference(ForegroundProperty, "Ink");
+            continueBtn.SetResourceReference(BorderBrushProperty, "Paper");
+            continueBtn.VerticalAlignment = VerticalAlignment.Center;
+            continueBtn.ToolTip = L.T("tasks.continueTip");
+            Grid.SetColumn(continueBtn, 1);
+            missionGrid.Children.Add(continueBtn);
+            missionCard.Child = missionGrid;
+            stack.Children.Add(missionCard);
+        }
+        return stack;
     }
 
-    /// <summary>Projects use a fixed-height vertical rail, so thirty of them take no more room than five.</summary>
+    private int FocusStreak()
+    {
+        var daily = Reports.Daily(owner.Store.Sessions(), TimeZoneInfo.Local);
+        return Reports.Streak(daily, DateOnly.FromDateTime(DateTime.Now));
+    }
+
+    /// <summary>Optional project rail — off by default so the mission list owns the window.</summary>
     private UIElement ProjectRail()
     {
-        var frame = new Border { Padding = new Thickness(10), BorderThickness = new Thickness(1) };
+        var frame = new Border { Padding = new Thickness(10), BorderThickness = new Thickness(1), Width = 168, Margin = new Thickness(0, 0, 12, 0) };
         frame.SetResourceReference(Border.BackgroundProperty, "Raised");
         frame.SetResourceReference(Border.BorderBrushProperty, "Edge");
         var root = new Grid();
@@ -130,9 +207,10 @@ public sealed class TasksWindow : Window
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var heading = new DockPanel { LastChildFill = true, Margin = new Thickness(2, 0, 0, 8) };
-        var add = Quiet("+", CreateProject);
-        add.FontSize = 17;
-        add.Padding = new Thickness(7, 0, 7, 1);
+        var add = Quiet(L.T("tasks.newProject"), CreateProject);
+        add.FontSize = 10.5;
+        add.FontWeight = FontWeights.Bold;
+        add.Padding = new Thickness(6, 2, 6, 2);
         add.ToolTip = L.T("tasks.newProjectTip");
         DockPanel.SetDock(add, Dock.Right);
         heading.Children.Add(add);
@@ -157,70 +235,112 @@ public sealed class TasksWindow : Window
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition());
-        root.Children.Add(AddBar());
-        Grid.SetRow(frequentHost, 1);
+
+        root.Children.Add(ActionBar());
+        createHost.Margin = new Thickness(0, 8, 0, 0);
+        createHost.Visibility = Visibility.Collapsed;
+        Grid.SetRow(createHost, 1);
+        root.Children.Add(createHost);
+        Grid.SetRow(frequentHost, 2);
         root.Children.Add(frequentHost);
-        var toolbar = TaskToolbar();
-        Grid.SetRow(toolbar, 2);
-        root.Children.Add(toolbar);
+        Grid.SetRow(suggestHost, 3);
+        root.Children.Add(suggestHost);
         var scroller = new ScrollViewer
         {
             Content = list,
             Focusable = false,
+            Margin = new Thickness(0, 8, 0, 0),
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
         };
-        Grid.SetRow(scroller, 3);
+        Grid.SetRow(scroller, 4);
         root.Children.Add(scroller);
         return root;
     }
 
-    private UIElement TaskToolbar()
+    private UIElement ActionBar()
     {
-        var line = new Grid { Margin = new Thickness(1, 11, 1, 5) };
+        var line = new Grid();
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         line.ColumnDefinitions.Add(new ColumnDefinition());
-        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Min(190, Width * .27)) });
-        taskSummary.FontSize = 10.5;
-        taskSummary.FontWeight = FontWeights.Bold;
-        taskSummary.VerticalAlignment = VerticalAlignment.Center;
-        taskSummary.SetResourceReference(ForegroundProperty, "Muted");
-        line.Children.Add(taskSummary);
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(170) });
+
+        var create = Primary(Dialogs.Button(L.T("tasks.createToggle"), () =>
+        {
+            creating = !creating;
+            RenderCreate();
+            if (creating) { newName.Focus(); newName.SelectAll(); }
+        }));
+        create.Padding = new Thickness(12, 7, 12, 7);
+        create.Margin = new Thickness(0, 0, 8, 0);
+        line.Children.Add(create);
+
+        var projectBtn = Dialogs.Button(L.T("tasks.newProject"), CreateProject);
+        projectBtn.Padding = new Thickness(10, 7, 10, 7);
+        projectBtn.Margin = new Thickness(0, 0, 8, 0);
+        Grid.SetColumn(projectBtn, 1);
+        line.Children.Add(projectBtn);
+
+        projectFilter.ToolTip = L.T("tasks.filterProjectTip");
+        projectFilter.SelectionChanged += (_, _) =>
+        {
+            if (syncingFilter) return;
+            if (projectFilter.SelectedItem is string label)
+            {
+                if (label == Ui("TODAS", "ALL")) Filter(null);
+                else if (label == ProjectLabel(NoProject)) Filter(NoProject);
+                else Filter(label);
+            }
+        };
+        projectFilter.Margin = new Thickness(0, 0, 8, 0);
+        Grid.SetColumn(projectFilter, 2);
+        line.Children.Add(projectFilter);
 
         search.SetValue(AutomationProperties.NameProperty, Ui("Buscar tareas", "Search tasks"));
         search.ToolTip = Ui("Buscar por tarea o proyecto", "Search by task or project");
         search.TextChanged += (_, _) => RenderList();
         var field = WithPlaceholder(search, Ui("Buscar…", "Search…"));
-        field.Margin = new Thickness(8, 0, 0, 0);
-        Grid.SetColumn(field, 1);
+        Grid.SetColumn(field, 3);
         line.Children.Add(field);
         return line;
     }
 
-    /// <summary>Name, project, how many pomodoros you expect. Enter adds it.</summary>
-    private UIElement AddBar()
+    private void RenderCreate()
     {
-        var bar = new Border { Padding = new Thickness(10), BorderThickness = new Thickness(1) };
-        bar.SetResourceReference(Border.BackgroundProperty, "Raised");
-        bar.SetResourceReference(Border.BorderBrushProperty, "Edge");
+        createHost.Child = null;
+        createHost.Visibility = creating ? Visibility.Visible : Visibility.Collapsed;
+        if (!creating) return;
+        createHost.Padding = new Thickness(10);
+        createHost.BorderThickness = new Thickness(1);
+        createHost.SetResourceReference(Border.BackgroundProperty, "Raised");
+        createHost.SetResourceReference(Border.BorderBrushProperty, "Ink");
+        createHost.Child = AddBarBody();
+    }
+
+    /// <summary>Name, project, how many pomodoros you expect. Enter adds it.</summary>
+    private UIElement AddBarBody()
+    {
         var stack = new StackPanel();
         var label = Caption(L.T("tasks.newTask"));
         label.Margin = new Thickness(1, 0, 0, 5);
         stack.Children.Add(label);
 
         newName.SetValue(AutomationProperties.NameProperty, L.T("tasks.newTaskName"));
-        newName.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Add(); e.Handled = true; } };
+        newName.KeyDown -= NewNameEnter;
+        newName.KeyDown += NewNameEnter;
         var nameLine = new Grid();
         nameLine.ColumnDefinitions.Add(new ColumnDefinition());
         nameLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var field = WithPlaceholder(newName, L.T("tasks.newTaskPlaceholder"));
         field.Margin = new Thickness(0, 0, 8, 7);
         nameLine.Children.Add(field);
-        var add = Primary(Dialogs.Button("+", Add));
+        var add = Primary(Dialogs.Button(L.T("tasks.addMission"), Add));
         add.SetValue(AutomationProperties.NameProperty, L.T("common.add"));
         add.ToolTip = L.T("common.add");
-        add.FontSize = 20;
-        add.Padding = new Thickness(15, 4, 15, 5);
+        add.Padding = new Thickness(14, 6, 14, 6);
         add.Margin = new Thickness(0, 0, 0, 7);
         Grid.SetColumn(add, 1);
         nameLine.Children.Add(add);
@@ -230,8 +350,14 @@ public sealed class TasksWindow : Window
         newProject.SetValue(AutomationProperties.NameProperty, L.T("tasks.newTaskProject"));
         newEstimate.ToolTip = L.T("tasks.estimateHelp");
         stack.Children.Add(FieldLine(newProject, newEstimate, null));
-        bar.Child = stack;
-        return bar;
+        return stack;
+    }
+
+    private void NewNameEnter(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        Add();
+        e.Handled = true;
     }
 
     /// <summary>Project, pomodoros and an optional button, on one line. Shared by adding and editing.</summary>
@@ -263,7 +389,12 @@ public sealed class TasksWindow : Window
 
     private UIElement Footer()
     {
-        var line = new DockPanel { Margin = new Thickness(188, 9, 0, 0), LastChildFill = false };
+        var line = new DockPanel { Margin = new Thickness(0, 9, 0, 0), LastChildFill = true };
+        taskSummary.FontSize = 10.5;
+        taskSummary.FontWeight = FontWeights.Bold;
+        taskSummary.VerticalAlignment = VerticalAlignment.Center;
+        taskSummary.SetResourceReference(ForegroundProperty, "Muted");
+        line.Children.Add(taskSummary);
         var keys = Text(L.T("tasks.keys"), 11, "Muted");
         DockPanel.SetDock(keys, Dock.Right);
         line.Children.Add(keys);
@@ -272,19 +403,36 @@ public sealed class TasksWindow : Window
 
     // ------------------------------------------------------------------ drawing
 
+    private bool syncingFilter;
+
     private void Render()
     {
+        listIndex.Clear();
+        for (int i = 0; i < owner.Settings.Tasks.Count; i++)
+            listIndex[owner.Settings.Tasks[i].Id] = i;
+
         var projects = Projects();
         if (filter is not null && filter != NoProject && !projects.Contains(filter)) filter = null;
 
         var keep = newProject.SelectedItem as string;
         var choices = new[] { NoProject }.Concat(projects).ToList();
-        // The list holds the stored names; only what the box paints on screen is translated.
         newProject.ItemsSource = choices;
         newProject.ItemTemplate = ProjectTemplate();
         newProject.SelectedItem = keep is not null && choices.Contains(keep) ? keep : NoProject;
 
+        syncingFilter = true;
+        var filterChoices = new List<string> { Ui("TODAS", "ALL") };
+        filterChoices.AddRange(projects);
+        if (owner.Settings.Tasks.Any(task => !task.Template && task.Project == NoProject))
+            filterChoices.Add(ProjectLabel(NoProject));
+        projectFilter.ItemsSource = filterChoices;
+        projectFilter.SelectedItem = filter is null ? filterChoices[0]
+            : filter == NoProject ? ProjectLabel(NoProject)
+            : filter;
+        syncingFilter = false;
+
         RenderProjects(projects);
+        RenderCreate();
         RenderFrequent();
         RenderList();
     }
@@ -344,20 +492,61 @@ public sealed class TasksWindow : Window
     private void RenderList()
     {
         list.Children.Clear();
+        suggestHost.Children.Clear();
         string query = search.Text.Trim();
         var shown = owner.Settings.Tasks.Where(task => !task.Template && (filter is null || task.Project == filter)
             && (query.Length == 0 || task.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)
                 || ProjectLabel(task.Project).Contains(query, StringComparison.CurrentCultureIgnoreCase))).ToList();
-        var pending = shown.Where(task => !task.Done).OrderByDescending(task => current?.Id == task.Id).ToList();
-        var done = shown.Where(task => task.Done).ToList();
+        var pending = shown.Where(task => !task.Done)
+            .OrderByDescending(task => current?.Id == task.Id)
+            .ThenByDescending(Recency)
+            .ThenBy(task => listIndex.GetValueOrDefault(task.Id, int.MaxValue))
+            .ThenBy(task => task.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        var done = shown.Where(task => task.Done)
+            .OrderByDescending(Recency)
+            .ThenBy(task => listIndex.GetValueOrDefault(task.Id, int.MaxValue))
+            .ToList();
 
         taskSummary.Text = filter is null
             ? L.T("tasks.pending", pending.Count)
             : $"{Short(ProjectLabel(filter)).ToUpper(Strings.Culture)} · {pending.Count:00}";
+
+        bool browsing = query.Length > 0 || filter is not null || editing is not null;
+        if (!browsing && pending.Count > 0)
+        {
+            var picks = pending.Where(task => current is null || task.Id != current.Id).Take(4).ToList();
+            if (picks.Count > 0)
+            {
+                var label = Caption(L.T("tasks.pickNext"));
+                label.Margin = new Thickness(1, 4, 0, 8);
+                suggestHost.Children.Add(label);
+                foreach (var task in picks)
+                    suggestHost.Children.Add(MissionCard(task));
+            }
+        }
+
         if (pending.Count == 0)
+        {
             list.Children.Add(Empty(query.Length > 0 ? Ui("SIN RESULTADOS", "NO MATCHES") : shown.Count > 0 ? L.T("tasks.nothingPending")
                 : filter is null ? L.T("tasks.emptyAll") : L.T("tasks.emptyProject")));
-        foreach (var task in pending) list.Children.Add(task == editing ? Editor(task) : Row(task));
+        }
+        else
+        {
+            var catalog = Quiet(showCatalog ? L.T("tasks.hideCatalog", pending.Count) : L.T("tasks.showCatalog", pending.Count), () =>
+            {
+                showCatalog = !showCatalog;
+                RenderList();
+            });
+            catalog.Margin = new Thickness(-8, 4, 0, 6);
+            catalog.HorizontalAlignment = HorizontalAlignment.Left;
+            list.Children.Add(catalog);
+            if (showCatalog || browsing)
+            {
+                foreach (var task in pending)
+                    list.Children.Add(task == editing ? Editor(task) : Row(task));
+            }
+        }
 
         if (done.Count == 0) return;
         var toggle = Quiet(L.T("tasks.doneSection", showDone ? "▾" : "▸", done.Count), () => { showDone = !showDone; RenderList(); });
@@ -367,6 +556,42 @@ public sealed class TasksWindow : Window
         list.Children.Add(toggle);
         if (showDone)
             foreach (var task in done) list.Children.Add(task == editing ? Editor(task) : Row(task));
+    }
+
+    /// <summary>A big next-mission tile: one click starts focus.</summary>
+    private UIElement MissionCard(WorkTask task)
+    {
+        var card = new Border
+        {
+            Padding = new Thickness(12, 10, 10, 10),
+            Margin = new Thickness(0, 0, 0, 8),
+            BorderThickness = new Thickness(1.5),
+            Cursor = Cursors.Hand
+        };
+        card.SetResourceReference(Border.BackgroundProperty, "Raised");
+        card.SetResourceReference(Border.BorderBrushProperty, "Edge");
+        card.MouseLeftButtonUp += (_, e) => { if (e.OriginalSource is not System.Windows.Controls.Primitives.ButtonBase) { Choose(task); e.Handled = true; } };
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var words = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        var name = Text(task.Name, 15, "Ink", FontWeights.Bold);
+        name.TextWrapping = TextWrapping.Wrap;
+        words.Children.Add(name);
+        var meta = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        if (task.Project != NoProject) meta.Children.Add(ProjectTag(task.Project));
+        meta.Children.Add(Progress(finished.GetValueOrDefault(task.Id), task.Estimate));
+        words.Children.Add(meta);
+        grid.Children.Add(words);
+        var focus = Primary(Dialogs.Button(L.T("tasks.focus"), () => Choose(task)));
+        focus.Padding = new Thickness(14, 8, 14, 8);
+        focus.FontSize = 12;
+        focus.ToolTip = L.T("tasks.focusTip");
+        Grid.SetColumn(focus, 1);
+        grid.Children.Add(focus);
+        card.Child = grid;
+        return card;
     }
 
     /// <summary>One task: tick, name, project and pomodoros, then what you can do with it.</summary>
@@ -412,10 +637,10 @@ public sealed class TasksWindow : Window
         if (active) actions.Children.Add(CurrentBadge());
         else if (!task.Done)
         {
-            var focus = Dialogs.Button("▶", () => Choose(task));
+            var focus = Primary(Dialogs.Button(L.T("tasks.focus"), () => Choose(task)));
             focus.SetValue(AutomationProperties.NameProperty, L.T("tasks.focus"));
-            focus.Width = 37;
-            focus.Padding = new Thickness(8, 5, 8, 5);
+            focus.Padding = new Thickness(10, 5, 10, 5);
+            focus.FontSize = 11;
             focus.ToolTip = L.T("tasks.focusTip");
             actions.Children.Add(focus);
         }
@@ -541,6 +766,7 @@ public sealed class TasksWindow : Window
     /// <summary>New tasks go on top, and the list widens if the project on screen would hide them.</summary>
     private void Insert(WorkTask task)
     {
+        task.Touch();
         owner.Settings.Tasks.Insert(0, task);
         if (filter is not null && filter != task.Project) filter = null;
         Save();
@@ -623,7 +849,12 @@ public sealed class TasksWindow : Window
     /// <summary>Choosing the focus you already have changes nothing, so it must not cut a running session.</summary>
     private void Choose(WorkTask? task)
     {
-        if (task?.Id != current?.Id) { SelectedTask = task; SelectionChanged = true; }
+        if (task?.Id != current?.Id)
+        {
+            task?.Touch();
+            SelectedTask = task;
+            SelectionChanged = true;
+        }
         Close();
     }
 
@@ -633,12 +864,43 @@ public sealed class TasksWindow : Window
         Render();
     }
 
-    /// <summary>Projects in the order they were made, plus any a task names that the list lost.</summary>
-    private List<string> Projects() => owner.Settings.Projects
-        .Concat(owner.Settings.Tasks.Select(task => task.Project))
-        .Where(project => !string.IsNullOrWhiteSpace(project) && project != NoProject)
-        .Distinct()
-        .ToList();
+    /// <summary>Most recently used projects first; brand-new empty projects stay near the top of the named list.</summary>
+    private List<string> Projects()
+    {
+        var named = owner.Settings.Projects
+            .Concat(owner.Settings.Tasks.Select(task => task.Project))
+            .Where(project => !string.IsNullOrWhiteSpace(project) && project != NoProject)
+            .Distinct()
+            .ToList();
+        return named
+            .OrderByDescending(ProjectRecency)
+            .ThenByDescending(project =>
+            {
+                int index = owner.Settings.Projects.IndexOf(project);
+                return index < 0 ? int.MinValue : index;
+            })
+            .ThenBy(project => project, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    private DateTimeOffset Recency(WorkTask task)
+    {
+        if (task.LastUsedUtc is { } used) return used;
+        if (lastFocus.TryGetValue(task.Id, out var focused)) return focused;
+        if (task.CreatedUtc is { } created) return created;
+        // Older saves: keep list order (Insert puts newest at 0).
+        int index = listIndex.GetValueOrDefault(task.Id, int.MaxValue);
+        return DateTimeOffset.UnixEpoch.AddTicks(Math.Max(0, 1_000_000 - index));
+    }
+
+    private DateTimeOffset ProjectRecency(string project)
+    {
+        var stamps = owner.Settings.Tasks
+            .Where(task => !task.Template && task.Project == project)
+            .Select(Recency)
+            .ToList();
+        return stamps.Count == 0 ? DateTimeOffset.MinValue : stamps.Max();
+    }
 
     // ------------------------------------------------------------------ pieces
 
@@ -696,11 +958,16 @@ public sealed class TasksWindow : Window
 
     private static UIElement CurrentBadge()
     {
-        var badge = new Border { Width = 30, Height = 30, Margin = new Thickness(0, 0, 4, 0), ToolTip = L.T("tasks.currentTip") };
+        var badge = new Border
+        {
+            Padding = new Thickness(8, 5, 8, 5),
+            Margin = new Thickness(0, 0, 4, 0),
+            ToolTip = L.T("tasks.currentTip")
+        };
         badge.SetResourceReference(Border.BackgroundProperty, "Ink");
-        var dot = Text("●", 11, "Paper", FontWeights.Bold);
-        dot.HorizontalAlignment = HorizontalAlignment.Center;
-        badge.Child = dot;
+        var label = Text(L.T("tasks.current"), 10.5, "Paper", FontWeights.Bold);
+        label.HorizontalAlignment = HorizontalAlignment.Center;
+        badge.Child = label;
         return badge;
     }
 

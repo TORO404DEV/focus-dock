@@ -21,6 +21,8 @@ public sealed class Session
     public List<FocusSegment> Segments { get; set; } = [];
     public string Note { get; set; } = "";
     public double? OriginalSeconds { get; set; }
+    /// <summary>Foreground apps observed while this focus session was running. Empty on older rows.</summary>
+    public List<SessionAppUse> Apps { get; set; } = [];
     public double Seconds => Segments.Sum(s => s.Seconds);
 }
 public sealed class WorkTask
@@ -31,7 +33,18 @@ public sealed class WorkTask
     public int Estimate { get; set; } = 1;
     public bool Done { get; set; }
     public bool Template { get; set; }
+    /// <summary>When the task was created. Null on older saves — recency falls back to focus history.</summary>
+    public DateTimeOffset? CreatedUtc { get; set; }
+    /// <summary>Last time the user picked or focused this task.</summary>
+    public DateTimeOffset? LastUsedUtc { get; set; }
     public override string ToString() => $"{Project} / {Name}";
+
+    public void Touch(DateTimeOffset? when = null)
+    {
+        var stamp = when ?? DateTimeOffset.UtcNow;
+        CreatedUtc ??= stamp;
+        LastUsedUtc = stamp;
+    }
 }
 public sealed class TodoWidgetData
 {
@@ -96,6 +109,70 @@ public sealed class WidgetConfig
     public double Height { get; set; } = 0;
     public bool KeepAlive { get; set; }
     public bool Collapsed { get; set; }
+    /// <summary>Last http(s) address opened in this widget (web source or window omnibox).</summary>
+    public string Href { get; set; } = "";
+    /// <summary>When true the widget occupies the whole page canvas until the user restores it.</summary>
+    public bool CanvasFill { get; set; }
+    public double RestoredX { get; set; }
+    public double RestoredY { get; set; }
+    public double RestoredWidth { get; set; }
+    public double RestoredHeight { get; set; }
+
+    public void RememberBounds()
+    {
+        RestoredX = X;
+        RestoredY = Y;
+        RestoredWidth = Width;
+        RestoredHeight = Height;
+    }
+
+    public void FillCanvas(double canvasWidth, double canvasHeight)
+    {
+        if (canvasWidth < 1 || canvasHeight < 1) return;
+        if (!CanvasFill) RememberBounds();
+        Collapsed = false;
+        CanvasFill = true;
+        X = 0;
+        Y = 0;
+        Width = canvasWidth;
+        Height = canvasHeight;
+    }
+
+    public void RestoreFromCanvasFill()
+    {
+        if (!CanvasFill) return;
+        CanvasFill = false;
+        if (RestoredWidth < 160 || RestoredHeight < 42) return;
+        X = RestoredX;
+        Y = RestoredY;
+        Width = RestoredWidth;
+        Height = RestoredHeight;
+    }
+
+    public void ToggleCanvasFill(double canvasWidth, double canvasHeight)
+    {
+        if (CanvasFill) RestoreFromCanvasFill();
+        else FillCanvas(canvasWidth, canvasHeight);
+    }
+
+    public void ApplyCanvasFillIfNeeded(double canvasWidth, double canvasHeight)
+    {
+        if (!CanvasFill || Collapsed) return;
+        X = 0;
+        Y = 0;
+        if (canvasWidth >= 1) Width = canvasWidth;
+        if (canvasHeight >= 1) Height = canvasHeight;
+    }
+
+    /// <summary>A drag that leaves the canvas edges is a new size, not a filled widget.</summary>
+    public void DropCanvasFillIfBoundsMoved(double canvasWidth, double canvasHeight)
+    {
+        if (!CanvasFill) return;
+        bool same = Math.Abs(X) < 1.5 && Math.Abs(Y) < 1.5
+            && Math.Abs(Width - canvasWidth) < 3
+            && Math.Abs(Height - canvasHeight) < 3;
+        if (!same) CanvasFill = false;
+    }
 }
 public sealed class WorkspacePage
 {
@@ -149,6 +226,10 @@ public sealed class Settings
     public string AgentDeepSeekApiKey { get; set; } = "";
     /// <summary>If true, releasing the agent microphone sends the transcript instead of inserting it.</summary>
     public bool AgentSendVoiceOnRelease { get; set; }
+    /// <summary>Always-on microphone: run a spoken order even if the wake name is skipped or mangled.</summary>
+    public bool AgentListenEnabled { get; set; }
+    /// <summary>Spoken name that arms a command. Default is pomodock.</summary>
+    public string AgentWakeName { get; set; } = AgentWakePhrase.DefaultName;
     /// <summary>Floating agent widget geometry. It is not a page widget, so work on the canvas stays visible.</summary>
     public WidgetConfig AgentWidget { get; set; } = new() { Kind = "agent", Title = "PomoDock", Width = 360, Height = 520 };
     public bool AgentWidgetVisible { get; set; }
@@ -156,6 +237,12 @@ public sealed class Settings
     public bool ReduceMotion { get; set; }
     public bool AlwaysOnTop { get; set; }
     public bool TimerAtBottom { get; set; }
+    /// <summary>Launch PomoDock when the user signs in to Windows.</summary>
+    public bool StartWithWindows { get; set; }
+    /// <summary>Last non-fullscreen window was maximized.</summary>
+    public bool WindowMaximized { get; set; }
+    /// <summary>Whether the pomodoro was running when state was last saved (resume on next launch).</summary>
+    public bool TimerWasRunning { get; set; }
     // Legacy single-page timer retained for backward-compatible backup migration.
     public WidgetConfig TimerWidget { get; set; } = new() { Kind = "timer", Title = "POMODORO" };
     public bool TimerPositionCustomized { get; set; }
@@ -170,6 +257,8 @@ public sealed class Settings
     public string AccentColor { get; set; } = "#D7D9D1";
     public List<string> Projects { get; set; } = [];
     public List<WorkTask> Tasks { get; set; } = [];
+    /// <summary>Last focus task the user chose. Cleared only when they pick free focus (or delete it).</summary>
+    public Guid? SelectedTaskId { get; set; }
     public List<WidgetConfig> Widgets { get; set; } = [];
     public Dictionary<string, List<WidgetConfig>> Layouts { get; set; } = [];
     public List<WorkspacePage> WorkspacePages { get; set; } = [];
@@ -188,6 +277,8 @@ public sealed class Settings
         AlarmVolume = Math.Clamp(AlarmVolume, 0, 100);
         EffectsVolume = Math.Clamp(EffectsVolume, 0, 100);
         AgentVoiceSpeed = Math.Clamp(AgentVoiceSpeed, 0.75, 1.4);
+        AgentWakeName = string.IsNullOrWhiteSpace(AgentWakeName) ? AgentWakePhrase.DefaultName : AgentWakeName.Trim();
+        if (AgentWakeName.Length > 32) AgentWakeName = AgentWakeName[..32];
         FocusEndSound = SoundLibrary.Valid(FocusEndSound, SoundKind.Alarm);
         BreakEndSound = SoundLibrary.Valid(BreakEndSound, SoundKind.Alarm);
         ReminderSound = SoundLibrary.Valid(ReminderSound, SoundKind.Reminder);

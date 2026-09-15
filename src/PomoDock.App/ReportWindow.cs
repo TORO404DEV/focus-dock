@@ -242,12 +242,23 @@ public sealed class ReportWindow : Window
 
         content.Children.Add(Section(L.T("report.projects"), L.T("report.projectsDetail")));
         if (data.ProjectTotals.Count == 0)
-        {
             content.Children.Add(new TextBlock { Text = L.T("report.noActivity") });
-            return;
+        else
+        {
+            foreach (var item in data.ProjectTotals)
+                content.Children.Add(ProjectRow(item.Name, item.Minutes, data.TotalMinutes, data.Colors.GetValueOrDefault(item.SeriesName, Resource("Muted"))));
         }
-        foreach (var item in data.ProjectTotals)
-            content.Children.Add(ProjectRow(item.Name, item.Minutes, data.TotalMinutes, data.Colors.GetValueOrDefault(item.SeriesName, Resource("Muted"))));
+
+        var apps = AppUsage.CombineSessions(periodSessions);
+        content.Children.Add(Section(L.T("report.apps"), L.T("report.appsDetail")));
+        if (apps.Count == 0)
+            content.Children.Add(new TextBlock { Text = L.T("report.appsEmpty"), FontSize = 12, Foreground = Resource("Muted"), Margin = new Thickness(0, 4, 0, 8), TextWrapping = TextWrapping.Wrap });
+        else
+        {
+            double appTotal = Math.Max(0.001, apps.Sum(item => item.Seconds / 60));
+            foreach (var item in apps.Take(12))
+                content.Children.Add(ProjectRow(item.Label, item.Seconds / 60, appTotal, Resource("Muted")));
+        }
     }
 
     /// <summary>
@@ -462,7 +473,7 @@ public sealed class ReportWindow : Window
             var selectedProject = projects.SelectedItem?.ToString() ?? allProjects;
             var visible = candidates.Where(s =>
                 (selectedProject == allProjects || string.Equals(ProjectName(s), selectedProject, StringComparison.OrdinalIgnoreCase)) &&
-                (string.IsNullOrWhiteSpace(query) || $"{s.Project} {s.Task} {s.Note}".Contains(query, StringComparison.OrdinalIgnoreCase)))
+                (string.IsNullOrWhiteSpace(query) || $"{s.Project} {s.Task} {s.Note} {AppUsage.Summarize(s.Apps ?? [], 8)}".Contains(query, StringComparison.OrdinalIgnoreCase)))
                 .OrderByDescending(s => s.Started).ToList();
             exportSessions = visible;
             var minutes = visible.Sum(s => Reports.MinutesIn(s, range.Start, range.End, TimeZoneInfo.Local));
@@ -642,6 +653,8 @@ public sealed class ReportWindow : Window
         var copy = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 7, 8, 7) };
         copy.Children.Add(new TextBlock { Text = session.Task, FontWeight = FontWeights.SemiBold, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap });
         copy.Children.Add(new TextBlock { Text = ProjectName(session), FontSize = 10, Foreground = Resource("Muted"), TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap });
+        if (session.Apps is { Count: > 0 })
+            copy.Children.Add(new TextBlock { Text = AppUsage.Summarize(session.Apps, 5), FontSize = 10, Foreground = Resource("Muted"), Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap });
         Grid.SetColumn(copy, 1);
         row.Children.Add(copy);
         var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };

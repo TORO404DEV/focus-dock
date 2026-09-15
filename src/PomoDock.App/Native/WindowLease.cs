@@ -42,7 +42,18 @@ public sealed class WindowLease : IDisposable
     private bool disposed;
     private static readonly List<WindowSnapshot> leased = [];
     private static readonly object journalLock = new();
-    public static List<WindowCandidate> Candidates()
+    public static List<WindowCandidate> Candidates() =>
+        Enumerate(new EnumerateOptions(true, true, 0, 0, null, false)).OrderBy(w => w.Title).ToList();
+
+    internal static List<WindowCandidate> OwnedVisible(IReadOnlyCollection<string> processNames) =>
+        Enumerate(new EnumerateOptions(false, false, 180, 100, processNames, true));
+
+    internal static WindowCandidate? Describe(nint hwnd) =>
+        hwnd == 0 ? null : Enumerate(new EnumerateOptions(true, false, 0, 0, null, false)).FirstOrDefault(item => item.Handle == hwnd);
+
+    private readonly record struct EnumerateOptions(bool WithIcons, bool RequireTitle, int MinWidth, int MinHeight, IReadOnlyCollection<string>? ProcessNames, bool SkipToolWindows);
+
+    private static List<WindowCandidate> Enumerate(EnumerateOptions options)
     {
         var windows = new List<WindowCandidate>();
         Win32.EnumWindows((h, _) =>
@@ -50,33 +61,47 @@ public sealed class WindowLease : IDisposable
             if (!Win32.IsWindowVisible(h)) return true;
             Win32.GetWindowThreadProcessId(h, out var pid);
             if (pid == Environment.ProcessId) return true;
+            if ((Win32.GetWindowLongPtr(h, Win32.GWL_STYLE).ToInt64() & Win32.WS_CHILD) != 0) return true;
+            if (options.SkipToolWindows && (Win32.GetWindowLongPtr(h, Win32.GWL_EXSTYLE).ToInt64() & Win32.WS_EX_TOOLWINDOW) != 0)
+                return true;
+            if (options.MinWidth > 0 || options.MinHeight > 0)
+            {
+                if (!Win32.GetWindowRect(h, out var rect)) return true;
+                if (rect.Right - rect.Left < options.MinWidth || rect.Bottom - rect.Top < options.MinHeight) return true;
+            }
             var text = new StringBuilder(1024); Win32.GetWindowText(h, text, text.Capacity);
-            if (text.Length == 0 || (Win32.GetWindowLongPtr(h, Win32.GWL_STYLE).ToInt64() & Win32.WS_CHILD) != 0) return true;
+            if (options.RequireTitle && text.Length == 0) return true;
             try
             {
                 using var p = Process.GetProcessById((int)pid);
                 if (p.ProcessName is "explorer" or "dwm" or "ShellExperienceHost") return true;
+                if (options.ProcessNames is { Count: > 0 } &&
+                    !options.ProcessNames.Any(name => name.Equals(p.ProcessName, StringComparison.OrdinalIgnoreCase)))
+                    return true;
                 var candidate = new WindowCandidate(h, text.ToString(), p.ProcessName, pid);
-                try
+                if (options.WithIcons)
                 {
-                    var path = p.MainModule?.FileName;
-                    if (!string.IsNullOrWhiteSpace(path))
+                    try
                     {
-                        using var icon = System.Drawing.Icon.ExtractAssociatedIcon(path);
-                        if (icon is not null)
+                        var path = p.MainModule?.FileName;
+                        if (!string.IsNullOrWhiteSpace(path))
                         {
-                            var source = Imaging.CreateBitmapSourceFromHIcon(icon.Handle, Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromWidthAndHeight(32, 32));
-                            source.Freeze(); candidate = candidate with { Icon = source };
+                            using var icon = System.Drawing.Icon.ExtractAssociatedIcon(path);
+                            if (icon is not null)
+                            {
+                                var source = Imaging.CreateBitmapSourceFromHIcon(icon.Handle, Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromWidthAndHeight(32, 32));
+                                source.Freeze(); candidate = candidate with { Icon = source };
+                            }
                         }
                     }
+                    catch { /* Algunas apps protegidas no exponen su icono. */ }
                 }
-                catch { /* Algunas apps protegidas no exponen su icono. */ }
                 windows.Add(candidate);
             }
             catch { }
             return true;
         }, 0);
-        return windows.OrderBy(w => w.Title).ToList();
+        return windows;
     }
     public WindowLease(nint window, nint container, string journal)
     {
@@ -228,6 +253,32 @@ public sealed class ExternalWindowHost : HwndHost
     }
 
     /// <summary>
+    /// Chromium/Electron keep Win32 focus until AttachThreadInput + SetFocus land on a
+    /// PomoDock HWND. Call this before typing into an overlay that sits above the guest.
+    /// </summary>
+    public void YieldKeyboardTo(nint target)
+    {
+        if (target == 0 || lease is null || !lease.IsAlive) return;
+        nint foreign = lease.Handle;
+        uint thisThread = Win32.GetCurrentThreadId();
+        uint foreignThread = Win32.GetWindowThreadProcessId(foreign, out _);
+        nint foreground = Win32.GetForegroundWindow();
+        uint foreThread = foreground == 0 ? 0 : Win32.GetWindowThreadProcessId(foreground, out _);
+
+        bool linkedFore = false, linkedForeign = false;
+        if (foreThread != 0 && foreThread != thisThread)
+            linkedFore = Win32.AttachThreadInput(thisThread, foreThread, true);
+        if (foreignThread != 0 && foreignThread != thisThread && foreignThread != foreThread)
+            linkedForeign = Win32.AttachThreadInput(thisThread, foreignThread, true);
+        try { Win32.SetFocus(target); }
+        finally
+        {
+            if (linkedForeign) Win32.AttachThreadInput(thisThread, foreignThread, false);
+            if (linkedFore) Win32.AttachThreadInput(thisThread, foreThread, false);
+        }
+    }
+
+    /// <summary>
     /// Hand keyboard focus to the embedded app. Mouse clicks reach a WS_CHILD guest on their
     /// own; keys only follow SetFocus, and Chromium/Electron guests (Cursor) are picky about it.
     /// </summary>
@@ -349,6 +400,23 @@ public sealed class ExternalWindowHost : HwndHost
         finally { IsConnecting = false; }
     }
     public void Detach() { UnhookForeignInput(); lease?.Dispose(); lease = null; }
+
+    /// <summary>
+    /// Restores the hosted app as a top-level window and asks it to quit.
+    /// Used when replacing a playing YouTube/Brave instead of fighting its tabs.
+    /// </summary>
+    public nint CloseForeignWindow()
+    {
+        nint hwnd = lease?.Handle ?? 0;
+        UnhookForeignInput();
+        try { lease?.Dispose(); }
+        catch { }
+        lease = null;
+        if (hwnd != 0 && Win32.IsWindow(hwnd))
+            Win32.PostMessage(hwnd, Win32.WM_CLOSE, 0, 0);
+        return hwnd;
+    }
+
     public void Resize()
     {
         if (lease is null || !lease.IsAlive) return;

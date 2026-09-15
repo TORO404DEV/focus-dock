@@ -13,7 +13,8 @@ namespace PomoDock.App;
 /// </summary>
 internal static class NotesHistory
 {
-    public static void Show(MainWindow owner, Guid current) => Build(owner, current).ShowDialog();
+    public static void Show(MainWindow owner, Guid current) =>
+        owner.RunModal(() => Build(owner, current).ShowDialog());
 
     /// <summary>Builds the history window without showing it, so the self test can photograph it.</summary>
     internal static Window Build(MainWindow owner, Guid current)

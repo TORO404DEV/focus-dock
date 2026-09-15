@@ -178,7 +178,7 @@ internal sealed class CalendarWidget : Grid, IReskinnable
     private void Rescale()
     {
         if (ActualWidth <= 0 || ActualHeight <= 0) return;
-        double next = Math.Clamp(Math.Min(ActualWidth / 400, ActualHeight / 520), 1, 2.4);
+        double next = Math.Clamp(Math.Min(ActualWidth / 400, ActualHeight / 520), 1, 3.2);
         // Height alone changes how much the day panel and the month grid may take, so a card
         // that only grew taller still deserves a rebuild even when the scale itself is capped.
         bool reshaped = renderedHeight <= 0 || Math.Abs(ActualHeight - renderedHeight) > renderedHeight * 0.12;

@@ -8,6 +8,8 @@ public sealed class ReminderNotification
     public Guid EventId { get; set; }
     public Guid? TaskId { get; set; }
     public string Title { get; set; } = "";
+    /// <summary>"reminder" for calendar/task cues, "timer" for pomodoro completion alerts.</summary>
+    public string Kind { get; set; } = "reminder";
     public DateTime ScheduledLocal { get; set; }
     public DateTime DeliveredLocal { get; set; }
     public bool Read { get; set; }
@@ -16,6 +18,7 @@ public sealed class ReminderNotification
     {
         Title = (Title ?? "").Trim();
         CueKey = (CueKey ?? "").Trim();
+        Kind = string.IsNullOrWhiteSpace(Kind) ? "reminder" : Kind.Trim().ToLowerInvariant();
         if (DeliveredLocal == default) DeliveredLocal = DateTime.Now;
         if (ScheduledLocal == default) ScheduledLocal = DeliveredLocal;
     }
@@ -46,7 +49,23 @@ public sealed class NotificationHistory
             EventId = cue.Event.Id,
             TaskId = cue.Event.TaskId,
             Title = cue.Event.Title,
+            Kind = "reminder",
             ScheduledLocal = cue.Start,
+            DeliveredLocal = delivered
+        };
+        Items.Insert(0, item);
+        Normalize();
+        return item;
+    }
+
+    public ReminderNotification AddAlert(string kind, string cueKey, string title, DateTime delivered)
+    {
+        var item = new ReminderNotification
+        {
+            CueKey = cueKey,
+            Title = title,
+            Kind = kind,
+            ScheduledLocal = delivered,
             DeliveredLocal = delivered
         };
         Items.Insert(0, item);
@@ -57,6 +76,20 @@ public sealed class NotificationHistory
     public void MarkAllRead()
     {
         foreach (var item in Items) item.Read = true;
+    }
+
+    public int MarkKindRead(string kind)
+    {
+        int count = 0;
+        foreach (var item in Items)
+        {
+            if (!item.Read && item.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase))
+            {
+                item.Read = true;
+                count++;
+            }
+        }
+        return count;
     }
 
     public bool MarkRead(Guid id)

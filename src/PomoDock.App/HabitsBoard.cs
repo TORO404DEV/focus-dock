@@ -90,7 +90,7 @@ internal sealed class HabitsBoard : Grid, IReskinnable
         double nameRoom = Math.Clamp(width * .28, 56, 150);
         int cell = (int)Math.Floor((width - reserved - nameRoom) / 7) - 2;
         bool grid = cell >= 13;
-        cell = Math.Clamp(grid ? cell : 24, 13, width >= 460 ? 38 : 30);
+        cell = Math.Clamp(grid ? cell : 24, 13, width >= 720 ? 56 : width >= 460 ? 38 : 30);
 
         bool stats = height >= 186;
         return new Shape(
@@ -107,13 +107,38 @@ internal sealed class HabitsBoard : Grid, IReskinnable
             Footer: height >= 330,
             Hint: height >= 430,
             Cell: cell,
-            Row: Math.Clamp(cell + 8, 22, 38),
-            NameFont: Math.Clamp(cell * .4 + 3.4, 10, 13),
-            DayFont: Math.Clamp(cell * .34 + 1, 7.5, 10.5));
+            Row: Math.Clamp(cell + 8, 22, 64),
+            NameFont: Math.Clamp(cell * .4 + 3.4, 10, 16),
+            DayFont: Math.Clamp(cell * .34 + 1, 7.5, 13));
     }
 
     /// <summary>Draws again after a theme change, for the colours it mixed itself.</summary>
     public void Reskin() => Render();
+
+    internal bool ApplyNavigate(string to)
+    {
+        string key = to.Trim().ToLowerInvariant();
+        today = DateOnly.FromDateTime(DateTime.Now);
+        if (key is "today" or "hoy" or "esta" or "this")
+        {
+            week = HabitBook.WeekStart(today);
+            Render();
+            return true;
+        }
+        if (key is "prev" or "previous" or "anterior" or "back" or "-1")
+        {
+            week = week.AddDays(-7);
+            Render();
+            return true;
+        }
+        if (key is "next" or "siguiente" or "forward" or "+1")
+        {
+            week = week.AddDays(7);
+            Render();
+            return true;
+        }
+        return false;
+    }
 
     private void Render()
     {

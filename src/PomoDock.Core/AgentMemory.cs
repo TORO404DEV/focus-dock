@@ -31,6 +31,18 @@ public sealed class AgentMemoryBook
     public IEnumerable<AgentMemoryItem> Visible =>
         Items.Where(item => item.Status != AgentMemoryStatus.Forgotten);
 
+    public IEnumerable<AgentMemoryItem> StandingOrders =>
+        Visible.Where(item => item.Status == AgentMemoryStatus.Confirmed && IsStanding(item));
+
+    public bool HasStandingOrders => StandingOrders.Any();
+
+    public static bool IsStanding(AgentMemoryItem item)
+    {
+        string kind = (item.Kind ?? "").Trim().ToLowerInvariant();
+        if (kind is "skill" or "rule" or "instruction" or "procedure") return true;
+        return AgentIntent.LooksLikeSkillTeaching(item.Content);
+    }
+
     public AgentMemoryItem Remember(string content, string kind = "preference", string origin = "user", bool sensitive = false)
     {
         content = (content ?? "").Trim();
@@ -109,18 +121,34 @@ public sealed class AgentMemoryBook
             .ToList();
     }
 
-    public string ContextBlock(int budget = 800)
+    public string ContextBlock(int budget = 2800)
     {
+        var confirmed = Visible.Where(item => item.Status == AgentMemoryStatus.Confirmed).ToList();
+        var skills = confirmed.Where(IsStanding).OrderByDescending(item => item.CreatedUtc);
+        var facts = confirmed.Where(item => !IsStanding(item)).OrderByDescending(item => item.LastUsedUtc);
         var lines = new StringBuilder();
-        foreach (var item in Visible.Where(item => item.Status == AgentMemoryStatus.Confirmed).OrderByDescending(item => item.LastUsedUtc))
+        AppendSection(lines, "Habilidades (órdenes permanentes; si aplican, ejecútalas en este turno):", skills, budget);
+        AppendSection(lines, "Hechos:", facts, budget);
+        return lines.ToString();
+    }
+
+    private static void AppendSection(StringBuilder lines, string header, IEnumerable<AgentMemoryItem> items, int budget)
+    {
+        bool started = false;
+        foreach (var item in items)
         {
             string line = $"- [{item.Kind}] {item.Content}";
-            if (lines.Length + line.Length + 1 > budget) break;
-            if (lines.Length > 0) lines.AppendLine();
+            int extra = started ? 1 + line.Length : (lines.Length > 0 ? 2 : 0) + header.Length + 1 + line.Length;
+            if (lines.Length + extra > budget) break;
+            if (!started)
+            {
+                if (lines.Length > 0) lines.AppendLine();
+                lines.AppendLine(header);
+                started = true;
+            }
+            else lines.AppendLine();
             lines.Append(line);
-            item.LastUsedUtc = DateTime.UtcNow;
         }
-        return lines.ToString();
     }
 }
 

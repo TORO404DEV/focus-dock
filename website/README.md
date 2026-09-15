@@ -2,12 +2,8 @@
 
 Static site. No build step.
 
-## Deploy (Hostinger)
+Upload this folder to `domains/pomodock.com/public_html`.
 
-Upload the contents of this folder to `public_html/` on `pomodock.com`
-(`index.html`, `style.css`, `script.js`, `assets/`, `en/`, `es/`).
-
-## Design
-
-Paper and ink, Consolas chrome, full-bleed product shot—same brutalist language as the app.
-One hero composition, one feature strip, one CTA. Less is more.
+Paper/ink like the app. One hero (`assets/hero.png`; optional `hero.gif`).
+Long page on purpose: Pomodoro technique + how-to + kit + agent + FAQ,
+same job as Pomofocus’s landing, for this product.

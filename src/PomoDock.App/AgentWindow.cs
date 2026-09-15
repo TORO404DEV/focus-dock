@@ -23,6 +23,7 @@ internal sealed class AgentWindow
     private readonly AgentHoldMic mic;
     private AgentChat chat;
     private readonly StackPanel transcript = new();
+    private readonly StackPanel listenLogs = new();
     private readonly StackPanel threads = new();
     private readonly ScrollViewer scroller = new();
     private readonly ScrollViewer threadScroll = new();
@@ -35,12 +36,14 @@ internal sealed class AgentWindow
     private readonly Button historyButton = new();
     private readonly Button newButton = new();
     private readonly Button voiceButton = new();
+    private readonly Button listenButton = new();
     private readonly ProgressBar progress = new();
     private readonly TextBlock status = new();
     private readonly TextBlock empty = new();
     private readonly TextBlock threadTitle = new();
     private readonly TextBlock sendGlyph = new();
     private readonly TextBlock voiceGlyph = new();
+    private readonly TextBlock listenGlyph = new();
     private readonly TextBlock historyGlyph = new();
     private readonly Border setupRow = new();
     private readonly Border historyPanel = new();
@@ -53,6 +56,8 @@ internal sealed class AgentWindow
     private bool closeWhenIdle;
     private bool historyOpen;
     private bool voiceOn;
+    private string? queuedVoice;
+    public bool IsBusy => busy;
     private readonly TextBlock downloadTitle = new();
     private readonly TextBlock downloadHint = new();
     private TextBlock? liveBody;
@@ -112,11 +117,14 @@ internal sealed class AgentWindow
         {
             micButton.Background = recording ? Resource("Ink") : Brushes.Transparent;
             micButton.Foreground = recording ? Resource("Paper") : Resource("Ink");
+            if (!recording) owner.ResumeAgentListen();
         });
 
         RestoreChat();
         PaintThreads();
         PaintVoice();
+        PaintListen();
+        PaintListenHistory();
         Surface.Loaded += (_, _) =>
         {
             input.Focus();
@@ -147,9 +155,12 @@ internal sealed class AgentWindow
         newButton.Click += (_, _) => NewChat();
         StyleIcon(voiceButton, voiceGlyph, "\uE767", L.T("agent.voice"));
         voiceButton.Click += (_, _) => ToggleVoice();
+        StyleIcon(listenButton, listenGlyph, "\uE720", L.T("agent.listen"));
+        listenButton.Click += (_, _) => ToggleListen();
         var tools = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         tools.Children.Add(historyButton);
         tools.Children.Add(newButton);
+        tools.Children.Add(listenButton);
         tools.Children.Add(voiceButton);
         Grid.SetColumn(tools, 1); bar.Children.Add(tools);
         return bar;
@@ -207,7 +218,8 @@ internal sealed class AgentWindow
         empty.Text = L.T("agent.emptyChat"); empty.FontSize = 14; empty.Foreground = Resource("Muted");
         empty.TextWrapping = TextWrapping.Wrap; empty.Margin = new Thickness(8, 28, 8, 16);
         empty.HorizontalAlignment = HorizontalAlignment.Left; empty.Visibility = Visibility.Collapsed;
-        var feed = new StackPanel(); feed.Children.Add(empty); feed.Children.Add(transcript);
+        listenLogs.Margin = new Thickness(2, 4, 2, 8);
+        var feed = new StackPanel(); feed.Children.Add(empty); feed.Children.Add(transcript); feed.Children.Add(listenLogs);
         scroller.Content = feed; scroller.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
         scroller.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         scroller.BorderThickness = new Thickness(0); scroller.Padding = new Thickness(2, 4, 2, 8);
@@ -244,8 +256,10 @@ internal sealed class AgentWindow
         Func<Task>? afterVoice() => owner.Settings.AgentSendVoiceOnRelease ? Run : null;
         micButton.PreviewMouseLeftButtonDown += (_, e) =>
         {
+            owner.PauseAgentListen();
             micButton.CaptureMouse();
             mic.Begin(afterVoice());
+            if (!mic.Holding) owner.ResumeAgentListen();
             e.Handled = true;
         };
         micButton.PreviewMouseMove += (_, e) =>
@@ -261,7 +275,14 @@ internal sealed class AgentWindow
             await mic.End(afterVoice());
             e.Handled = true;
         };
-        micButton.PreviewKeyDown += (_, e) => { if (e.Key == Key.Space) { mic.Begin(afterVoice()); e.Handled = true; } };
+        micButton.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Space) return;
+            owner.PauseAgentListen();
+            mic.Begin(afterVoice());
+            if (!mic.Holding) owner.ResumeAgentListen();
+            e.Handled = true;
+        };
         micButton.PreviewKeyUp += async (_, e) => { if (e.Key == Key.Space) { await mic.End(afterVoice()); e.Handled = true; } };
         Grid.SetColumn(micButton, 1); composerLine.Children.Add(micButton);
 
@@ -327,6 +348,80 @@ internal sealed class AgentWindow
         voiceButton.Foreground = voiceOn ? Resource("Paper") : Resource("Ink");
         voiceButton.ToolTip = voiceOn ? L.T("agent.voiceOn") : L.T("agent.voiceOff");
         voiceButton.Opacity = 1;
+    }
+
+    internal void PaintListen()
+    {
+        bool on = owner.Settings.AgentListenEnabled;
+        listenGlyph.Text = "\uE720";
+        listenButton.Background = on ? Resource("Ink") : Brushes.Transparent;
+        listenButton.Foreground = on ? Resource("Paper") : Resource("Ink");
+        listenButton.ToolTip = on ? L.T("agent.listenOn") : L.T("agent.listenOff");
+        listenButton.Opacity = 1;
+        if (on && listenLogs.Visibility != Visibility.Visible) PaintListenHistory();
+        else if (!on)
+        {
+            listenLogs.Visibility = Visibility.Collapsed;
+            if (transcript.Children.Count == 0) empty.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void ToggleListen()
+    {
+        owner.SetAgentListenEnabled(!owner.Settings.AgentListenEnabled);
+        PaintListenHistory();
+    }
+
+    internal void AppendListenLog(AgentListenLogEntry entry)
+    {
+        if (!owner.Settings.AgentListenEnabled) return;
+        empty.Visibility = Visibility.Collapsed;
+        listenLogs.Visibility = Visibility.Visible;
+        listenLogs.Children.Add(ListenLine(entry));
+        while (listenLogs.Children.Count > 40) listenLogs.Children.RemoveAt(0);
+        ShowStatus(MainWindow.FormatListenLog(entry));
+        ScrollEnd();
+    }
+
+    private void PaintListenHistory()
+    {
+        listenLogs.Children.Clear();
+        bool on = owner.Settings.AgentListenEnabled;
+        listenLogs.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        if (!on) return;
+        foreach (var entry in owner.ListenLog)
+            listenLogs.Children.Add(ListenLine(entry));
+        if (listenLogs.Children.Count > 0) empty.Visibility = Visibility.Collapsed;
+        if (owner.ListenLog.Count > 0)
+            ShowStatus(MainWindow.FormatListenLog(owner.ListenLog[^1]));
+        ScrollEnd();
+    }
+
+    private UIElement ListenLine(AgentListenLogEntry entry)
+    {
+        return new TextBlock
+        {
+            Text = MainWindow.FormatListenLog(entry),
+            FontSize = 11,
+            FontFamily = new FontFamily("Consolas"),
+            Foreground = Resource("Muted"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(2, 2, 2, 2)
+        };
+    }
+
+    internal void AcceptSpoken(string text)
+    {
+        string request = (text ?? "").Trim();
+        if (request.Length == 0) return;
+        if (busy)
+        {
+            queuedVoice = request;
+            ShowStatus(L.T("agent.listenHeard", request));
+            return;
+        }
+        input.Text = request;
+        _ = Run();
     }
 
     private void PaintTitle()
@@ -441,6 +536,7 @@ internal sealed class AgentWindow
             bool mine = message.Role == "you";
             AddBubble(message.Text, mine, message.Receipts, at: message.At);
         }
+        PaintListenHistory();
         ScrollEnd();
     }
 
@@ -591,12 +687,16 @@ internal sealed class AgentWindow
             else
             {
                 ClearLive();
-                string spoken = AgentReply.After(result.Message, result.Receipts, Strings.Culture.TwoLetterISOLanguageName == "es");
-                AddBubble(spoken, false, result.Receipts);
-                chat.Add("agent", spoken, result.Receipts); conversations.Touch(chat);
+                string shown = result.Message;
+                bool writes = result.Receipts.Any(receipt => receipt.CanUndo);
+                if (writes)
+                    shown = AgentReply.After(result.Message, result.Receipts, Strings.Culture.TwoLetterISOLanguageName == "es");
+                AddBubble(shown, false, writes ? result.Receipts : []);
+                chat.Add("agent", shown, result.Receipts);
+                conversations.Touch(chat);
                 ShowStatus(null);
                 if (ReferenceEquals(operation, activeOperation)) SetBusy(false);
-                await Speak(spoken, activeOperation.Token);
+                if (!result.Silent) await Speak(shown, activeOperation.Token);
             }
         }
         catch (OperationCanceledException) { ClearLive(); ShowStatus(L.T("agent.cancelled")); }
@@ -620,6 +720,12 @@ internal sealed class AgentWindow
             PaintThreads();
             input.Focus();
             if (closeWhenIdle) _ = owner.Dispatcher.BeginInvoke(RequestClose);
+            else if (!busy && queuedVoice is { Length: > 0 } next)
+            {
+                queuedVoice = null;
+                input.Text = next;
+                _ = Run();
+            }
         }
     }
 
@@ -663,7 +769,7 @@ internal sealed class AgentWindow
             chat.Add("agent", spoken, result.Receipts); conversations.Touch(chat); PaintThreads();
             ShowStatus(null);
             if (ReferenceEquals(operation, activeOperation)) SetBusy(false);
-            await Speak(spoken, activeOperation.Token);
+            if (!result.Silent) await Speak(spoken, activeOperation.Token);
         }
         catch (OperationCanceledException) { ShowStatus(L.T("agent.cancelled")); }
         catch (Exception ex) { AddError(L.T("agent.error", ex.Message), ex.ToString()); }
@@ -693,13 +799,18 @@ internal sealed class AgentWindow
         bool spanish = Strings.Culture.TwoLetterISOLanguageName == "es";
         string spoken = AgentSpeech.Speakable(message, spanish);
         if (!voiceOn || string.IsNullOrWhiteSpace(spoken)) return;
-        ShowStatus(L.T("agent.voicePreparing"));
-        var voiceProgress = new Progress<double>(value =>
-            ShowStatus(value >= .99 ? L.T("agent.voiceSpeaking")
-                : value >= .5 ? L.T("agent.voiceRender")
-                : L.T("agent.voicePreparing")));
-        await voice.SpeakAsync(spoken, Strings.Culture.TwoLetterISOLanguageName, owner.Settings.AgentVoiceSpeed, voiceProgress, cancellationToken);
-        ShowStatus(null);
+        owner.PauseAgentListen();
+        try
+        {
+            ShowStatus(L.T("agent.voicePreparing"));
+            var voiceProgress = new Progress<double>(value =>
+                ShowStatus(value >= .99 ? L.T("agent.voiceSpeaking")
+                    : value >= .5 ? L.T("agent.voiceRender")
+                    : L.T("agent.voicePreparing")));
+            await voice.SpeakAsync(spoken, Strings.Culture.TwoLetterISOLanguageName, owner.Settings.AgentVoiceSpeed, voiceProgress, cancellationToken);
+            ShowStatus(null);
+        }
+        finally { owner.ResumeAgentListen(); }
     }
 
     private async Task WarmVoice()
@@ -811,7 +922,9 @@ internal sealed class AgentWindow
         stack.Children.Add(new TextBlock
         {
             Tag = "body",
-            Text = message, TextWrapping = TextWrapping.Wrap, FontSize = 13,
+            Text = message, TextWrapping = TextWrapping.Wrap,
+            FontFamily = new FontFamily(AgentPresent.LooksLikeGrid(message) ? "Consolas" : "Segoe UI"),
+            FontSize = AgentPresent.LooksLikeGrid(message) ? 11 : 13,
             Foreground = mine ? Resource("Paper") : Resource("Ink")
         });
         stack.Children.Add(new TextBlock

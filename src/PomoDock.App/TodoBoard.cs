@@ -144,6 +144,23 @@ internal sealed class TodoBoard : Grid, IReskinnable
         owner.SaveState();
     }
 
+    internal bool ApplyFilter(string key)
+    {
+        string next = key.Trim().ToLowerInvariant() switch
+        {
+            "all" or "todas" or "todo" or "todos" => "all",
+            "open" or "pendientes" or "pending" => "open",
+            "today" or "hoy" => "today",
+            "done" or "hechas" or "completadas" => "done",
+            _ => ""
+        };
+        if (next.Length == 0 || !TodoBook.Filters.Contains(next)) return false;
+        filter = next;
+        SaveView();
+        Render();
+        return true;
+    }
+
     private void UpdateHint()
     {
         string text = input.Text.Trim();

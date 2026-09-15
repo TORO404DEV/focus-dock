@@ -7,6 +7,7 @@ namespace PomoDock.App;
 public partial class App : Application
 {
     private Mutex? mutex;
+    private bool showingUiError;
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -41,9 +42,13 @@ public partial class App : Application
         if (!created) { Dialogs.Alert(null, PomoDock.Core.L.T("app.alreadyOpenTitle"), PomoDock.Core.L.T("app.alreadyOpenBody")); Shutdown(); return; }
         DispatcherUnhandledException += (_, args) =>
         {
-            try { File.AppendAllText(Path.Combine(PomoDock.App.MainWindow.DataPath, "errors.log"), $"{DateTimeOffset.Now:O} ui {args.Exception}\n"); } catch { }
-            Dialogs.Alert(MainWindow, PomoDock.Core.L.T("app.errorTitle"), PomoDock.Core.L.T("app.errorBody", args.Exception.Message));
             args.Handled = true;
+            try { File.AppendAllText(Path.Combine(PomoDock.App.MainWindow.DataPath, "errors.log"), $"{DateTimeOffset.Now:O} ui {args.Exception}\n"); } catch { }
+            if (showingUiError) return;
+            showingUiError = true;
+            try { Dialogs.Alert(MainWindow, PomoDock.Core.L.T("app.errorTitle"), PomoDock.Core.L.T("app.errorBody", args.Exception.Message)); }
+            catch { }
+            finally { showingUiError = false; }
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
         {

@@ -222,6 +222,7 @@ internal sealed class VoiceDictation : IDisposable
             if (WaveInEvent.DeviceCount == 0) throw new InvalidOperationException(L.T("dictation.noMicrophone"));
             target.Focus();
             Keyboard.Focus(target);
+            owner.PauseAgentListen();
             BeginProvisionalText();
             recordingPath = Path.Combine(Path.GetTempPath(), $"pomodock-dictation-{Guid.NewGuid():N}.wav");
             operation?.Dispose();
@@ -263,6 +264,7 @@ internal sealed class VoiceDictation : IDisposable
             var message = L.T("dictation.captureError", Friendly(ex));
             owner.Status(message);
             ShowTransientFeedback(message, 6);
+            owner.ResumeAgentListen();
             LogFailure(ex);
             Dialogs.Alert(owner, L.T("dictation.errorTitle"), message);
         }
@@ -324,6 +326,7 @@ internal sealed class VoiceDictation : IDisposable
         }
         capture = null;
         DisposeLiveAudio();
+        owner.Dispatcher.BeginInvoke(owner.ResumeAgentListen);
         _ = owner.Dispatcher.InvokeAsync(async () => await FinishRecordingAsync(path, e.Exception));
     }
 
@@ -757,7 +760,7 @@ internal sealed class VoiceDictation : IDisposable
     private static string Clean(string value)
     {
         var text = Regex.Replace(value, @"\s+", " ").Trim();
-        return text is "[BLANK_AUDIO]" or "[MUSIC]" or "[Música]" or "(silencio)" ? "" : text;
+        return WhisperTranscript.IsJunk(text) ? "" : text;
     }
 
     private static string Friendly(Exception error) => error.InnerException?.Message ?? error.Message;

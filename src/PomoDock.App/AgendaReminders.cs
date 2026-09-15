@@ -73,7 +73,42 @@ internal sealed class AgendaReminders
     {
         agenda.Book.Snoozed[cue.Key] = DateTime.Now.AddMinutes(minutes);
         agenda.Track();
+        AgendaToast.DismissReminder(cue);
         owner?.Status(L.T("agenda.snoozed", cue.Event.Title, minutes));
+    }
+
+    internal bool TrySnooze(string query, int minutes, out string title)
+    {
+        title = "";
+        minutes = Math.Clamp(minutes <= 0 ? 5 : minutes, 1, 120);
+        var book = agenda.Book;
+        ReminderCue? cue = null;
+        if (AgendaToast.NewestReminder is { } live
+            && (query.Length == 0 || live.Event.Title.Contains(query, StringComparison.OrdinalIgnoreCase)))
+            cue = live;
+        if (cue is null)
+        {
+            var window = DateTime.Now;
+            cue = book.Cues(window.AddHours(-12), window.AddHours(12))
+                .Where(item => query.Length == 0 || item.Event.Title.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(item => book.Delivered.Contains(item.Key, StringComparer.Ordinal) || book.Snoozed.ContainsKey(item.Key))
+                .ThenBy(item => item.Start)
+                .FirstOrDefault();
+        }
+        if (cue is null && query.Length > 0)
+        {
+            var match = book.Events.FirstOrDefault(item => item.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                var day = DateOnly.FromDateTime(DateTime.Now);
+                int offset = match.Reminders.Count > 0 ? match.Reminders[0] : 0;
+                cue = new ReminderCue(match, day, match.AnchorFor(day), offset, match.AnchorFor(day).AddMinutes(-offset));
+            }
+        }
+        if (cue is null) return false;
+        title = cue.Event.Title;
+        Snooze(cue, minutes);
+        return true;
     }
 
     private void Complete(ReminderCue cue)

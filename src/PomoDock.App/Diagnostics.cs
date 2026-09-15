@@ -58,7 +58,7 @@ internal static class Diagnostics
             main.Settings.ReduceMotion = true; main.Show();
             await Task.Delay(350);
             Assert(main.IsLoaded, "native shell loads");
-            Assert(!main.HeaderClockText.Contains("POMODOCK", StringComparison.OrdinalIgnoreCase) && main.HeaderClockText.Contains(DateTime.Now.Year.ToString()), "workspace header shows the live date and time");
+            Assert(!main.HeaderClockText.Contains("POMODOCK", StringComparison.OrdinalIgnoreCase) && main.HeaderClockText.Contains(DateTime.Now.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture)), "workspace header shows the live clock");
             Render(main, Path.Combine(directory, "main-light.png"));
 
             // Every native editor gets one caret-aware control. It reserves its own room instead
@@ -169,6 +169,15 @@ internal static class Diagnostics
             main.ShowWorkspaceDialogForDiagnostics(layerProbe);
             Assert(timerHiddenDuringDialog, "workspace timer leaves the top layer while a PomoDock dialog is open");
             Assert(main.TimerOverlayIsVisible, "workspace timer returns after the dialog closes");
+            main.ShowAgentWidget();
+            await Task.Delay(80);
+            Assert(main.AgentOverlayIsOpen, "agent widget floats in a Popup HWND above the embedded surface");
+            var agentHwnd = main.AgentOverlayHwndForDiagnostics();
+            main.BringCardToFront(main.AgentCardForDiagnostics!);
+            await Task.Delay(40);
+            Assert(agentHwnd != 0 && agentHwnd == main.AgentOverlayHwndForDiagnostics(),
+                "clicking the agent does not recreate its overlay HWND");
+            main.HideAgentWidget();
             main.HideTimerForDiagnostics();
             main.RemoveCard(embeddedCard);
             main.AddCard(new() { Kind = "notes", Title = "MI SIGUIENTE PASO", Value = "Una cosa a la vez.\n\n1. Elegir el siguiente resultado\n2. Iniciar una sesión\n3. Revisar lo aprendido" }, true);
@@ -179,6 +188,22 @@ internal static class Diagnostics
             main.AddCard(new() { Kind = "calendar", Title = "AGENDA" }, true);
             main.AddCard(new() { Kind = "finance", Title = "FINANZAS" }, true);
             await Task.Delay(100); Render(main, Path.Combine(directory, "widgets.png"));
+            var fillProbe = main.AddCard(new() { Kind = "notes", Title = "LIENZO", Width = 280, Height = 200, X = 24, Y = 24 }, false);
+            await Task.Delay(80);
+            fillProbe.ToggleCanvasFillForDiagnostics();
+            await Task.Delay(80);
+            Assert(Math.Abs(fillProbe.Width - main.WidgetCanvas.ActualWidth) < 3 && Math.Abs(fillProbe.Height - main.WidgetCanvas.ActualHeight) < 3,
+                "canvas fill occupies the widget canvas");
+            Assert(Math.Abs(Canvas.GetLeft(fillProbe)) < 2 && Math.Abs(Canvas.GetTop(fillProbe)) < 2, "canvas fill pins the widget to the origin");
+            fillProbe.ToggleCanvasFillForDiagnostics();
+            await Task.Delay(80);
+            Assert(Math.Abs(fillProbe.Width - 280) < 3 && Math.Abs(fillProbe.Height - 200) < 3, "leaving canvas fill restores the previous size");
+            main.RemoveCard(fillProbe);
+            main.ToggleTimerCanvasFill();
+            await Task.Delay(80);
+            Assert(Math.Abs(main.TimerFrame.Width - main.WidgetCanvas.ActualWidth) < 3, "the pomodoro widget can fill the canvas too");
+            main.ToggleTimerCanvasFill();
+            await Task.Delay(80);
 
             // Notes: a strike line that really draws, a checklist that takes clicks, a history that outlives the card.
             var noteCard = main.AddCard(new() { Kind = "notes", Title = "NOTAS", Value = "Comprar pan y leche" }, true);
@@ -274,6 +299,15 @@ internal static class Diagnostics
             Assert(AgendaToast.OpenCount == 2 && !agenda.Book.Snoozed.ContainsKey(cue.Key), "a postponed reminder rings again when its time arrives");
             AgendaToast.CloseAll(); await Task.Delay(100);
             Assert(AgendaToast.OpenCount == 0, "notification cards close with the app");
+            int historyBeforeTimer = main.NotificationHistoryCount;
+            main.AnnounceTimerCompleteForDiagnostics(Phase.Focus, Phase.ShortBreak);
+            await Task.Delay(200);
+            Assert(main.IsNotificationBannerVisible, "a finished pomodoro raises the header notification");
+            Assert(AgendaToast.OpenCount >= 1, "a finished pomodoro raises an action card");
+            Assert(main.NotificationHistoryCount == historyBeforeTimer + 1, "a finished pomodoro is kept in notification history");
+            Render(AgendaToast.Newest!, Path.Combine(directory, "timer-complete.png"));
+            AgendaToast.CloseAll();
+            main.HideNotificationBannerForDiagnostics();
             agenda.Remove(soon);
             for (int d = 0; d < 14; d++)
             {
@@ -291,8 +325,18 @@ internal static class Diagnostics
             Assert(responsiveStats.StatsLayoutKeyForDiagnostics != compactStatsKey, "focus stats rebuilds when only its available width changes");
             Render(responsiveStats, Path.Combine(directory, "stats-wide.png"));
             responsiveStats.Release(); statsHarness.Close(); statsHarness = null;
+            // Short cards used to crash: Math.Clamp(..., 27, height*.2) when height*.2 < 27.
+            var shortStats = new WidgetCard(main, new WidgetConfig { Kind = "stats", Title = "MI ENFOQUE", Width = 280, Height = 120 });
+            shortStats.SetSize(260, 110);
+            await Task.Delay(80);
+            Assert(shortStats.ActualHeight > 0 && shortStats.StatsLayoutKeyForDiagnostics >= 0, "shrinking the stats card below the old metric floor still paints");
+            shortStats.Release();
+            if (!main.CurrentWorkspacePageHasTimer) main.AddTimerForDiagnostics();
+            main.ForceTimerOverlayForDiagnostics(); await Task.Delay(60);
+            Assert(main.TimerOverlayIsVisible, "timer floats before the report opens so layering can be checked");
             main.ShowReportForDiagnostics(); await Task.Delay(100);
             Assert(main.IsReportModalOpen, "report opens inside the main window modal layer");
+            Assert(!main.TimerOverlayIsVisible, "floating timer parks while the report modal is open");
             Assert(main.ReportModalFitsVisibleScreen, "report modal is fully visible and is not clipped by the popup surface");
             Assert(main.ReportVisibleSessionCount >= 14, "report summary loads persisted focus history");
             int pagesBehindReport = main.WorkspacePageCount;
@@ -307,6 +351,8 @@ internal static class Diagnostics
             Render(main.ReportModalSurface!, Path.Combine(directory, "report-detail.png"));
             main.HideReportForDiagnostics();
             Assert(!main.IsReportModalOpen, "report modal closes without a second app window");
+            Assert(main.TimerOverlayIsVisible, "floating timer returns after the report closes");
+            main.HideTimerForDiagnostics();
 
             // The control panel: four rooms, a rank read from real history, and instant changes.
             var standing = FocusProfile.Of(main.Store.Sessions());
@@ -426,6 +472,65 @@ internal static class Diagnostics
                 Assert(summary.Success && !summary.Changed && data.GetProperty("totalMinutes").GetDouble() == 42 && data.GetProperty("sessionCount").GetInt32() == 1,
                     "local agent reads exact focus totals from stored sessions");
             }
+            using (var rateArgs = JsonDocument.Parse("""{"usd_to_mxn":19.25}"""))
+            {
+                var rate = await agentTools.ExecuteAsync("finance.set_rate", rateArgs.RootElement.Clone(), CancellationToken.None);
+                Assert(rate.Success && rate.Changed && FinanceStore.For(main.Store).Book.UsdToMxn == 19.25m,
+                    "agent sets the USD/MXN rate the finance widget uses");
+            }
+            using (var mapArgs = JsonDocument.Parse("""{"panel":"page_map"}"""))
+            {
+                var map = await agentTools.ExecuteAsync("app.open_panel", mapArgs.RootElement.Clone(), CancellationToken.None);
+                Assert(map.Success && main.IsPageMapOpen, "agent opens the page map overlay");
+            }
+            using (var mapClose = JsonDocument.Parse("""{"panel":"page_map","open":false}"""))
+            {
+                var closed = await agentTools.ExecuteAsync("app.open_panel", mapClose.RootElement.Clone(), CancellationToken.None);
+                Assert(closed.Success && !main.IsPageMapOpen, "agent closes the page map overlay");
+            }
+            using (var reportArgs = JsonDocument.Parse("""{"panel":"report"}"""))
+            {
+                var opened = await agentTools.ExecuteAsync("app.open_panel", reportArgs.RootElement.Clone(), CancellationToken.None);
+                Assert(opened.Success && main.IsReportModalOpen, "agent opens the report modal");
+            }
+            using (var reportClose = JsonDocument.Parse("""{"panel":"report","open":false}"""))
+            {
+                var closed = await agentTools.ExecuteAsync("app.open_panel", reportClose.RootElement.Clone(), CancellationToken.None);
+                Assert(closed.Success && !main.IsReportModalOpen, "agent closes the report modal");
+            }
+            main.ShowAgentWidget();
+            using (var moveAgent = JsonDocument.Parse("""{"kind":"agent","x":28,"y":36}"""))
+            {
+                var moved = await agentTools.ExecuteAsync("workspace.move_widget", moveAgent.RootElement.Clone(), CancellationToken.None);
+                Assert(moved.Success && Math.Abs(main.Settings.AgentWidget.X - 28) < 1 && Math.Abs(main.Settings.AgentWidget.Y - 36) < 1,
+                    "agent moves its own chat widget");
+            }
+            using (var filterArgs = JsonDocument.Parse("""{"filter":"today"}"""))
+            {
+                var filter = await agentTools.ExecuteAsync("todo.set_filter", filterArgs.RootElement.Clone(), CancellationToken.None);
+                Assert(filter.Success && main.Settings.WorkspacePages.SelectMany(page => page.Widgets).First(widget => widget.Kind == "todo").Value.Contains("today", StringComparison.Ordinal),
+                    "agent sets the persisted to-do widget filter");
+            }
+            using (var moveArgs = JsonDocument.Parse("""{"kind":"timer","x":48,"y":64}"""))
+            {
+                if (!main.CurrentWorkspacePageHasTimer) main.AddTimerForDiagnostics();
+                var moved = await agentTools.ExecuteAsync("workspace.move_widget", moveArgs.RootElement.Clone(), CancellationToken.None);
+                var timer = main.CurrentWorkspacePageForDiagnostics.TimerWidget!;
+                Assert(moved.Success && Math.Abs(timer.X - 48) < 1 && Math.Abs(timer.Y - 64) < 1,
+                    "agent moves the pomodoro widget");
+            }
+            var snoozeEvent = new AgendaEvent { Title = "AGENT SNOOZE", Start = DateTime.Now.AddMinutes(3), Minutes = 30, Reminders = [10] };
+            AgendaStore.For(main.Store).Book.Events.Add(snoozeEvent);
+            AgendaStore.For(main.Store).Save();
+            AgendaReminders.For(main.Store).Pulse();
+            await Task.Delay(120);
+            using (var snoozeArgs = JsonDocument.Parse("""{"title":"AGENT SNOOZE","minutes":15}"""))
+            {
+                var snoozed = await agentTools.ExecuteAsync("calendar.snooze", snoozeArgs.RootElement.Clone(), CancellationToken.None);
+                Assert(snoozed.Success && AgendaStore.For(main.Store).Book.Snoozed.Count > 0,
+                    "agent snoozes a calendar reminder");
+            }
+            AgendaToast.CloseAll();
             var repeatedQuery = """{"action":"get_state","arguments":{"scope":"todos"},"message":""}""";
             var stalledAgent = new PomoAgent(main, _ => new ScriptedAgentConversation(repeatedQuery, repeatedQuery, repeatedQuery));
             var stalled = await stalledAgent.InterpretAsync("repite la misma consulta", [], null, CancellationToken.None);

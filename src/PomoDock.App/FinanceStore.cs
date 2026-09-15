@@ -40,23 +40,32 @@ internal sealed class FinanceStore
         return added;
     }
 
-    public MoneyEntry AddEntry(MoneyFlow flow, decimal amount, string title, DateOnly date, string category = "", string notes = "")
+    public MoneyEntry AddEntry(MoneyFlow flow, decimal amount, string title, DateOnly date, string category = "", string notes = "", string currency = "")
     {
-        var entry = Book.Add(flow, amount, title, date, category, notes);
+        var entry = Book.Add(flow, amount, title, date, category, notes, currency: currency);
         Save();
         return entry;
     }
 
-    public RecurringMoney AddRecurring(string title, decimal amount, bool subscription, string category = "", MoneyFlow flow = MoneyFlow.Expense, int day = 1, MoneyRepeat repeat = MoneyRepeat.Monthly)
+    public RecurringMoney AddRecurring(string title, decimal amount, bool subscription, string category = "", MoneyFlow flow = MoneyFlow.Expense, int day = 1, MoneyRepeat repeat = MoneyRepeat.Monthly, string currency = "")
     {
-        var item = Book.AddRecurring(title, amount, subscription, category, flow, day, repeat);
+        var item = Book.AddRecurring(title, amount, subscription, category, flow, day, repeat, currency: currency);
         Save();
         return item;
     }
 
     public void SetCurrency(string code)
     {
-        Book.Currency = string.IsNullOrWhiteSpace(code) ? "USD" : code.Trim().ToUpperInvariant();
+        Book.Currency = MoneyFx.Normalize(code, Book.Currency);
+        Save();
+    }
+
+    public void SetRate(decimal usdToMxn, bool manual = true)
+    {
+        if (usdToMxn <= 0) return;
+        Book.UsdToMxn = decimal.Round(usdToMxn, 4, MidpointRounding.AwayFromZero);
+        Book.RateUpdatedUtc = DateTime.UtcNow;
+        Book.RateManual = manual;
         Save();
     }
 

@@ -4,12 +4,13 @@
 
 # PomoDock
 
-**Your second monitor, as a focus workspace.**
+**Pomodoro for the second monitor.**
 
-Open-source Windows canvas for Pomodoro, tasks, habits, notes, calendar, finance,
-embedded apps—and a private agent that can run them.
+Open-source Windows workspace: timer, tasks, habits, notes, calendar, finance,
+embedded apps—and a private agent that can run them. Built for a vertical
+secondary display. Local-first. MIT.
 
-[![Download](https://img.shields.io/badge/Download-0.2.1-171916?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/TORO404DEV/focus-dock/releases/download/v0.2.1/PomoDock-Setup-0.2.1.exe)
+[![Download](https://img.shields.io/badge/Download-0.3.0-171916?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/TORO404DEV/focus-dock/releases/download/v0.3.0/PomoDock-Setup-0.3.0.exe)
 [![MIT](https://img.shields.io/github/license/TORO404DEV/focus-dock?color=171916)](LICENSE)
 [![Build](https://github.com/TORO404DEV/focus-dock/actions/workflows/ci.yml/badge.svg)](https://github.com/TORO404DEV/focus-dock/actions/workflows/ci.yml)
 
@@ -18,15 +19,16 @@ embedded apps—and a private agent that can run them.
 </div>
 
 <p align="center">
-  <img src="./docs/media/hero-workspace.png" width="560" alt="PomoDock workspace with timer, stats, tasks and habits">
+  <img src="./docs/media/hero-workspace.png" width="560" alt="PomoDock workspace with Pomodoro timer, stats, tasks and habits">
 </p>
 
 ## What it is
 
-A brutalist, local-first workspace meant for a **vertical second monitor**.
-You arrange widgets on free canvases (pages on an infinite grid), keep real Windows
-windows as widgets, and optionally talk to an agent that plans actions and waits for
-your confirmation before changing anything.
+A brutalist, local-first **Pomodoro workspace** meant for a vertical second
+monitor. The main screen keeps the work. The other screen holds the timer and
+everything around it: widgets on free canvases (pages on an infinite grid),
+real Windows windows as widgets, and optionally an agent that plans actions
+and waits for confirmation.
 
 | | |
 |---|---|
@@ -34,18 +36,20 @@ your confirmation before changing anything.
 | **Pages** | Infinite grid; drag empty space or use the page dock |
 | **Widgets** | Tasks, To Do, habits, notes, calendar, finance, stats, web |
 | **Windows** | Embed a live Windows app (or an HTTPS page) on the canvas |
-| **Agent** | Voice or chat; DeepSeek when configured; tools stay local |
+| **Agent (0.2)** | Voice or chat; DeepSeek when configured; tools stay local |
 | **Yours** | No account. Data in `%LOCALAPPDATA%\PomoDock` |
 
 Window embedding depends on the target app (elevation / DPI). Web widgets need
-[WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
+[WebView2](https://developer.microsoft.com/microsoft-edge/webview2/). You can
+import a Pomofocus CSV so old sessions are not thrown away.
 
 ## Install
 
-Download **[PomoDock-Setup-0.2.1.exe](https://github.com/TORO404DEV/focus-dock/releases/download/v0.2.1/PomoDock-Setup-0.2.1.exe)**
-(Windows x64, current user, Start Menu entry). The build is not code-signed; Windows may
-warn about an unknown publisher. If **Smart App Control** is on, unsigned local rebuilds
-can be blocked—turn SAC off for development, or use a signed release.
+Download **[PomoDock-Setup-0.3.0.exe](https://github.com/TORO404DEV/focus-dock/releases/download/v0.3.0/PomoDock-Setup-0.3.0.exe)**
+(Windows x64, current user, Start Menu entry). The build is not code-signed;
+Windows may warn about an unknown publisher. If **Smart App Control** is on,
+unsigned local rebuilds can be blocked—turn SAC off for development, or use a
+signed release.
 
 ### From source
 
@@ -70,11 +74,14 @@ Then open **PomoDock** from the Start menu.
 
 ## Agent (0.2)
 
-The agent can search and change todos, habits, notes, calendar, finance, widgets,
-pages (including rename / home), layouts, sounds and settings through typed tools.
-Destructive steps ask for confirmation. Limits that stay out of reach on purpose
-(HWND picker, minimize/close the app shell, etc.) are listed in
+Talk or type. It can search and change todos, habits, notes, calendar, finance,
+widgets, pages (rename / home), layouts, sounds and settings through typed
+tools. Destructive steps ask for confirmation. Limits that stay out of reach
+on purpose (HWND picker, minimize/close the app shell) are listed in
 [`docs/AGENT_ACTIONS.md`](docs/AGENT_ACTIONS.md).
+
+Reasoning can go through DeepSeek. The tools and the SQLite data stay on this
+PC.
 
 ## Stack
 

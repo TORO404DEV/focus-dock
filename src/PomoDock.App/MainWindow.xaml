@@ -3,27 +3,28 @@
  <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/></shell:WindowChrome.WindowChrome>
  <Border BorderBrush="{DynamicResource Edge}" BorderThickness="2">
    <Grid x:Name="Root">
-  <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="0"/><RowDefinition Height="*"/><RowDefinition Height="52"/></Grid.RowDefinitions>
+  <Grid.RowDefinitions><RowDefinition Height="42" x:Name="ChromeRow"/><RowDefinition Height="Auto"/><RowDefinition Height="0"/><RowDefinition Height="*"/><RowDefinition Height="0"/></Grid.RowDefinitions>
    <Grid x:Name="TitleBar" Background="{DynamicResource Chrome}" MouseLeftButtonDown="DragTitle">
     <TextBlock x:Name="TitleBarText" Text="POMODOCK     /     DESKTOP EDITION" Foreground="{DynamicResource ChromeInk}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,110,0"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
      <Button x:Name="MinimizeButton" Content="—" Click="MinimizeClick" Padding="10,2" Margin="0"/><Button x:Name="MaximizeButton" Content="□" Click="MaximizeClick" Padding="10,2" Margin="0"/><Button x:Name="CloseButton" Content="×" Click="CloseClick" Padding="10,2" Margin="0"/>
     </StackPanel>
    </Grid>
-   <Grid Grid.Row="1" Margin="16,8,16,8">
-    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+   <Grid Grid.Row="1" Margin="16,5,16,6">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-     <TextBlock x:Name="HeaderDateText" Text="MIÉ 09 SEP" FontFamily="Consolas" FontSize="18" FontWeight="Black" VerticalAlignment="Center" TextWrapping="NoWrap"/>
-     <TextBlock x:Name="HeaderTimeText" Text="00:00:00" FontFamily="Consolas" FontSize="18" FontWeight="Black" Foreground="{DynamicResource Muted}" Margin="14,0,0,0" VerticalAlignment="Center" TextWrapping="NoWrap"/>
-     <TextBlock x:Name="HeaderTimerText" Text="" FontFamily="Consolas" FontSize="18" FontWeight="Black" Foreground="{DynamicResource Accent}" Margin="18,0,0,0" VerticalAlignment="Center" TextWrapping="NoWrap" Visibility="Collapsed"/>
+     <TextBlock x:Name="HeaderDateText" Text="SÁB 12 SEP" FontFamily="Consolas" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource Muted}" VerticalAlignment="Center" TextWrapping="NoWrap" Margin="0,2,0,0"/>
+     <TextBlock x:Name="HeaderTimeText" Text="00:00:00" FontFamily="Consolas" FontSize="20" FontWeight="Black" Foreground="{DynamicResource Ink}" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="NoWrap"/>
+     <Button x:Name="HeaderTimerButton" Click="HeaderTimerClick" FontFamily="Consolas" FontSize="20" FontWeight="Black" Foreground="{DynamicResource Ink}" Background="Transparent" BorderThickness="0" Padding="8,0" Margin="10,0,0,0" MinWidth="0" MinHeight="0" VerticalAlignment="Center" Visibility="Collapsed" Cursor="Hand"/>
     </StackPanel>
-    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
      <Button x:Name="AgentButton" Content="✦" Click="AgentClick" FontSize="15" Padding="6,3" ToolTip="Agente local · widget"/>
-     <Button x:Name="ReportButton" Content="▥" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="{DynamicResource AccentInk}" FontSize="16" Padding="6,3"/>
-     <Button x:Name="TasksButton" Content="☷" Click="TasksClick" FontSize="15" Padding="6,3"/>
+     <Button x:Name="ReportButton" Click="ReportClick" Background="{DynamicResource Accent}" Foreground="{DynamicResource AccentInk}" Padding="7,5"/>
+     <Button x:Name="TasksButton" Click="TasksClick" Padding="7,5"/>
      <Button x:Name="NotificationsButton" Content="🔔" Click="NotificationsClick" FontSize="13" Padding="6,3" ToolTip="Notificaciones"/>
      <Button x:Name="SettingsButton" Content="⚙" Click="SettingsClick" FontSize="15" Padding="6,3"/>
      <Button x:Name="FullscreenButton" Content="⛶" Click="FullscreenClick" FontSize="15" Padding="6,3"/>
+     <Button x:Name="PageMapButton" Click="PageMapClick" Padding="7,5"/>
      <Button x:Name="AddWidgetButton" Content="+ WIDGET" Click="AddWidgetClick" FontSize="9" Padding="7,6" Margin="0"/>
    </StackPanel>
    </Grid>
@@ -61,7 +62,7 @@
      </Grid>
     </Border>
    </Popup>
-   <Grid x:Name="Workspace" Grid.Row="3" Margin="20,0,20,0">
+   <Grid x:Name="Workspace" Grid.Row="3" Margin="20,0,20,16">
     <Grid.RowDefinitions><RowDefinition Height="0"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <Grid Grid.Row="1" x:Name="CarouselViewport" ClipToBounds="True" Background="Transparent">
     <Canvas x:Name="PagePreviewArea" Background="{DynamicResource Paper}" IsHitTestVisible="False" Visibility="Collapsed"/>
@@ -73,36 +74,68 @@
        <TextBlock x:Name="WelcomeHint" Text="También puedes deslizar para cambiar de página." FontSize="9" Foreground="{DynamicResource Muted}" Margin="0,10,0,0" HorizontalAlignment="Center"/>
       </StackPanel>
      </Border>
-     <Border x:Name="TimerFrame" Canvas.Left="12" Canvas.Top="12" Width="560" Height="360" MinWidth="360" MinHeight="300" Panel.ZIndex="20" BorderThickness="2" BorderBrush="{DynamicResource Edge}" Background="{DynamicResource Surface}">
-      <Grid x:Name="TimerFrameRoot">
-       <Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <Border x:Name="TimerFrame" Canvas.Left="12" Canvas.Top="12" Width="560" Height="360" MinWidth="360" MinHeight="300" Panel.ZIndex="20" BorderThickness="2" BorderBrush="{DynamicResource Edge}" Background="{DynamicResource Surface}" ClipToBounds="True">
+      <Grid x:Name="TimerFrameRoot" ClipToBounds="True">
+       <Grid.RowDefinitions><RowDefinition Height="42"/><RowDefinition Height="*"/></Grid.RowDefinitions>
        <Border x:Name="TimerMoveHeader" Grid.Row="0" Background="{DynamicResource Chrome}" Cursor="SizeAll">
         <DockPanel LastChildFill="True" Margin="10,0,4,0">
-         <Button x:Name="RemoveTimerButton" DockPanel.Dock="Right" Content="×" Click="RemoveTimerClick" Foreground="{DynamicResource ChromeInk}" Background="Transparent" BorderThickness="0" Padding="7,2" Margin="0" FontSize="13"/>
+         <Button x:Name="RemoveTimerButton" DockPanel.Dock="Right" Click="RemoveTimerClick" Foreground="{DynamicResource ChromeInk}" Background="Transparent" BorderThickness="0" Padding="8,4" Margin="0" MinWidth="40" MinHeight="36"/>
+         <Button x:Name="TimerFillButton" DockPanel.Dock="Right" Click="TimerFillClick" Foreground="{DynamicResource ChromeInk}" Background="Transparent" BorderThickness="0" Padding="8,4" Margin="0" MinWidth="40" MinHeight="36"/>
          <TextBlock x:Name="TimerHeaderTitle" Text="POMODORO" Foreground="{DynamicResource ChromeInk}" FontSize="9" FontWeight="Bold" VerticalAlignment="Center"/>
          <TextBlock x:Name="TimerHeaderHint" Text="ARRASTRA PARA MOVER" Foreground="{DynamicResource ChromeInk}" Opacity="0.65" FontSize="8" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="NoWrap" Margin="0,0,8,0"/>
         </DockPanel>
        </Border>
-       <Grid x:Name="TimerSurface" Grid.Row="1" Margin="16,10,16,12">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <UniformGrid Columns="3"><Button x:Name="FocusButton" Content="POMODORO" Tag="Focus" Click="PhaseClick" FontSize="11" Padding="6,9"/><Button x:Name="ShortButton" Content="SHORT BREAK" Tag="ShortBreak" Click="PhaseClick" FontSize="11" Padding="6,9"/><Button x:Name="LongButton" Content="LONG BREAK" Tag="LongBreak" Click="PhaseClick" FontSize="11" Padding="6,9" Margin="0"/></UniformGrid>
-     <Viewbox Grid.Row="1" Stretch="Uniform" Margin="0,4"><TextBlock x:Name="ClockText" Text="25:00" FontFamily="Consolas" FontSize="94" FontWeight="Bold"/></Viewbox>
-     <Grid Grid.Row="2" Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <TextBlock x:Name="PhaseLabel" Text="01 / TIEMPO DE ENFOQUE" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/><TextBlock Grid.Column="1" x:Name="CycleText" Text="CICLO 1 / 4" FontSize="10" Foreground="{DynamicResource Muted}"/>
-     </Grid>
-     <Grid Grid.Row="3"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <Button x:Name="StartButton" Content="START →" Click="StartClick" Background="{DynamicResource Ink}" Foreground="{DynamicResource Paper}" FontSize="19" Padding="12,12"/>
-      <Button x:Name="ResetButton" Grid.Column="1" Content="↺" Click="ResetClick" FontSize="20"/><Button x:Name="SkipButton" Grid.Column="2" Content="↠" Click="SkipClick" FontSize="20" Margin="0"/>
-     </Grid>
-     <Button Grid.Row="4" x:Name="ContextButton" Content="○  ENFOQUE LIBRE   /   Elegir tarea" Click="TasksClick" BorderThickness="0" Background="Transparent" HorizontalAlignment="Left" Padding="0,12,0,0" FontSize="11"/>
-       </Grid>
+       <DockPanel x:Name="TimerSurface" Grid.Row="1" Margin="16,10,16,12" LastChildFill="True">
+        <UniformGrid DockPanel.Dock="Top" Columns="3">
+         <Button x:Name="FocusButton" Content="POMODORO" Tag="Focus" Click="PhaseClick" FontSize="11" Padding="6,9"/>
+         <Button x:Name="ShortButton" Content="SHORT BREAK" Tag="ShortBreak" Click="PhaseClick" FontSize="11" Padding="6,9"/>
+         <Button x:Name="LongButton" Content="LONG BREAK" Tag="LongBreak" Click="PhaseClick" FontSize="11" Padding="6,9" Margin="0"/>
+        </UniformGrid>
+        <Button DockPanel.Dock="Bottom" x:Name="ContextButton" Content="○  ENFOQUE LIBRE   /   Elegir tarea" Click="TasksClick" BorderThickness="0" Background="Transparent" HorizontalAlignment="Left" Padding="0,12,0,0" FontSize="11" Margin="0"/>
+        <Grid DockPanel.Dock="Bottom" MinHeight="52">
+         <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+         </Grid.ColumnDefinitions>
+         <Button x:Name="StartButton" Content="START →" Click="StartClick" Background="{DynamicResource Ink}" Foreground="{DynamicResource Paper}" FontSize="19" Padding="12,12" MinHeight="48"/>
+         <Button x:Name="ResetButton" Grid.Column="1" Content="↺" Click="ResetClick" FontSize="20" MinWidth="52" MinHeight="48"/>
+         <Button x:Name="SkipButton" Grid.Column="2" Content="↠" Click="SkipClick" FontSize="20" Margin="0" MinWidth="52" MinHeight="48"/>
+        </Grid>
+        <Grid DockPanel.Dock="Bottom" Margin="0,8,0,10">
+         <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+         </Grid.ColumnDefinitions>
+         <TextBlock x:Name="PhaseLabel" Text="01 / TIEMPO DE ENFOQUE" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+         <TextBlock Grid.Column="1" x:Name="CycleText" Text="CICLO 1 / 4" FontSize="10" Foreground="{DynamicResource Muted}"/>
+        </Grid>
+        <Viewbox Stretch="Uniform" Margin="0,10,0,8">
+         <TextBlock x:Name="ClockText" Text="25:00" FontFamily="Consolas" FontSize="94" FontWeight="Bold"/>
+        </Viewbox>
+       </DockPanel>
        <Grid x:Name="TimerHandles" Grid.RowSpan="2" Panel.ZIndex="30" IsHitTestVisible="True"/>
       </Grid>
      </Border>
     </Canvas>
     </Grid>
    </Grid>
-   <Grid Grid.Row="4" x:Name="PageDock" Background="{DynamicResource Paper}">
+   <Grid x:Name="PageMapOverlay" Grid.Row="3" Visibility="Collapsed" Background="{DynamicResource Paper}" Panel.ZIndex="40">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <DockPanel Margin="20,10,16,8">
+     <Button x:Name="PageMapCloseButton" DockPanel.Dock="Right" Content="×" Click="HidePageMapClick" FontSize="16" Padding="10,2" Margin="0"/>
+     <StackPanel VerticalAlignment="Center">
+      <TextBlock x:Name="PageMapTitle" Text="TODAS LAS PÁGINAS" FontFamily="Consolas" FontSize="12" FontWeight="Bold"/>
+      <TextBlock x:Name="PageMapHint" Text="Clic para abrir · clic derecho para eliminar" FontSize="10" Foreground="{DynamicResource Muted}" Margin="0,3,0,0"/>
+     </StackPanel>
+    </DockPanel>
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled" Padding="12,0,12,16">
+     <Viewbox Stretch="Uniform">
+      <Canvas x:Name="PageMapCanvas"/>
+     </Viewbox>
+    </ScrollViewer>
+   </Grid>
+   <Grid Grid.Row="4" x:Name="PageDock" Visibility="Collapsed" Background="{DynamicResource Paper}">
     <Grid.Resources>
      <Style x:Key="PageDockButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
       <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="1"/>

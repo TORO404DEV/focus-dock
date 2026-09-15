@@ -30,7 +30,7 @@ public static class AgentIntent
         if (value.Length > 90) return false;
         if (IsRemindTask(value) || TryRemember(value, out _) || TryForget(value, out _)) return false;
         if (IsDeleteEmptyPages(value) || TryCreateNote(value, out _) || TryListSounds(value)
-            || TrySetSound(value, out _) || TryRemoveTimer(value, out _) || TryRemoveWidget(value, out _)
+            || TrySetSound(value, out _) || TryChangeSong(value, out _) || TryRemoveTimer(value, out _) || TryRemoveWidget(value, out _)
             || TryAddTodo(value, out _) || TryCompleteTodo(value, out _) || TryAddHabit(value, out _)
             || TryMarkHabit(value, out _) || TryAddEvent(value, out _) || TryAddWidget(value, out _)
             || TryTimer(value, out _) || TryGotoPage(value, out _) || TryGotoHome(value) || TryRenamePage(value, out _, out _) || TryAddPage(value)
@@ -118,8 +118,37 @@ public static class AgentIntent
         fact = "";
         if (string.IsNullOrWhiteSpace(text) || IsRemindTask(text)) return false;
         var match = Regex.Match(text.Trim(), @"^(recuerda(?:\s+que)?|remember(?:\s+that)?)\s+(.+)$", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        fact = match.Success ? match.Groups[2].Value.Trim().TrimEnd('.') : "";
-        return fact.Length > 0;
+        if (match.Success)
+        {
+            fact = match.Groups[2].Value.Trim().TrimEnd('.');
+            return fact.Length > 0;
+        }
+        if (!LooksLikeSkillTeaching(text)) return false;
+        fact = text.Trim();
+        return true;
+    }
+
+    /// <summary>
+    /// “Cuando te diga X, haz Y / no lo olvides / escríbelo en tu memoria” is a rule to store,
+    /// not a song to play in this turn.
+    /// </summary>
+    public static string GuessMemoryKind(string text)
+    {
+        if (LooksLikeSkillTeaching(text)) return "skill";
+        if (Regex.IsMatch(text ?? "", @"\b(siempre que|a partir de ahora|cada vez que|whenever|when I say|from now on)\b", RegexOptions.IgnoreCase))
+            return "skill";
+        return "preference";
+    }
+
+    public static bool LooksLikeSkillTeaching(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || text.Trim().Length < 40) return false;
+        return Regex.IsMatch(text, """
+            no\s+lo\s+olvides|escr[ií]belo\s+en\s+tu\s+memoria|\ben\s+tu\s+memoria\b|
+            agreg(?:a|arte)\s+una\s+habilidad|cuando\s+te\s+(?:diga|pida|digas)|
+            don'?t\s+forget|write\s+it\s+(?:in|to)\s+(?:your\s+)?memory|
+            when\s+I\s+(?:say|tell\s+you)|add(?:\s+a)?\s+skill\s+for\s+you
+            """, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.IgnorePatternWhitespace);
     }
 
     public static bool TryForget(string text, out string query)
@@ -137,7 +166,7 @@ public static class AgentIntent
         if (IsIntroOrHelp(text) || IsWhatDoYouKnow(text) || IsDeleteEmptyPages(text) || IsUpcomingCalendarQuery(text)) return false;
         if (TrySchedule(text, DateTime.Now, out _)) return false;
         if (TryCreateNote(text, out _) || TryListSounds(text) || TrySetSound(text, out _)
-            || TryRemoveTimer(text, out _) || TryRemoveWidget(text, out _))
+            || TryChangeSong(text, out _) || TryRemoveTimer(text, out _) || TryRemoveWidget(text, out _))
             return false;
         if (TryAddTodo(text, out _) || TryCompleteTodo(text, out _) || TryAddHabit(text, out _)
             || TryMarkHabit(text, out _) || TryAddEvent(text, out _) || TryAddWidget(text, out _)
@@ -313,6 +342,36 @@ public static class AgentIntent
         return true;
     }
 
+    /// <summary>
+    /// “Cambia la canción a X de Y” / play this video. The tool reuses a browser on this
+    /// screen or opens Brave with the first result.
+    /// </summary>
+    public static bool TryChangeSong(string text, out string query)
+    {
+        query = "";
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        if (LooksLikeSkillTeaching(text) || text.Trim().Length > 280) return false;
+        if (TrySetSound(text, out _)) return false;
+        if (Regex.IsMatch(text, @"\b(abre|abrir|open|añade|agrega|crea|create)\b.{0,40}\b(brave|chrome|edge|firefox|ventana|widget)\b", RegexOptions.IgnoreCase))
+            return false;
+        if (!Regex.IsMatch(text, @"canci[oó]n|tema|v[ií]deo|m[uú]sica|youtube|song|track|video", RegexOptions.IgnoreCase))
+            return false;
+        if (!Regex.IsMatch(text, @"\b(cambia(?:r)?|pon(?:er|me|le)?|reproduce(?:r)?|play|next|siguiente)\b", RegexOptions.IgnoreCase))
+            return false;
+
+        var match = Regex.Match(text.Trim(),
+            @"(?:cambia(?:r)?|pon(?:er|me|le)?|reproduce(?:r)?|play)\s+(?:la\s+|el\s+)?(?:canci[oó]n|tema|v[ií]deo|m[uú]sica|song|track|video)(?:\s+(?:a|por|de|to|with))?\s+(.+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (!match.Success)
+            match = Regex.Match(text.Trim(),
+                @"(?:cambia(?:r)?|pon(?:er|me|le)?|reproduce(?:r)?|play)\s+(?:a\s+)?(.+?)\s+en\s+youtube\b",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (!match.Success) return false;
+        query = Regex.Replace(match.Groups[1].Value, @"\b(por\s+favor|please|en\s+youtube|on\s+youtube)\b", "", RegexOptions.IgnoreCase);
+        query = query.Trim(' ', '.', ',', ':', ';', '!', '?', '¿', '¡');
+        return query.Length >= 2;
+    }
+
     public static bool TryRemoveTimer(string text, out AgentRemoveAsk ask)
     {
         ask = new("timer", null);
@@ -444,6 +503,8 @@ public static class AgentIntent
             kind = "finance";
         else if (Regex.IsMatch(text, @"\b(stats|estad[ií]sticas|enfoque)\b", RegexOptions.IgnoreCase) && Regex.IsMatch(text, @"widget|tablero", RegexOptions.IgnoreCase))
             kind = "stats";
+        else if (Regex.IsMatch(text, @"\b(memento|memento\s*mori|mortalidad)\b", RegexOptions.IgnoreCase))
+            kind = "memento";
         else if (Regex.IsMatch(text, @"\b(temporizador|timer)\b", RegexOptions.IgnoreCase) && Regex.IsMatch(text, @"widget|a[ñn]ade|crea", RegexOptions.IgnoreCase))
             kind = "timer";
         return kind.Length > 0;
@@ -543,6 +604,46 @@ public static class AgentIntent
         return match.Success && int.TryParse(match.Groups[1].Value, out minutes) && minutes is >= 1 and <= 180;
     }
 
+    private static readonly Regex SpokenVerb = new("""
+        \b(?:
+            reproduce(?:r|s)?|reprodu[cz]\w*|play|
+            abre|abrir|open|
+            busca(?:r)?|search|
+            pon(?:er|me|les?|ga|es)?|
+            cambia(?:r)?|
+            crea(?:r)?|añade|agrega|
+            borra(?:r)?|quita(?:r)?|elimina|
+            inicia(?:r)?|pausa(?:r)?|para(?:r)?\s+el|
+            minimiza(?:r)?|oculta(?:r)?|esconde(?:r)?|tacha(?:r)?|
+            recu[eé]rdame|recuerda
+        )\b
+        """, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.IgnorePatternWhitespace | RegexOptions.Compiled);
+
+    /// <summary>
+    /// A spoken line that should run even if the wake name was skipped or mangled.
+    /// Lyrics and asides without an imperative stay out.
+    /// </summary>
+    public static bool LooksLikeSpokenOrder(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || WhisperTranscript.IsJunk(text)) return false;
+        string value = text.Trim();
+        if (value.Length < 8) return false;
+        if (TryChangeSong(value, out _) || LooksLikeWrite(value) || IsUpcomingCalendarQuery(value) || IsWhatDoYouKnow(value))
+            return true;
+        var match = SpokenVerb.Match(value);
+        if (!match.Success) return false;
+        return match.Index <= 64 || Regex.IsMatch(value, @"\bque\s+(reprodu[cz]\w*|abras|busques|pongas|cambies|creas|inicies|pauses)\b", RegexOptions.IgnoreCase);
+    }
+
+    public static string ClipSpokenOrder(string text)
+    {
+        string value = (text ?? "").Trim();
+        if (value.Length == 0) return value;
+        var match = SpokenVerb.Match(value);
+        if (!match.Success || match.Index <= 2) return value;
+        return value[match.Index..].Trim();
+    }
+
     public static bool LooksLikeWrite(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return false;
@@ -619,13 +720,15 @@ public static class AgentIntent
         if (parsed is MoneyEntry entry)
         {
             string sign = entry.Flow == MoneyFlow.Income ? "+" : "-";
-            line = $"{sign}{entry.Amount.ToString(CultureInfo.InvariantCulture)} {entry.Title}";
+            string code = entry.Currency.Length > 0 ? $" {entry.Currency.ToLowerInvariant()}" : "";
+            line = $"{sign}{entry.Amount.ToString(CultureInfo.InvariantCulture)}{code} {entry.Title}";
             return true;
         }
         if (parsed is RecurringMoney recurring)
         {
             string kind = recurring.Subscription ? "sub" : "fijo";
-            line = $"{kind} {recurring.Title} {recurring.Amount.ToString(CultureInfo.InvariantCulture)}";
+            string code = recurring.Currency.Length > 0 ? $" {recurring.Currency.ToLowerInvariant()}" : "";
+            line = $"{kind} {recurring.Title} {recurring.Amount.ToString(CultureInfo.InvariantCulture)}{code}";
             return FinanceQuickAdd.Parse(line, DateOnly.FromDateTime(DateTime.Today)) is not null;
         }
         var amount = Regex.Match(text, @"(\d+(?:[.,]\d{1,2})?)");

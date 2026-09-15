@@ -21,14 +21,14 @@ public sealed class SettingsWindow : Window
     private sealed record Snapshot(
         int Focus, int Short, int Long, int Interval, int Goal, int Noise, int Repeats,
         bool AutoBreak, bool AutoFocus, bool Sound, bool ButtonSounds, bool WhiteNoise, bool Alarm,
-        bool Dark, bool ReduceMotion, bool AlwaysOnTop, bool TimerAtBottom,
+        bool Dark, bool ReduceMotion, bool AlwaysOnTop, bool TimerAtBottom, bool StartWithWindows,
         string FocusColor, string ShortColor, string LongColor, string Accent,
         string FocusEnd, string BreakEnd, string Reminder, string Click, string Ambient, int AlarmVolume, int EffectsVolume)
     {
         public static Snapshot Of(Settings s) => new(
             s.FocusMinutes, s.ShortMinutes, s.LongMinutes, s.LongInterval, s.DailyGoalMinutes, s.WhiteNoiseVolume, s.AlarmRepeats,
             s.AutoBreak, s.AutoFocus, s.Sound, s.ButtonSounds, s.WhiteNoise, s.AlarmEnabled,
-            s.Dark, s.ReduceMotion, s.AlwaysOnTop, s.TimerAtBottom,
+            s.Dark, s.ReduceMotion, s.AlwaysOnTop, s.TimerAtBottom, s.StartWithWindows,
             s.FocusColor, s.ShortBreakColor, s.LongBreakColor, s.AccentColor,
             s.FocusEndSound, s.BreakEndSound, s.ReminderSound, s.ClickSound, s.AmbientSound, s.AlarmVolume, s.EffectsVolume);
 
@@ -38,7 +38,7 @@ public sealed class SettingsWindow : Window
             s.DailyGoalMinutes = Goal; s.WhiteNoiseVolume = Noise; s.AlarmRepeats = Repeats;
             s.AutoBreak = AutoBreak; s.AutoFocus = AutoFocus; s.Sound = Sound; s.ButtonSounds = ButtonSounds;
             s.WhiteNoise = WhiteNoise; s.AlarmEnabled = Alarm; s.Dark = Dark; s.ReduceMotion = ReduceMotion;
-            s.AlwaysOnTop = AlwaysOnTop; s.TimerAtBottom = TimerAtBottom;
+            s.AlwaysOnTop = AlwaysOnTop; s.TimerAtBottom = TimerAtBottom; s.StartWithWindows = StartWithWindows;
             s.FocusColor = FocusColor; s.ShortBreakColor = ShortColor; s.LongBreakColor = LongColor; s.AccentColor = Accent;
             s.FocusEndSound = FocusEnd; s.BreakEndSound = BreakEnd; s.ReminderSound = Reminder; s.ClickSound = Click;
             s.AmbientSound = Ambient; s.AlarmVolume = AlarmVolume; s.EffectsVolume = EffectsVolume;
@@ -394,6 +394,7 @@ public sealed class SettingsWindow : Window
             book.Save();
         }));
         body.Children.Add(Toggle(L.T("settings.agentSendVoice"), L.T("settings.agentSendVoiceHelp"), settings.AgentSendVoiceOnRelease, value => settings.AgentSendVoiceOnRelease = value));
+        body.Children.Add(Toggle(L.T("settings.agentListen"), L.T("settings.agentListenHelp"), settings.AgentListenEnabled, owner.SetAgentListenEnabled));
         var memory = new AgentMemoryStore(owner.Store);
         var facts = memory.Book.Search("", 20);
         if (facts.Count == 0) body.Children.Add(Note(L.T("settings.agentMemoryEmpty")));
@@ -481,6 +482,7 @@ public sealed class SettingsWindow : Window
         body.Children.Add(Lead(L.T("settings.spaceLead"), L.T("settings.spaceHelp")));
         body.Children.Add(Toggle(L.T("settings.timerAtBottom"), L.T("settings.timerAtBottomHelp"), settings.TimerAtBottom, value => settings.TimerAtBottom = value));
         body.Children.Add(Toggle(L.T("settings.alwaysOnTop"), L.T("settings.alwaysOnTopHelp"), settings.AlwaysOnTop, value => settings.AlwaysOnTop = value));
+        body.Children.Add(Toggle(L.T("settings.startWithWindows"), L.T("settings.startWithWindowsHelp"), settings.StartWithWindows, value => settings.StartWithWindows = value));
 
         body.Children.Add(Lead(L.T("settings.dataLead"), L.T("settings.dataHelp")));
         body.Children.Add(Note(owner.Store.DirectoryPath));

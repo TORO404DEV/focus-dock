@@ -1,9 +1,11 @@
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using PomoDock.Core;
 using PomoDock.App.Native;
 using Microsoft.Web.WebView2.Core;
@@ -20,6 +22,7 @@ public sealed class WidgetCard : Border
     private readonly Grid moveSurface = new();
     private readonly TextBlock title;
     private readonly List<Button> headerButtons = [];
+    private readonly Button fillButton;
     private ExternalWindowHost? host;
     private WebView2? web;
     private CalendarWidget? calendar;
@@ -32,24 +35,29 @@ public sealed class WidgetCard : Border
     private Point pointerStart;
     private double elementStartX, elementStartY, elementStartWidth, elementStartHeight;
     private static Task<CoreWebView2Environment>? browserEnvironment;
+    private bool fillPeerHidden;
     public WidgetCard(MainWindow owner, WidgetConfig config)
     {
         this.owner = owner; Config = config;
         ClipToBounds = true;
         BorderThickness = new Thickness(1.5); SetResourceReference(BorderBrushProperty, "Edge"); SetResourceReference(BackgroundProperty, "Surface");
-        shell.RowDefinitions.Add(new() { Height = new GridLength(38) }); shell.RowDefinitions.Add(new()); Child = shell;
+        shell.RowDefinitions.Add(new() { Height = new GridLength(46) }); shell.RowDefinitions.Add(new()); Child = shell;
         body.Margin = new Thickness(config.Kind == "agent" ? 4 : 8, 0, config.Kind == "agent" ? 4 : 8, config.Kind == "agent" ? 4 : 8);
         body.ClipToBounds = true; body.MinWidth = 0; body.MinHeight = 0;
         var header = new DockPanel { LastChildFill = true, Margin = new Thickness(9, 0, 2, 0), Cursor = Cursors.SizeAll };
         var actions = new StackPanel { Orientation = Orientation.Horizontal };
-        foreach (var (label, tip, action) in new (string, string, Action)[] {
-            ("⋯", config.Kind == "notes" ? "Historial de notas" : "Opciones del widget", Options),
-            ("−", "Contraer / expandir", ToggleCollapsed),
-            ("×", L.T("widgets.remove"), () => { if (config.Kind == "agent") owner.HideAgentWidget(); else owner.RemoveCard(this); }) })
+        Button AddHeaderButton(FrameworkElement icon, string tip, Action action)
         {
-            var button = new Button { Content = label, ToolTip = tip, Padding = new Thickness(7, 3, 7, 3), Margin = new Thickness(0), BorderThickness = new Thickness(0), FontSize = 13 };
-            button.Click += (_, _) => action(); actions.Children.Add(button); headerButtons.Add(button);
+            var button = new Button { Content = icon, ToolTip = tip, Padding = new Thickness(8, 6, 8, 6), Margin = new Thickness(1, 0, 0, 0), BorderThickness = new Thickness(0), MinWidth = 40, MinHeight = 36, Cursor = Cursors.Hand };
+            button.Click += (_, _) => action();
+            actions.Children.Add(button);
+            headerButtons.Add(button);
+            return button;
         }
+        fillButton = AddHeaderButton(ChromeIcon.Expand(), L.T("widgets.canvasFill"), ToggleCanvasFill);
+        AddHeaderButton(ChromeIcon.Collapse(), "Contraer / expandir", ToggleCollapsed);
+        AddHeaderButton(ChromeIcon.Close(), L.T("widgets.remove"), () => { if (config.Kind == "agent") owner.HideAgentWidget(); else owner.RemoveCard(this); });
+        SyncFillChrome();
         DockPanel.SetDock(actions, Dock.Right); header.Children.Add(actions);
         title = new TextBlock { Text = $"{KindLabel()} / {config.Title}", FontWeight = FontWeights.Bold, FontSize = 10, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
         var titleArea = moveSurface;
@@ -70,6 +78,7 @@ public sealed class WidgetCard : Border
         };
         title.IsHitTestVisible = false;
         titleArea.Children.Add(title);
+        titleArea.MouseRightButtonUp += (_, e) => { Options(); e.Handled = true; };
         header.Children.Add(titleArea); shell.Children.Add(header);
         owner.Deactivated += CancelGesture;
         PreviewMouseDown += (_, e) => { if (!IsGestureSource(e.OriginalSource)) owner.BringCardToFront(this); };
@@ -99,10 +108,27 @@ public sealed class WidgetCard : Border
             {
                 if (FocusCard.LayoutKey(body.ActualWidth, body.ActualHeight) != statsLayoutKey) Refresh();
             };
+            else if (config.Kind == "memento") body.SizeChanged += (_, _) =>
+            {
+                if (MementoMoriCard.LayoutKey(body.ActualWidth, body.ActualHeight) != mementoLayoutKey) Refresh();
+            };
             Refresh();
         }
     }
+    internal bool HasExposedNativeSurface => Visibility == Visibility.Visible && !fillPeerHidden && HasNativeSurface;
     internal bool IsExternalAttached => host?.Alive == true;
+    internal nint ForeignHandle => host?.ForeignHandle ?? 0;
+    internal string LiveWindowTitle => Config.Kind == "window" ? Win32.WindowTitle(ForeignHandle) : "";
+    internal string CurrentWebUrl =>
+        web?.Source?.AbsoluteUri is { Length: > 0 } live ? live : Config.Value;
+    internal bool LooksLikeYouTube()
+    {
+        if (Config.Kind == "web")
+            return YouTubeWatch.LooksLikeYouTubeContext(Config.Title, CurrentWebUrl);
+        if (Config.Kind != "window") return false;
+        return YouTubeWatch.LooksLikeYouTubeContext(Config.Title, Config.Href)
+            || YouTubeWatch.LooksLikeYouTubeContext(LiveWindowTitle, Config.Href);
+    }
     internal bool HasKeyboardFocusOnExternal => host?.HasKeyboardFocus == true;
     /// <summary>
     /// This card paints part of itself through a real HWND — an embedded app window or a
@@ -113,9 +139,30 @@ public sealed class WidgetCard : Border
     internal bool HasNativeSurface => host?.Alive == true || web is not null;
     internal bool IsGestureActive => resizing || moveSurface.IsMouseCaptured || gestureHandles.Any(handle => handle.IsDragging);
     internal int StatsLayoutKeyForDiagnostics => statsLayoutKey;
-    internal void BringExternalToFront() => host?.BringToFront();
+    internal bool IsEmbeddedBrowser =>
+        Config.Kind == "web" || (Config.Kind == "window" && AppLaunchNames.IsBrowser(Config.Value));
+    internal void RememberHref(string? url)
+    {
+        string address = (url ?? "").Trim();
+        if (address.Length == 0) return;
+        Config.Href = address;
+        if (Config.Kind == "web") Config.Value = address;
+    }
+    internal void BringExternalToFront()
+    {
+        host?.BringToFront();
+        owner.LiftOverlaysAboveNatives();
+        owner.Dispatcher.BeginInvoke(owner.LiftOverlaysAboveNatives, DispatcherPriority.Background);
+        owner.Dispatcher.BeginInvoke(owner.LiftOverlaysAboveNatives, DispatcherPriority.ContextIdle);
+    }
+    internal void YieldExternalKeyboard(nint target) => host?.YieldKeyboardTo(target);
     internal void SetCarouselTransition(bool active)
     {
+        if (fillPeerHidden)
+        {
+            ObscureNative(true);
+            return;
+        }
         if (host is not null) host.Visibility = active ? Visibility.Hidden : Visibility.Visible;
         if (web is not null) web.Visibility = active ? Visibility.Hidden : Visibility.Visible;
     }
@@ -204,7 +251,10 @@ public sealed class WidgetCard : Border
     private void EndResize()
     {
         if (!resizing) return;
-        resizing = false; resizeEdge = ""; owner.PersistWidget(this);
+        resizing = false; resizeEdge = "";
+        Config.DropCanvasFillIfBoundsMoved(owner.WidgetCanvas.ActualWidth, owner.WidgetCanvas.ActualHeight);
+        SyncFillChrome();
+        owner.PersistWidget(this);
     }
     internal void BeginOverlayResize(string edge) => BeginResize(edge);
     internal void UpdateOverlayResize() => UpdateGesture();
@@ -218,6 +268,7 @@ public sealed class WidgetCard : Border
         "habits" => L.T("widgets.kindHabits"),
         "calendar" => L.T("widgets.kindCalendar"),
         "finance" => L.T("widgets.kindFinance"),
+        "memento" => L.T("widgets.kindMemento"),
         "notes" => L.T("widgets.kindNote"),
         "agent" => L.T("widgets.kindAgent"),
         _ => L.T("widgets.kindText")
@@ -294,6 +345,12 @@ public sealed class WidgetCard : Border
         calendar.ApplyShowDone(show);
         return true;
     }
+    internal bool SetTodoFilter(string filter) =>
+        body.Children.OfType<TodoBoard>().FirstOrDefault()?.ApplyFilter(filter) == true;
+    internal bool NavigateHabits(string to) =>
+        body.Children.OfType<HabitsBoard>().FirstOrDefault()?.ApplyNavigate(to) == true;
+    internal bool SetFinanceView(string span, string tab, string to) =>
+        body.Children.OfType<FinanceBoard>().FirstOrDefault()?.ApplyView(span, tab, to) == true;
     private void BuildTodo()
     {
         // Tasks stay inside this card: two To Do widgets are two independent lists.
@@ -333,6 +390,7 @@ public sealed class WidgetCard : Border
             await host.AttachAsync(hwnd, owner.Journal);
             if (released || host != connectingHost) return;
             owner.BringCardToFront(this);
+            owner.NotifyNativeSurfaceChanged();
             owner.Status(L.T("widgets.connected"));
         }
         catch (Exception ex)
@@ -353,6 +411,7 @@ public sealed class WidgetCard : Border
             var env = await browserEnvironment;
             if (released) return;
             web = new WebView2(); body.Children.Add(web);
+            owner.NotifyNativeSurfaceChanged();
             await web.EnsureCoreWebView2Async(env);
             if (released) return;
             web.CoreWebView2.Settings.AreHostObjectsAllowed = false;
@@ -377,11 +436,74 @@ public sealed class WidgetCard : Border
     }
     internal Task SetCollapsedAsync(bool collapsed)
     {
+        if (collapsed && Config.CanvasFill) Config.RestoreFromCanvasFill();
         Config.Collapsed = collapsed;
         ApplyCollapsed();
+        SyncFillChrome();
         owner.ArrangeCards(); owner.SaveState();
         if (Config.Kind != "web") return Task.CompletedTask;
         return SuspendOrResumeWeb();
+    }
+    private async void ToggleCanvasFill()
+    {
+        if (Config.CanvasFill) Config.RestoreFromCanvasFill();
+        else
+        {
+            if (Config.Collapsed) await SetCollapsedAsync(false);
+            owner.ClearCanvasFillsExcept(Config);
+            Config.FillCanvas(owner.WidgetCanvas.ActualWidth, owner.WidgetCanvas.ActualHeight);
+        }
+        ApplyCollapsed();
+        SyncFillChrome();
+        owner.ArrangeCards();
+        owner.BringCardToFront(this);
+        owner.SaveState();
+    }
+    internal void ToggleCanvasFillForDiagnostics() => ToggleCanvasFill();
+    internal void SetCanvasFill(bool fill)
+    {
+        if (fill)
+        {
+            if (Config.Collapsed) Config.Collapsed = false;
+            owner.ClearCanvasFillsExcept(Config);
+            double width = owner.WidgetCanvas.ActualWidth > 0 ? owner.WidgetCanvas.ActualWidth : 720;
+            double height = owner.WidgetCanvas.ActualHeight > 0 ? owner.WidgetCanvas.ActualHeight : 720;
+            Config.FillCanvas(width, height);
+        }
+        else if (Config.CanvasFill) Config.RestoreFromCanvasFill();
+        ApplyCollapsed();
+        SyncFillChrome();
+        owner.ArrangeCards();
+        if (fill) owner.BringCardToFront(this);
+        owner.AgentCreatedWidgetThisTurn = false;
+        owner.SaveState();
+    }
+    internal void SyncFillChrome()
+    {
+        fillButton.Content = Config.CanvasFill ? ChromeIcon.Restore() : ChromeIcon.Expand();
+        fillButton.ToolTip = L.T(Config.CanvasFill ? "widgets.canvasRestore" : "widgets.canvasFill");
+    }
+
+    internal void SetFillPeerHidden(bool hide)
+    {
+        fillPeerHidden = hide;
+        if (hide)
+        {
+            if (Visibility == Visibility.Visible) Visibility = Visibility.Hidden;
+            ObscureNative(true);
+        }
+        else
+        {
+            if (Visibility == Visibility.Hidden) Visibility = Visibility.Visible;
+            ObscureNative(false);
+        }
+    }
+
+    private void ObscureNative(bool obscure)
+    {
+        var visibility = obscure ? Visibility.Collapsed : Visibility.Visible;
+        if (host is not null) host.Visibility = visibility;
+        if (web is not null) web.Visibility = visibility;
     }
     private async Task SuspendOrResumeWeb()
     {
@@ -399,7 +521,9 @@ public sealed class WidgetCard : Border
         Config.Width = Math.Clamp(width, 160, 2400);
         Config.Height = Math.Clamp(height, 42, 2400);
         Config.Collapsed = false;
+        Config.CanvasFill = false;
         ApplyCollapsed();
+        SyncFillChrome();
         owner.ArrangeCards();
         owner.SaveState();
     }
@@ -423,16 +547,17 @@ public sealed class WidgetCard : Border
         body.Visibility = Config.Collapsed ? Visibility.Collapsed : Visibility.Visible;
         handles.Visibility = Config.Collapsed ? Visibility.Collapsed : Visibility.Visible;
         shell.RowDefinitions[1].Height = Config.Collapsed ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-        if (Config.Collapsed) Height = 42;
+        if (Config.Collapsed) Height = 50;
     }
     private async void Options()
     {
-        // A note has nothing to configure; its ⋯ opens every note ever written, closed ones included.
+        // A note has nothing to configure; right-click opens every note ever written, closed ones included.
         if (Config.Kind == "notes") { NotesHistory.Show(owner, Config.Id); return; }
         var options = Config.Kind == "window" ? new[] { "Renombrar", "Recortar barras superior / inferior", "Liberar ventana", "Conectar otra ventana" }
             : Config.Kind == "web" ? [L.T("widgets.menuRename"), L.T("widgets.menuChangeUrl"), L.T("widgets.menuReload"), Config.KeepAlive ? L.T("widgets.menuAllowSleep") : L.T("widgets.menuKeepAlive")]
             : Config.Kind == "stats" ? [L.T("widgets.menuRename"), L.T("widgets.menuGoal", owner.Settings.DailyGoalMinutes)]
-            : Config.Kind == "finance" ? [L.T("widgets.menuRename"), L.T("finance.currency")]
+            : Config.Kind == "memento" ? [L.T("widgets.menuRename"), L.T("memento.menuBirth"), L.T("memento.menuExpectancy"), L.T("memento.menuSync")]
+            : Config.Kind == "finance" ? [L.T("widgets.menuRename"), L.T("finance.currency"), L.T("finance.rateTitle")]
             : [L.T("widgets.menuRename")];
         var choice = Dialogs.Choose(owner, "OPCIONES DEL WIDGET", options);
         if (choice == 0)
@@ -442,11 +567,39 @@ public sealed class WidgetCard : Border
         }
         else if (Config.Kind == "finance")
         {
+            var ledger = FinanceStore.For(owner.Store);
             if (choice == 1)
             {
-                var ledger = FinanceStore.For(owner.Store);
-                var code = Dialogs.Prompt(owner, L.T("finance.currency"), L.T("finance.currencyLabel"), ledger.Book.Currency);
-                if (!string.IsNullOrWhiteSpace(code)) ledger.SetCurrency(code);
+                var pick = Dialogs.Choose(owner, L.T("finance.currency"), [MoneyFx.Usd, MoneyFx.Mxn]);
+                if (pick >= 0) ledger.SetCurrency(pick == 0 ? MoneyFx.Usd : MoneyFx.Mxn);
+            }
+            else if (choice == 2)
+            {
+                var typed = Dialogs.Prompt(owner, L.T("finance.rateTitle"), L.T("finance.rateLabel"), ledger.Book.UsdToMxn.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture));
+                if (typed is not null && decimal.TryParse(typed.Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var rate) && rate > 0)
+                    ledger.SetRate(rate, true);
+            }
+        }
+        else if (Config.Kind == "memento")
+        {
+            var data = MementoMoriCard.Read(Config);
+            if (choice == 1) PromptMementoBirth(data);
+            else if (choice == 2)
+            {
+                var typed = Dialogs.Prompt(owner, L.T("memento.expectancyTitle"), L.T("memento.expectancyLabel"), data.ExpectancyYears.ToString());
+                if (int.TryParse(typed, out int years))
+                {
+                    data.ExpectancyYears = Math.Clamp(years, 40, 100);
+                    MementoMoriCard.Write(Config, data);
+                    Refresh();
+                    owner.Status(L.T("memento.expectancySet", data.ExpectancyYears));
+                }
+            }
+            else if (choice == 3)
+            {
+                MementoMoriCard.SyncToToday(owner, Config);
+                Refresh();
+                owner.Status(L.T("memento.synced"));
             }
         }
         else if (Config.Kind == "stats")
@@ -470,7 +623,7 @@ public sealed class WidgetCard : Border
                 if (bottom is not null && double.TryParse(bottom, out double b)) host.CropBottom = Math.Clamp(b, 0, 200);
                 host.Resize();
             }
-            else if (choice == 2) { host?.Detach(); host?.Dispose(); host = null; body.Children.Clear(); BuildWindow(); }
+            else if (choice == 2) { host?.Detach(); host?.Dispose(); host = null; body.Children.Clear(); BuildWindow(); owner.NotifyNativeSurfaceChanged(); }
             else if (choice == 3) { var candidate = Dialogs.PickWindow(owner); if (candidate is not null) await Attach(candidate.Handle); }
         }
         else if (Config.Kind == "web")
@@ -493,19 +646,73 @@ public sealed class WidgetCard : Border
     }
     public void Refresh()
     {
-        if (host is not null && !host.IsConnecting && !host.Alive) { host.Dispose(); host = null; body.Children.Clear(); BuildWindow(); owner.Status(L.T("widgets.windowClosed")); }
-        if (Config.Kind != "stats") return;
-        double statsWidth = body.ActualWidth > 4 ? body.ActualWidth : Math.Max(120, Config.Width - 22);
-        double statsHeight = body.ActualHeight > 4 ? body.ActualHeight : Math.Max(60, Config.Height - 46);
-        statsLayoutKey = FocusCard.LayoutKey(statsWidth, statsHeight);
+        if (host is not null && !host.IsConnecting && !host.Alive)
+        {
+            host.Dispose(); host = null; body.Children.Clear(); BuildWindow();
+            owner.NotifyNativeSurfaceChanged();
+            owner.Status(L.T("widgets.windowClosed"));
+        }
+        if (Config.Kind == "stats")
+        {
+            double statsWidth = body.ActualWidth > 4 ? body.ActualWidth : Math.Max(120, Config.Width - 22);
+            double statsHeight = body.ActualHeight > 4 ? body.ActualHeight : Math.Max(60, Config.Height - 46);
+            statsLayoutKey = FocusCard.LayoutKey(statsWidth, statsHeight);
+            body.Children.Clear();
+            body.Children.Add(FocusCard.Build(owner, statsWidth, statsHeight));
+            return;
+        }
+        if (Config.Kind != "memento") return;
+        double width = body.ActualWidth > 4 ? body.ActualWidth : Math.Max(120, Config.Width - 22);
+        double height = body.ActualHeight > 4 ? body.ActualHeight : Math.Max(60, Config.Height - 46);
+        mementoLayoutKey = MementoMoriCard.LayoutKey(width, height);
         body.Children.Clear();
-        body.Children.Add(FocusCard.Build(owner, statsWidth, statsHeight));
+        body.Children.Add(MementoMoriCard.Build(owner, Config, width, height));
     }
+
+    internal bool PromptMementoBirth(MementoMoriCard.Data? existing = null)
+    {
+        var data = existing ?? MementoMoriCard.Read(Config);
+        var typed = Dialogs.Prompt(owner, L.T("memento.birthTitle"), L.T("memento.birthLabel"), data.BirthDate ?? "");
+        if (typed is null) return false;
+        if (!MementoMoriCard.TryParseBirth(typed, out var birth))
+        {
+            owner.Status(L.T("memento.birthInvalid"));
+            return false;
+        }
+        data.BirthDate = birth.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        MementoMoriCard.Write(Config, data);
+        Refresh();
+        owner.Status(L.T("memento.birthSet", data.BirthDate));
+        return true;
+    }
+
     private int statsLayoutKey = -1;
+    private int mementoLayoutKey = -1;
+    internal nint CloseEmbeddedWindow()
+    {
+        nint hwnd = ForeignHandle;
+        if (host is not null)
+        {
+            hwnd = host.CloseForeignWindow();
+            try { host.Dispose(); } catch { }
+            host = null;
+            body.Children.Clear();
+        }
+        if (web is not null)
+        {
+            web.Dispose();
+            web = null;
+            body.Children.Clear();
+        }
+        owner.NotifyNativeSurfaceChanged();
+        return hwnd;
+    }
+
     public void Release()
     {
         CancelGesture(this, EventArgs.Empty); owner.Deactivated -= CancelGesture;
         host?.Detach(); host?.Dispose(); host = null;
         web?.Dispose(); web = null; released = true;
+        owner.NotifyNativeSurfaceChanged();
     }
 }

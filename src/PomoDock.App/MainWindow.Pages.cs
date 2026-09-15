@@ -150,7 +150,7 @@ public partial class MainWindow
         int? target = FindPageIndex(CurrentPage.Col + dx, CurrentPage.Row + dy);
         if (target is { } index) SwitchWorkspacePage(index);
         else if (CanCreateWorkspacePage(dx, dy)) BeginCarouselTransition(dx, dy, null, true, 0);
-        else Pulse(PageDockSurface);
+        else PulsePageChrome();
     }
 
     private bool AddBlankWorkspacePage()
@@ -165,7 +165,7 @@ public partial class MainWindow
         if (!CanCreateWorkspacePage(1, 0))
         {
             Status(L.T("pages.lastAlreadyEmpty"));
-            Pulse(PageDockSurface);
+            PulsePageChrome();
             return false;
         }
         BeginCarouselTransition(1, 0, null, true, 0);
@@ -223,7 +223,7 @@ public partial class MainWindow
         if (Settings.WorkspacePages.Count <= 1)
         {
             Status(L.T("pages.cannotDeleteOnly"));
-            Pulse(PageDockSurface);
+            PulsePageChrome();
             return;
         }
         var page = Settings.WorkspacePages[index];
@@ -369,6 +369,11 @@ public partial class MainWindow
             HideOverlay(card);
             card.SetCarouselTransition(true);
         }
+        if (agentCard is not null)
+        {
+            HideInteractionOverlay(agentCard);
+            HideOverlay(agentCard);
+        }
         pageTransitioning = true;
         swipeDx = dx;
         swipeDy = dy;
@@ -421,6 +426,7 @@ public partial class MainWindow
         UpdatePageNavigation();
         SaveState();
         foreach (var card in cards) ShowInteractionOverlay(card);
+        SyncAgentAirspace();
         UpdateOverlayPositions();
     }
 
@@ -493,10 +499,24 @@ public partial class MainWindow
         // Same rules as ArrangeTimerWidget, so the clock lands exactly where it slid to.
         double width = Math.Max(1, PagePreviewArea.Width);
         double height = Math.Max(1, PagePreviewArea.Height);
-        double frameWidth = Math.Clamp(timer.Width > 0 ? timer.Width : Math.Min(560, width), 360, Math.Max(360, width));
-        double frameHeight = Math.Clamp(timer.Height > 0 ? timer.Height : Math.Min(360, height), 300, Math.Max(300, height));
-        double x = customized ? timer.X : 12;
-        double y = customized ? timer.Y : Settings.TimerAtBottom ? Math.Max(12, height - frameHeight - 12) : 12;
+        double frameWidth;
+        double frameHeight;
+        double x;
+        double y;
+        if (timer.CanvasFill)
+        {
+            frameWidth = width;
+            frameHeight = height;
+            x = 0;
+            y = 0;
+        }
+        else
+        {
+            frameWidth = Math.Clamp(timer.Width > 0 ? timer.Width : Math.Min(560, width), 360, Math.Max(360, width));
+            frameHeight = Math.Clamp(timer.Height > 0 ? timer.Height : Math.Min(360, height), 300, Math.Max(300, height));
+            x = customized ? timer.X : 12;
+            y = customized ? timer.Y : Settings.TimerAtBottom ? Math.Max(12, height - frameHeight - 12) : 12;
+        }
         if (WidgetArea.Children.Contains(TimerFrame)) WidgetArea.Children.Remove(TimerFrame);
         if (!PagePreviewArea.Children.Contains(TimerFrame)) PagePreviewArea.Children.Add(TimerFrame);
         TimerFrame.Visibility = Visibility.Visible;
@@ -581,7 +601,7 @@ public partial class MainWindow
     private void PageSwipePollTick(object? sender, EventArgs e)
     {
         bool down = (Win32.GetAsyncKeyState(0x01) & 0x8000) != 0;
-        if (!workspacePagesLoaded || exiting || WindowState == WindowState.Minimized) return;
+        if (!workspacePagesLoaded || exiting || WindowState == WindowState.Minimized || pageMapOpen) return;
         if (IsWorkspaceNavigationBlocked)
         {
             navigationWasBlocked = true;
@@ -640,8 +660,53 @@ public partial class MainWindow
 
     private bool CanBeginSwipe(Point point)
     {
-        if (IsWorkspaceNavigationBlocked || pageTransitioning || timerResizing || cards.Any(card => card.IsGestureActive)) return false;
-        return !IsInteractiveSwipeSource(WidgetArea.InputHitTest(point) as DependencyObject);
+        if (IsWorkspaceNavigationBlocked || pageMapOpen || pageTransitioning || timerResizing || cards.Any(card => card.IsGestureActive)) return false;
+        // Airspace popups (notes lifted above an embedded HWND, timer, …) live outside WidgetArea,
+        // so InputHitTest alone thinks that space is empty canvas and steals text-selection drags
+        // as page swipes. Bounds of those floating cards must block swipe too.
+        // Do NOT gate on Keyboard.FocusedElement: a note keeps caret focus after typing, and that
+        // would freeze page swipes everywhere until focus is cleared somehow.
+        if (IsPointerOverFloatingSurface(point)) return false;
+        Point areaPoint = ToWidgetArea(point);
+        return !IsInteractiveSwipeSource(WidgetArea.InputHitTest(areaPoint) as DependencyObject);
+    }
+
+    /// <summary>
+    /// True when the canvas pointer sits over a card (or the timer) that was reparented into a
+    /// Popup HWND to clear native airspace — those surfaces are invisible to WidgetArea hit-tests.
+    /// </summary>
+    private bool IsPointerOverFloatingSurface(Point carouselPoint)
+    {
+        Point area = ToWidgetArea(carouselPoint);
+        foreach (var pair in overlayCards)
+        {
+            if (!pair.Value.IsOpen) continue;
+            var card = pair.Key;
+            double x = Canvas.GetLeft(card), y = Canvas.GetTop(card);
+            double width = card.ActualWidth > 0 ? card.ActualWidth : card.Width;
+            double height = card.ActualHeight > 0 ? card.ActualHeight : card.Height;
+            if (area.X >= x && area.X < x + width && area.Y >= y && area.Y < y + height)
+                return true;
+        }
+        if (timerOverlay is { IsOpen: true })
+        {
+            double x = Canvas.GetLeft(TimerFrame), y = Canvas.GetTop(TimerFrame);
+            double width = TimerFrame.ActualWidth > 0 ? TimerFrame.ActualWidth : TimerFrame.Width;
+            double height = TimerFrame.ActualHeight > 0 ? TimerFrame.ActualHeight : TimerFrame.Height;
+            if (area.X >= x && area.X < x + width && area.Y >= y && area.Y < y + height)
+                return true;
+        }
+        return false;
+    }
+
+    private Point ToWidgetArea(Point carouselPoint)
+    {
+        try
+        {
+            var screen = CarouselViewport.PointToScreen(carouselPoint);
+            return WidgetArea.PointFromScreen(screen);
+        }
+        catch (InvalidOperationException) { return carouselPoint; }
     }
 
     /// <summary>
@@ -663,6 +728,14 @@ public partial class MainWindow
 
     private void UpdatePointerSwipe(Point point)
     {
+        // Only abort when the pointer is still over a floating card — never because a note
+        // merely kept keyboard focus after the user typed.
+        if (IsPointerOverFloatingSurface(point))
+        {
+            swipeCandidate = false;
+            if (swipeActive) EndPointerSwipe();
+            return;
+        }
         double dx = point.X - swipeStart.X;
         double dy = point.Y - swipeStart.Y;
         if (!swipeActive)
@@ -790,6 +863,7 @@ public partial class MainWindow
             card.SetCarouselTransition(false);
             ShowInteractionOverlay(card);
         }
+        SyncAgentAirspace();
         UpdateOverlayPositions();
     }
 
@@ -811,6 +885,11 @@ public partial class MainWindow
     {
         var animation = new DoubleAnimation(1, .45, TimeSpan.FromMilliseconds(90)) { AutoReverse = true, RepeatBehavior = new RepeatBehavior(2) };
         element.BeginAnimation(OpacityProperty, animation);
+    }
+
+    private void PulsePageChrome()
+    {
+        if (PageMapButton is not null) Pulse(PageMapButton);
     }
 
     private void UpdatePageNavigation()
@@ -892,6 +971,7 @@ public partial class MainWindow
         ToolTipService.SetShowOnDisabled(UpPageButton, true);
         ToolTipService.SetShowOnDisabled(DownPageButton, true);
         UpdatePageMeta();
+        if (pageMapOpen) RenderPageMap();
     }
 
     private void UpdatePageMeta()
@@ -942,7 +1022,7 @@ public partial class MainWindow
             if (Settings.WorkspacePages[index].HasContent) continue;
             DeleteWorkspacePage(index);
         }
-        Pulse(PageDockSurface);
+        PulsePageChrome();
         Status(L.T("agent.deletedEmptyPages", empty.Count));
         return AgentResult(true, L.T("agent.deletedEmptyPages", empty.Count));
     }
@@ -1004,7 +1084,7 @@ public partial class MainWindow
         if (index is null)
             return AgentResult(false, EsPages() ? "No encontré esa página." : "Page not found.");
         if (index.Value != currentPageIndex) JumpToWorkspacePage(index.Value);
-        Pulse(PageDockSurface);
+        PulsePageChrome();
         var page = CurrentPage;
         bool home = Settings.HomePageId == page.Id;
         return AgentResult(true, EsPages()
@@ -1161,7 +1241,7 @@ public partial class MainWindow
         if (CurrentTimerWidget is null)
             return AgentResult(false, EsPages() ? "Esa página no tiene temporizador." : "That page has no timer.");
         RemoveTimerWidget();
-        Pulse(PageDockSurface);
+        PulsePageChrome();
         return AgentResult(true, EsPages() ? $"Quité el temporizador de la página {currentPageIndex + 1}." : $"Removed the timer from page {currentPageIndex + 1}.");
     }
 
@@ -1180,6 +1260,7 @@ public partial class MainWindow
             "agenda" or "calendar" => "calendar",
             "finanzas" or "finance" => "finance",
             "stats" or "enfoque" => "stats",
+            "memento" or "memento_mori" or "mementomori" or "mortalidad" => "memento",
             _ => kind
         };
         var card = cards.FirstOrDefault(item =>
@@ -1193,6 +1274,7 @@ public partial class MainWindow
                 "agenda" or "calendar" => "calendar",
                 "finanzas" or "finance" => "finance",
                 "stats" or "enfoque" => "stats",
+                "memento" or "memento_mori" or "mementomori" or "mortalidad" => "memento",
                 _ => title
             }, StringComparison.OrdinalIgnoreCase)));
         if (card is null) return AgentResult(false, L.T("agent.widgetMissing"));
@@ -1237,25 +1319,151 @@ public partial class MainWindow
     {
         SyncWorkspaceForAgent();
         return cards.Where(card => card.Config.Kind != "agent")
-            .Select(card => (object)new { card.Config.Id, card.Config.Kind, card.Config.Title })
+            .Select(card => (object)new
+            {
+                card.Config.Id,
+                card.Config.Kind,
+                card.Config.Title,
+                app = card.Config.Kind == "window" ? card.Config.Value : "",
+                url = card.Config.Kind == "web" ? card.CurrentWebUrl : "",
+                window_title = card.LiveWindowTitle,
+                youtube = card.LooksLikeYouTube(),
+                browser = card.IsEmbeddedBrowser,
+                href = card.Config.Href
+            })
             .ToList();
     }
 
     internal string DescribeCurrentScreenForAgent()
     {
         SyncWorkspaceForAgent();
-        var widgets = cards.Where(card => card.Config.Kind != "agent")
-            .Select(card => $"{card.Config.Kind}:{card.Config.Title}")
-            .ToList();
+        var widgets = cards.Where(card => card.Config.Kind != "agent").Select(DescribeWidgetLine).ToList();
         string list = widgets.Count == 0
             ? (EsPages() ? "(ninguno)" : "(none)")
-            : string.Join(", ", widgets);
+            : string.Join("; ", widgets);
         string timer = CurrentTimerWidget is null
             ? (EsPages() ? "no" : "no")
             : (EsPages() ? "sí" : "yes");
-        return EsPages()
+        bool youtube = cards.Any(card => card.LooksLikeYouTube());
+        bool browser = cards.Any(card => card.IsEmbeddedBrowser);
+        string head = EsPages()
             ? $"Página actual {currentPageIndex + 1}/{Settings.WorkspacePages.Count} «{CurrentPage.Name}»{(Settings.HomePageId == CurrentPage.Id ? " [casa]" : "")}. Widgets visibles ahora: {list}. Timer: {timer}."
             : $"Current page {currentPageIndex + 1}/{Settings.WorkspacePages.Count} “{CurrentPage.Name}”{(Settings.HomePageId == CurrentPage.Id ? " [home]" : "")}. Widgets visible now: {list}. Timer: {timer}.";
+        if (youtube)
+            return head + (EsPages()
+                ? " Hay YouTube en esta pantalla: «cambia/reproduce la canción» usa workspace.play_youtube. Esa tool cierra la ventana incrustada y su widget, y abre Brave de nuevo con la canción pedida."
+                : " YouTube is on this screen: play/change song uses workspace.play_youtube. That tool closes the embedded window and its widget, then opens Brave again with the requested song.");
+        if (browser)
+            return head + (EsPages()
+                ? " Hay un navegador incrustado. workspace.play_youtube cierra esa ventana y su widget, y abre Brave con el primer resultado."
+                : " An embedded browser is on this screen. workspace.play_youtube closes that window and its widget, then opens Brave with the first result.");
+        return head + (EsPages()
+            ? " No hay YouTube ni navegador en esta pantalla. Si piden reproducir una canción, workspace.play_youtube abre Brave e incrusta el primer resultado (fill:true si piden pantalla del widget)."
+            : " No YouTube or browser on this screen. If they ask to play a song, workspace.play_youtube opens Brave and embeds the first result (fill:true if they want canvas fill).");
+    }
+
+    private string DescribeWidgetLine(WidgetCard card)
+    {
+        string live = card.LiveWindowTitle;
+        string url = card.Config.Kind == "web" ? card.CurrentWebUrl : card.Config.Href;
+        string youtube = card.LooksLikeYouTube() ? (EsPages() ? " youtube=sí" : " youtube=yes") : (EsPages() ? " youtube=no" : " youtube=no");
+        string browser = card.IsEmbeddedBrowser ? (EsPages() ? " browser=sí" : " browser=yes") : "";
+        string extra = live.Length > 0 ? $" título de ventana: «{live}»" : (url.Length > 0 ? $" url={url}" : "");
+        string app = card.Config.Kind == "window" && card.Config.Value.Length > 0 ? $" [{card.Config.Value}]" : "";
+        return $"{card.Config.Kind}:{card.Config.Title}{app}{extra}{browser}{youtube}";
+    }
+
+    internal WidgetCard? FindYouTubeWidgetOnCurrentScreen()
+    {
+        SyncWorkspaceForAgent();
+        return cards.FirstOrDefault(card => card.Config.Kind != "agent" && card.LooksLikeYouTube())
+            ?? cards.FirstOrDefault(card => card.IsEmbeddedBrowser && card.HasNativeSurface);
+    }
+
+    internal RetiredPlayback RetirePlaybackWidgets()
+    {
+        SyncWorkspaceForAgent();
+        var victims = cards.Where(card => card.Config.Kind != "agent" && card.LooksLikeYouTube()).ToList();
+        if (victims.Count == 0)
+        {
+            var fallback = FindYouTubeWidgetOnCurrentScreen();
+            if (fallback is not null) victims.Add(fallback);
+        }
+        if (victims.Count == 0) return RetiredPlayback.Empty;
+        bool fill = victims.Any(card => card.Config.CanvasFill);
+        string app = victims.Select(card => card.Config.Value).FirstOrDefault(value => value.Length > 0) ?? "";
+        var handles = new List<nint>();
+        foreach (var card in victims)
+        {
+            nint hwnd = card.CloseEmbeddedWindow();
+            if (hwnd != 0) handles.Add(hwnd);
+            RemoveCard(card);
+        }
+        return new RetiredPlayback(true, fill, app, handles.ToArray());
+    }
+
+    internal static async Task WaitUntilWindowsGone(IReadOnlyList<nint> hwnds, CancellationToken cancellationToken)
+    {
+        if (hwnds.Count == 0) return;
+        var deadline = DateTime.UtcNow.AddSeconds(2.5);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (hwnds.All(hwnd => hwnd == 0 || !Win32.IsWindow(hwnd))) return;
+            await Task.Delay(80, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    internal WidgetCard? FindUrlWidgetOnCurrentScreen()
+    {
+        SyncWorkspaceForAgent();
+        return FindYouTubeWidgetOnCurrentScreen()
+            ?? cards.FirstOrDefault(item => item.Config.Kind == "web")
+            ?? cards.FirstOrDefault(item => item.Config.Kind == "window" && item.IsExternalAttached);
+    }
+
+    internal async Task<AgentToolResult> NavigateWidgetUrlAsync(WidgetCard card, string url, CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))
+            return AgentResult(false, EsPages() ? "La URL debe ser http(s)." : "URL must be http(s).");
+        string absolute = uri.AbsoluteUri;
+        if (card.Config.Kind == "web")
+        {
+            bool ok = false;
+            await Dispatcher.InvokeAsync(() => ok = card.SetWebUrl(absolute));
+            return ok
+                ? AgentResult(true, EsPages() ? $"URL: {card.Config.Value}" : $"URL set: {card.Config.Value}")
+                : AgentResult(false, EsPages() ? "La URL debe ser https." : "URL must be https.");
+        }
+        if (card.Config.Kind != "window" || !card.IsExternalAttached)
+            return AgentResult(false, EsPages() ? "Ese widget no es una ventana incrustada." : "That widget is not an embedded window.");
+        using (PauseOverlayLift())
+        {
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (agentCard is { Visibility: Visibility.Visible })
+                {
+                    HideInteractionOverlay(agentCard);
+                    HideOverlay(agentCard);
+                }
+                BringCardToFront(card);
+                card.BringExternalToFront();
+            });
+            card.RememberHref(absolute);
+            await WindowInput.ReplaceTabWithUrlAsync(Dispatcher, card.ForeignHandle, absolute, cancellationToken);
+            if (YouTubeWatch.IsWatch(absolute) || YouTubeWatch.IsSearchResults(absolute))
+            {
+                try
+                {
+                    await YouTubePlay.ActivateAsync(Dispatcher, card.ForeignHandle, YouTubeWatch.IsWatch(absolute), cancellationToken);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch { }
+            }
+        }
+        await Dispatcher.InvokeAsync(LiftOverlaysAboveNatives);
+        return AgentResult(true, EsPages()
+            ? $"Cambié la pestaña de «{card.Config.Title}» a la canción pedida."
+            : $"Replaced the tab in “{card.Config.Title}” with the requested link.");
     }
 
     internal AgentToolResult RenameWidgetFromAgent(JsonElement args)
@@ -1284,8 +1492,49 @@ public partial class MainWindow
             : (EsPages() ? $"Expandí «{card.Config.Title}»." : $"Expanded “{card.Config.Title}”."));
     }
 
+    internal AgentToolResult FillWidgetFromAgent(JsonElement args)
+    {
+        bool fill = true;
+        if (args.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var key in new[] { "fill", "on", "fullscreen", "canvas_fill" })
+            {
+                if (args.TryGetProperty(key, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                {
+                    fill = value.GetBoolean();
+                    break;
+                }
+            }
+        }
+        string kind = TextArg(args, "kind").ToLowerInvariant();
+        string title = TextArg(args, "title");
+        if (kind is "timer" or "pomodoro" or "temporizador"
+            || title.Contains("pomodoro", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("temporizador", StringComparison.OrdinalIgnoreCase))
+        {
+            if (CurrentTimerWidget is null) return AgentResult(false, EsPages() ? "No hay pomodoro en esta página." : "No pomodoro on this page.");
+            SetTimerCanvasFill(fill);
+            AgentCreatedWidgetThisTurn = false;
+            return AgentResult(true, fill
+                ? (EsPages() ? "Pomodoro a pantalla de lienzo." : "Pomodoro filled the canvas.")
+                : (EsPages() ? "Restauré el pomodoro." : "Restored the pomodoro."));
+        }
+        var card = FindAgentCard(args)
+            ?? (LastCreatedWidgetId is { } id ? cards.FirstOrDefault(item => item.Config.Id == id) : null)
+            ?? cards.LastOrDefault(item => item.Config.Kind is "window" or "web")
+            ?? cards.LastOrDefault();
+        if (card is null) return AgentResult(false, L.T("agent.widgetMissing"));
+        card.SetCanvasFill(fill);
+        AgentCreatedWidgetThisTurn = false;
+        return AgentResult(true, fill
+            ? (EsPages() ? $"«{card.Config.Title}» a pantalla de lienzo." : $"“{card.Config.Title}” filled the canvas.")
+            : (EsPages() ? $"Restauré «{card.Config.Title}»." : $"Restored “{card.Config.Title}”."));
+    }
+
     internal AgentToolResult ResizeWidgetFromAgent(JsonElement args)
     {
+        if (IsTimerAgentTarget(args))
+            return ResizeTimerFromAgent(args);
         var card = FindAgentCard(args);
         if (card is null) return AgentResult(false, L.T("agent.widgetMissing"));
         double width = card.Config.Width, height = card.Config.Height;
@@ -1298,6 +1547,112 @@ public partial class MainWindow
         return AgentResult(true, EsPages()
             ? $"Redimensioné «{card.Config.Title}» a {card.Config.Width:0}×{card.Config.Height:0}."
             : $"Resized “{card.Config.Title}” to {card.Config.Width:0}×{card.Config.Height:0}.");
+    }
+
+    internal bool IsTimerAgentTarget(JsonElement args)
+    {
+        string kind = TextArg(args, "kind").ToLowerInvariant();
+        string title = TextArg(args, "title");
+        if (kind is "timer" or "pomodoro" or "temporizador") return true;
+        if (title.Length == 0) return false;
+        bool named = title.Contains("pomodoro", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("temporizador", StringComparison.OrdinalIgnoreCase)
+            || title.Equals("timer", StringComparison.OrdinalIgnoreCase);
+        if (!named) return false;
+        return !Settings.WorkspacePages.SelectMany(page => page.Widgets)
+            .Any(widget => widget.Title.Contains(title, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private bool EnsureTimerOnCurrentPage()
+    {
+        if (CurrentTimerWidget is not null) return true;
+        int page = Settings.WorkspacePages.FindIndex(item => item.TimerWidget is not null);
+        if (page < 0) return false;
+        if (page != currentPageIndex) JumpToWorkspacePage(page);
+        return CurrentTimerWidget is not null;
+    }
+
+    internal AgentToolResult MoveTimerFromAgent(JsonElement args)
+    {
+        if (!EnsureTimerOnCurrentPage())
+            return AgentResult(false, EsPages() ? "No hay pomodoro en el tablero." : "No pomodoro on the board.");
+        var config = CurrentTimerWidget!;
+        double previousX = config.X, previousY = config.Y;
+        if (args.TryGetProperty("x", out var x) && x.TryGetDouble(out double left)) config.X = left;
+        if (args.TryGetProperty("y", out var y) && y.TryGetDouble(out double top)) config.Y = top;
+        CurrentPage.TimerPositionCustomized = true;
+        ArrangeTimerWidget();
+        SaveState();
+        return ResultTimerMove(config, previousX, previousY);
+    }
+
+    private AgentToolResult ResultTimerMove(WidgetConfig config, double previousX, double previousY) =>
+        new(true,
+            EsPages() ? $"Pomodoro movido a {config.X:0},{config.Y:0}." : $"Pomodoro moved to {config.X:0},{config.Y:0}.",
+            System.Text.Json.JsonSerializer.Serialize(new { success = true, changed = true, summary = $"Pomodoro movido: {config.X:0},{config.Y:0}", data = new { config.Id, config.X, config.Y } }),
+            true, "workspace.move_widget",
+            System.Text.Json.JsonSerializer.Serialize(new { kind = "timer", x = previousX, y = previousY }));
+
+    internal AgentToolResult ResizeTimerFromAgent(JsonElement args)
+    {
+        if (!EnsureTimerOnCurrentPage())
+            return AgentResult(false, EsPages() ? "No hay pomodoro en el tablero." : "No pomodoro on the board.");
+        var config = CurrentTimerWidget!;
+        double previousW = config.Width, previousH = config.Height;
+        if (args.TryGetProperty("width", out var w) && w.TryGetDouble(out double width)) config.Width = width;
+        if (args.TryGetProperty("height", out var h) && h.TryGetDouble(out double height)) config.Height = height;
+        CurrentPage.TimerPositionCustomized = true;
+        ArrangeTimerWidget();
+        SaveState();
+        return new AgentToolResult(true,
+            EsPages() ? $"Pomodoro a {config.Width:0}×{config.Height:0}." : $"Pomodoro sized {config.Width:0}×{config.Height:0}.",
+            System.Text.Json.JsonSerializer.Serialize(new { success = true, changed = true, summary = $"Pomodoro {config.Width:0}×{config.Height:0}", data = new { config.Id, config.Width, config.Height } }),
+            true, "workspace.resize_widget",
+            System.Text.Json.JsonSerializer.Serialize(new { kind = "timer", width = previousW, height = previousH }));
+    }
+
+    internal AgentToolResult SetTodoFilterFromAgent(JsonElement args)
+    {
+        string filter = TextArg(args, "filter");
+        if (filter.Length == 0) filter = TextArg(args, "view");
+        var card = FindAgentCard(args) ?? cards.FirstOrDefault(item => item.Config.Kind == "todo");
+        if (card is null)
+            return AgentResult(false, EsPages() ? "No hay widget de tareas en esta página." : "No to-do widget on this page.");
+        if (!card.SetTodoFilter(filter))
+            return AgentResult(false, EsPages() ? "Filtro inválido. Usa all, open, today o done." : "Invalid filter. Use all, open, today, or done.");
+        return AgentResult(true, EsPages() ? $"Filtro de tareas: {filter}." : $"To-do filter: {filter}.");
+    }
+
+    internal AgentToolResult NavigateHabitsFromAgent(JsonElement args)
+    {
+        string to = TextArg(args, "to");
+        if (to.Length == 0) to = TextArg(args, "when");
+        if (to.Length == 0) to = TextArg(args, "direction");
+        var card = FindAgentCard(args) ?? cards.FirstOrDefault(item => item.Config.Kind == "habits");
+        if (card is null)
+            return AgentResult(false, EsPages() ? "No hay widget de hábitos en esta página." : "No habits widget on this page.");
+        if (!card.NavigateHabits(to))
+            return AgentResult(false, EsPages() ? "Destino inválido. Usa prev, next o today." : "Invalid target. Use prev, next, or today.");
+        return AgentResult(true, EsPages() ? $"Hábitos en: {to}." : $"Habits at: {to}.");
+    }
+
+    internal AgentToolResult SetFinanceViewFromAgent(JsonElement args)
+    {
+        string span = TextArg(args, "span");
+        if (span.Length == 0) span = TextArg(args, "period");
+        string tab = TextArg(args, "tab");
+        if (tab.Length == 0) tab = TextArg(args, "view");
+        string to = TextArg(args, "to");
+        if (to.Length == 0) to = TextArg(args, "when");
+        if (to.Length == 0) to = TextArg(args, "direction");
+        var card = FindAgentCard(args) ?? cards.FirstOrDefault(item => item.Config.Kind == "finance");
+        if (card is null)
+            return AgentResult(false, EsPages() ? "No hay widget de finanzas en esta página." : "No finance widget on this page.");
+        if (!card.SetFinanceView(span, tab, to))
+            return AgentResult(false, EsPages()
+                ? "Vista inválida. span: week|month|quarter|year. tab: moves|fixed|subs. to: prev|next|today|yyyy-MM."
+                : "Invalid view. span: week|month|quarter|year. tab: moves|fixed|subs. to: prev|next|today|yyyy-MM.");
+        return AgentResult(true, EsPages() ? "Actualicé la vista de finanzas." : "Updated the finance view.");
     }
 
     internal AgentToolResult SetWebUrlFromAgent(JsonElement args)
@@ -1320,13 +1675,25 @@ public partial class MainWindow
 
     internal AgentToolResult FullscreenFromAgent(JsonElement args)
     {
+        string target = TextArg(args, "target").ToLowerInvariant();
+        bool widgetTarget = target is "widget" or "canvas" or "lienzo" or "card";
+        if (args.ValueKind == JsonValueKind.Object)
+        {
+            if (args.TryGetProperty("title", out var titled) && titled.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(titled.GetString()))
+                widgetTarget = true;
+            if (args.TryGetProperty("kind", out var kinded) && kinded.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(kinded.GetString()))
+                widgetTarget = true;
+        }
+        if (widgetTarget || AgentCreatedWidgetThisTurn)
+            return FillWidgetFromAgent(args);
+
         bool? want = null;
         if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("on", out var value)
             && value.ValueKind is JsonValueKind.True or JsonValueKind.False)
             want = value.GetBoolean();
         if (want is null || fullscreen != want.Value) ToggleFullscreen();
         return AgentResult(true, fullscreen
-            ? (EsPages() ? "Pantalla completa activada." : "Fullscreen on.")
+            ? (EsPages() ? "Pantalla completa de PomoDock (F11)." : "PomoDock fullscreen (F11).")
             : (EsPages() ? "Pantalla completa desactivada." : "Fullscreen off."));
     }
 
@@ -1341,6 +1708,7 @@ public partial class MainWindow
             return AgentResult(true, EsPages() ? "Notificación marcada como leída." : "Notification marked read.");
         }
         notifications.MarkAllRead();
+        DismissVisibleAlerts();
         RefreshNotificationChrome();
         return AgentResult(true, EsPages() ? "Notificaciones marcadas como leídas." : "Notifications marked read.");
     }
@@ -1358,6 +1726,14 @@ public partial class MainWindow
         Settings.Layouts.Remove(name);
         SaveState();
         return AgentResult(true, EsPages() ? $"Layout borrado: {name}" : $"Layout deleted: {name}");
+    }
+
+    internal AgentToolResult HideAgentFromAgent()
+    {
+        if (agentCard is null || agentCard.Visibility != Visibility.Visible)
+            return AgentResult(true, EsPages() ? "El chat del agente ya estaba oculto." : "The agent chat was already hidden.");
+        HideAgentWidget();
+        return AgentResult(true, EsPages() ? "Oculté el chat del agente." : "Hid the agent chat.");
     }
 
     internal AgentToolResult OpenPanelFromAgent(JsonElement args)
@@ -1379,18 +1755,35 @@ public partial class MainWindow
                 ShowWorkspaceDialog(new LayoutsWindow(this));
                 return AgentResult(true, EsPages() ? "Abrí layouts." : "Opened layouts.");
             case "report" or "informe" or "historial":
+                if (!BoolArg(args, "open", true))
+                {
+                    HideReportModal();
+                    return AgentResult(true, EsPages() ? "Cerré el informe." : "Closed the report.");
+                }
                 ShowReportModal();
                 return AgentResult(true, EsPages() ? "Abrí el informe." : "Opened the report.");
             case "agent" or "agente":
+                if (!BoolArg(args, "open", true)) return HideAgentFromAgent();
                 ShowAgentWidget();
                 return AgentResult(true, EsPages() ? "Abrí el agente." : "Opened the agent.");
             case "notifications" or "notificaciones" or "inbox":
+                if (!BoolArg(args, "open", true))
+                {
+                    CloseNotificationCenter();
+                    return AgentResult(true, EsPages() ? "Cerré las notificaciones." : "Closed notifications.");
+                }
                 NotificationsPopup.IsOpen = true;
                 return AgentResult(true, EsPages() ? "Abrí las notificaciones." : "Opened notifications.");
+            case "page_map" or "mapa" or "pages" or "map" or "paginas" or "páginas":
+                if (BoolArg(args, "open", true)) ShowPageMap();
+                else HidePageMap();
+                return AgentResult(true, pageMapOpen
+                    ? (EsPages() ? "Abrí el mapa de páginas." : "Opened the page map.")
+                    : (EsPages() ? "Cerré el mapa de páginas." : "Closed the page map."));
             default:
                 return AgentResult(false, EsPages()
-                    ? "Panel desconocido. Usa: settings, tasks, layouts, report, agent, notifications."
-                    : "Unknown panel. Use: settings, tasks, layouts, report, agent, notifications.");
+                    ? "Panel desconocido. Usa: settings, tasks, layouts, report, agent, notifications, page_map. open:false cierra informe, notificaciones, agente o mapa."
+                    : "Unknown panel. Use: settings, tasks, layouts, report, agent, notifications, page_map. open:false closes report, notifications, agent, page_map.");
         }
     }
 
@@ -1521,6 +1914,7 @@ public partial class MainWindow
         if (command is "dismiss" or "read" or "mark_read")
         {
             notifications.MarkAllRead();
+            DismissVisibleAlerts();
             RefreshNotificationChrome();
             return AgentResult(true, EsPages() ? "Notificaciones marcadas como leídas." : "Notifications marked read.");
         }
@@ -1534,7 +1928,7 @@ public partial class MainWindow
         return new AgentToolResult(false, summary, JsonSerializer.Serialize(new { success = true, changed = false, summary, data = items }), true);
     }
 
-    private WidgetCard? FindAgentCard(JsonElement args)
+    internal WidgetCard? FindAgentCard(JsonElement args)
     {
         string title = TextArg(args, "title");
         string kind = TextArg(args, "kind").ToLowerInvariant();
@@ -1546,8 +1940,10 @@ public partial class MainWindow
             "agenda" or "calendar" => "calendar",
             "finanzas" or "finance" => "finance",
             "stats" or "enfoque" => "stats",
+            "memento" or "memento_mori" or "mementomori" or "mortalidad" => "memento",
             "web" or "navegador" => "web",
             "ventana" or "window" => "window",
+            "agent" or "agente" or "chat" => "agent",
             _ => kind
         };
         if (title.Length == 0 && kind.Length == 0) return null;
@@ -1575,6 +1971,11 @@ public partial class MainWindow
             return cards.FirstOrDefault(item => item.Config.Id == match.Id)
                 ?? cards.FirstOrDefault(item => Matches(item.Config));
         }
+
+        if (agentCard is { Visibility: Visibility.Visible } && Matches(agentCard.Config))
+            return agentCard;
+        if (kind == "agent" && agentCard is { Visibility: Visibility.Visible })
+            return agentCard;
 
         return cards.FirstOrDefault(item => Matches(item.Config));
     }

@@ -56,8 +56,14 @@ public static class AgentReply
             : string.Join(". ", visible.Select(receipt => receipt.Summary.Trim().TrimEnd('.'))) + ".";
 
         string message = (planMessage ?? "").Trim();
-        if (visible.Count > 0 && (AsksConfirmation(message) || !LooksHonestlyDone(message)))
+        if (AsksConfirmation(message) && fromReceipts.Length > 0)
             return fromReceipts;
+
+        // Read answers (tables, lists, hour totals) must stay. Replacing them with the one-line
+        // tool summary is why "haz una tabla" used to become "65 sesiones encontradas".
+        bool writes = receipts.Any(receipt => receipt.CanUndo || !AgentCatalog.IsQuery(receipt.Tool));
+        if (!writes && message.Length > 0)
+            return message;
 
         if (LooksHonestlyDone(message))
         {

@@ -122,10 +122,17 @@ internal static class AgentCoreTests
                 var memory = new AgentMemoryStore(store);
                 memory.Book.Remember("Me llamo Cristopher", "identity");
                 memory.Book.Propose("Prefiere sesiones de 50 minutos", "preference");
+                const string taught = "cuando te pida reproducir una canción, busca en Brave y no lo olvides escríbelo en tu memoria";
+                memory.Book.Remember(taught, "preference");
                 memory.Save();
                 using var reopened = new Store(directory);
                 var again = new AgentMemoryStore(reopened);
                 assert(again.Book.Search("Cristopher").Count == 1, "confirmed memory survives reopen");
+                assert(again.Book.HasStandingOrders, "a taught when-then rule is a standing order");
+                assert(again.Book.ContextBlock().Contains("Brave", StringComparison.OrdinalIgnoreCase), "skills are injected in full");
+                var used = again.Book.Items.First(item => item.Content.Contains("Brave")).LastUsedUtc;
+                again.Book.ContextBlock();
+                assert(again.Book.Items.First(item => item.Content.Contains("Brave")).LastUsedUtc == used, "reading memory does not bump last-used");
                 assert(again.Book.Forget("50 minutos"), "forget matches the preference");
                 again.Save();
                 var exported = again.ExportJson();
@@ -206,14 +213,27 @@ internal static class AgentCoreTests
             assert(!AgentIntent.NeedsLocalModel("borra las páginas vacías"), "empty-page cleanup skips the LLM");
             assert(!AgentIntent.NeedsLocalModel("Puedes borrar todas las páginas que no tengan widgets."), "the polite empty-page request skips the LLM");
             assert(AgentCatalog.Exists("workspace.delete_empty_pages") && AgentCatalog.Canonical("delete_widget") == "workspace.remove_widget", "delete_widget maps to remove_widget");
-            assert(AgentCatalog.Exists("workspace.rename_widget") && AgentCatalog.Exists("layouts.save") && AgentCatalog.Exists("app.fullscreen"), "workspace chrome tools exist");
+            assert(AgentCatalog.Canonical("widget.fullscreen") == "workspace.fill_widget"
+                && AgentCatalog.Describe("add_widget", "{\"kind\":\"window\",\"app\":\"brave\",\"fill\":true}").Contains("lienzo", StringComparison.OrdinalIgnoreCase),
+                "canvas fill is a first-class widget action");
             assert(AgentCatalog.Exists("todo.clear_done") && AgentCatalog.Exists("finance.set_currency") && AgentCatalog.Exists("habits.set_target"), "coverage tools exist");
             assert(AgentIntent.TryCreateNote("es una nota color amarillo con los hábitos de hoy", out var noteAsk) && noteAsk.Color == "yellow" && noteAsk.HabitsToday, "yellow note with today's habits");
             assert(!AgentIntent.NeedsLocalModel("es una nota color amarillo con los hábitos de hoy"), "note chores skip the LLM");
             assert(AgentIntent.TryListSounds("muestrame los sonidos disponibles para el enfoque"), "list focus sounds");
             assert(AgentIntent.TrySetSound("usa lluvia para el enfoque", out var soundAsk) && soundAsk.Slot == "ambient" && soundAsk.Query.Contains("lluvia", StringComparison.OrdinalIgnoreCase), "set rain");
+            assert(AgentIntent.TryChangeSong("cambia la canción a amor eterno de natanael cano", out var song) && song.Contains("amor eterno", StringComparison.OrdinalIgnoreCase) && song.Contains("natanael", StringComparison.OrdinalIgnoreCase), "song change");
+            assert(!AgentIntent.TryChangeSong("abre brave en youtube", out _), "opening brave is not a song change");
+            const string skill = "ayúdame a agregarte una habilidad para ti, cuando te diga, reproduce x canción, tu vas a tener que buscarla en una ventana de Brave nueva o en la que esté abierta, y seleccionar el resultado que más se adecue a lo que te pedí por favor no lo olvides escríbelo en tu memoria, abrirás el widget con la ventana de brave en youtube con el video correcto. y ventana en modo completa.. (del widget)";
+            assert(AgentIntent.LooksLikeSkillTeaching(skill), "skill teaching is recognized");
+            assert(!AgentIntent.TryChangeSong(skill, out _), "teaching a play-song skill is not a song change");
+            assert(AgentIntent.TryRemember(skill, out var taught) && taught.Contains("habilidad", StringComparison.OrdinalIgnoreCase), "skill teaching is memory");
+            assert(AgentIntent.GuessMemoryKind(skill) == "skill", "teaching is stored as a skill");
+            assert(AgentIntent.GuessMemoryKind("Recuerda que prefiero sesiones de 50 minutos") == "preference", "a fact stays a preference");
+            assert(AgentCatalog.Exists("app.hide_agent") && AgentCatalog.Canonical("minimize_agent") == "app.hide_agent", "agent can hide its own chat");
+            assert(!AgentIntent.NeedsLocalModel(skill), "skill teaching skips the local model");
+            assert(!AgentIntent.NeedsLocalModel("cambia la canción a pacas de billetes"), "song change skips the LLM");
             assert(AgentIntent.TryRemoveTimer("borra el timer de la pagina 4", out var timerAsk) && timerAsk.Page == 4, "remove timer on page 4");
-            assert(AgentCatalog.Exists("sounds.list") && AgentCatalog.Exists("workspace.remove_timer") && AgentCatalog.Exists("calendar.upcoming"), "new workspace and calendar tools exist");
+            assert(AgentCatalog.Exists("sounds.list") && AgentCatalog.Exists("workspace.remove_timer") && AgentCatalog.Exists("calendar.upcoming") && AgentCatalog.Exists("workspace.play_youtube") && AgentCatalog.Canonical("play_youtube") == "workspace.play_youtube", "workspace and youtube tools exist");
             assert(AgentCatalog.Describe("add_note", "{\"title\":\"Pendientes\",\"color\":\"yellow\",\"text\":\"sacar la basura\"}").Contains("Pendientes"), "plans name the note");
             assert(AgentCatalog.Describe("workspace.delete_empty_pages", "{}").Contains("páginas"), "empty-page plan is explicit");
             assert(AgentIntent.TryCreateNote("Ahora crea una nota de color amarillo", out var yellowNow) && yellowNow.Color == "yellow", "ahora does not hide a yellow note");
@@ -241,6 +261,23 @@ internal static class AgentCoreTests
                 spanish: true);
             assert(afterConfirm.Contains("borraron", StringComparison.OrdinalIgnoreCase), "executed plan speaks the receipt");
             assert(!afterConfirm.Contains("confirm", StringComparison.OrdinalIgnoreCase) && !afterConfirm.Contains("preparado", StringComparison.OrdinalIgnoreCase), "pending-confirm copy never survives execution");
+            var tableKept = AgentReply.After(
+                "65 sesiones · 35.85 h.\nFECHA       INICIO FIN   PROYECTO",
+                [new AgentActionReceipt { Tool = "focus.query_sessions", Summary = "65 sesiones de enfoque encontradas" }],
+                spanish: true);
+            assert(tableKept.Contains("FECHA", StringComparison.Ordinal) && tableKept.Contains("35.85"), "read answers keep the table instead of the tool one-liner");
+            assert(AgentPresent.WantsFocusTable("hazle una tabla", [
+                new AgentChatMessage { Role = "you", Text = "cuanto he trabajado el mes" },
+                new AgentChatMessage { Role = "agent", Text = "Resumen del enfoque", Receipts = [new AgentActionReceipt { Tool = "focus.summarize", Summary = "2151 min" }] }
+            ]), "a table follow-up after a focus question is a table, not a note");
+            string grid = AgentPresent.FormatFocusQuery("""
+                {"success":true,"data":{"totalMatching":2,"returned":2,"totalMinutes":50,"from":"2026-09-01","to":"2026-09-12","sessions":[
+                  {"started":"2026-09-12 05:08:00 +00:00","ended":"2026-09-12 05:33:00 +00:00","Project":"MINI EMPIRE","Task":"Keep Building","minutes":25,"outcome":"Completed"},
+                  {"started":"2026-09-11 17:33:00 +00:00","ended":"2026-09-11 17:53:00 +00:00","Project":"","Task":"Enfoque libre","minutes":25,"outcome":"Partial"}
+                ]}}
+                """, spanish: true);
+            assert(grid.Contains("MINI EMPIRE", StringComparison.Ordinal) && grid.Contains("Keep Building", StringComparison.Ordinal) && AgentPresent.LooksLikeGrid(grid), "session JSON becomes a readable grid");
+            assert(AgentPresent.SpokenLead(grid, true).Contains("sesiones", StringComparison.OrdinalIgnoreCase) && !AgentPresent.SpokenLead(grid, true).Contains("FECHA"), "voice reads the lead, not the grid");
             var pendingVoice = AgentReply.Pending(new AgentPlan
             {
                 Understood = "Eliminar todos los gastos",
@@ -279,6 +316,62 @@ internal static class AgentCoreTests
             assert(!AgentPlan.Reply("ok", "listo").HasMutations, "a reply has no mutations");
         });
 
+        test("every ModelAction is handled by the toolbox except finish", () =>
+        {
+            string toolbox = RepoFile(Path.Combine("src", "PomoDock.App", "AgentToolbox.cs"));
+            string source = File.ReadAllText(toolbox);
+            foreach (var action in AgentCatalog.ModelActions)
+            {
+                assert(AgentCatalog.Exists(action), action + " is in AgentCatalog.Actions");
+                if (action == "finish") continue;
+                assert(source.Contains("\"" + action + "\"", StringComparison.Ordinal),
+                    "AgentToolbox executes " + action);
+            }
+            assert(AgentCatalog.ModelActions.Contains("finance.set_rate")
+                && AgentCatalog.ModelActions.Contains("todo.set_filter")
+                && AgentCatalog.ModelActions.Contains("habits.navigate")
+                && AgentCatalog.ModelActions.Contains("finance.set_view")
+                && AgentCatalog.ModelActions.Contains("calendar.snooze")
+                && AgentCatalog.ModelActions.Contains("timer.inspect"),
+                "coverage tools stay in the model catalog");
+        });
+
+        test("every ModelAction is listed in AgentRules", () =>
+        {
+            string rules = File.ReadAllText(RepoFile(Path.Combine("src", "PomoDock.App", "AgentRules.md")));
+            foreach (var action in AgentCatalog.ModelActions)
+                assert(rules.Contains("`" + action, StringComparison.Ordinal),
+                    "AgentRules documents " + action);
+        });
+
+        test("every ModelAction is covered by the AGENT_ACTIONS inventory", () =>
+        {
+            string inventory = File.ReadAllText(RepoFile(Path.Combine("docs", "AGENT_ACTIONS.md")));
+            foreach (var action in AgentCatalog.ModelActions)
+                assert(InventoryCovers(inventory, action), "AGENT_ACTIONS covers " + action);
+        });
+
+        test("AgentRules settings.update keys are applied by the toolbox", () =>
+        {
+            string rules = File.ReadAllText(RepoFile(Path.Combine("src", "PomoDock.App", "AgentRules.md")));
+            string toolbox = File.ReadAllText(RepoFile(Path.Combine("src", "PomoDock.App", "AgentToolbox.cs")));
+            int start = rules.IndexOf("settings.update {", StringComparison.Ordinal);
+            assert(start >= 0, "AgentRules has a settings.update example");
+            int open = rules.IndexOf('{', start);
+            int depth = 0, end = open;
+            for (; end < rules.Length; end++)
+            {
+                if (rules[end] == '{') depth++;
+                else if (rules[end] == '}' && --depth == 0) { end++; break; }
+            }
+            using var document = JsonDocument.Parse(rules[open..end]);
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                assert(toolbox.Contains("\"" + property.Name + "\"", StringComparison.Ordinal),
+                    "UpdateSettings applies " + property.Name);
+            }
+        });
+
         test("spoken replies strip symbols and say durations in natural language", () =>
         {
             string hours = AgentSpeech.Speakable(
@@ -310,6 +403,42 @@ internal static class AgentCoreTests
             string cash = AgentSpeech.Speakable("Registré -10 USD en gastos.", spanish: true);
             assert(cash.Contains("dólar", StringComparison.OrdinalIgnoreCase) && !cash.Contains("USD", StringComparison.OrdinalIgnoreCase), "currency codes become words");
         });
+    }
+
+    private static bool InventoryCovers(string inventory, string action)
+    {
+        if (inventory.Contains(action, StringComparison.Ordinal)) return true;
+        int dot = action.LastIndexOf('.');
+        if (dot <= 0) return false;
+        string ns = action[..dot];
+        string leaf = action[(dot + 1)..];
+        if (inventory.Contains(ns + ".*", StringComparison.Ordinal)) return true;
+        int index = 0;
+        while ((index = inventory.IndexOf(ns + ".", index, StringComparison.Ordinal)) >= 0)
+        {
+            int start = index + ns.Length + 1;
+            int end = start;
+            while (end < inventory.Length && (char.IsAsciiLetterOrDigit(inventory[end]) || inventory[end] is '_' or '/' or '|'))
+                end++;
+            foreach (var part in inventory[start..end].Split(['/', '|'], StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (part.Equals(leaf, StringComparison.Ordinal)) return true;
+            }
+            index = end;
+        }
+        return false;
+    }
+
+    private static string RepoFile(string relative)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            string candidate = Path.Combine(dir.FullName, relative);
+            if (File.Exists(candidate)) return candidate;
+            dir = dir.Parent;
+        }
+        throw new FileNotFoundException(relative);
     }
 
     private static void TryDelete(string path)

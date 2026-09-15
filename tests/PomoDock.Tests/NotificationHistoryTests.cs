@@ -27,6 +27,19 @@ internal static class NotificationHistoryTests
             assert(!task.Done, "leer la notificación tampoco tacha la tarea");
         });
 
+        test("timer completion alerts are kept separately from calendar reminders", () =>
+        {
+            var inbox = new NotificationHistory();
+            var item = inbox.AddAlert("timer", "timer:focus", "Tiempo de enfoque terminado", new DateTime(2026, 9, 12, 8, 30, 0));
+            equal(1, inbox.Items.Count);
+            equal(1, inbox.Unread);
+            assert(item.Kind == "timer" && item.CueKey == "timer:focus", "el aviso de pomodoro lleva su propio tipo");
+            assert(item.TaskId is null && item.EventId == Guid.Empty, "un pomodoro no se enlaza a un evento de agenda");
+            inbox.MarkKindRead("timer");
+            equal(0, inbox.Unread);
+            assert(inbox.Items[0].Read, "starting a new pomodoro can clear timer alerts");
+        });
+
         test("notification history keeps the newest two hundred entries", () =>
         {
             var inbox = new NotificationHistory();

@@ -28,6 +28,7 @@ public sealed class AgentPlan
     public string Message { get; set; } = "";
     public AgentRisk Risk { get; set; }
     public List<AgentPlanStep> Steps { get; set; } = [];
+    public bool Silent { get; set; }
     public bool HasMutations => Steps.Any(step => step.Risk != AgentRisk.Read);
     public bool CanAutoRun => Steps.Count > 0 && Steps.All(step => step.Risk != AgentRisk.Destructive);
 
@@ -45,6 +46,8 @@ public sealed class AgentActionReceipt
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Tool { get; set; } = "";
     public string Summary { get; set; } = "";
+    /// <summary>Full tool JSON so the UI can render tables without asking the model to copy rows.</summary>
+    public string? PayloadJson { get; set; }
     public string? UndoTool { get; set; }
     public string? UndoArgumentsJson { get; set; }
     public bool CanUndo => !string.IsNullOrWhiteSpace(UndoTool);
@@ -153,17 +156,17 @@ public static class AgentCatalog
     public static readonly string[] ModelActions =
     [
         "get_state", "focus.summarize", "focus.query_sessions", "focus.compare_periods", "focus.list_projects",
-        "todo.search", "add_todo", "todo.update", "complete_todo", "delete_todo", "todo.clear_done", "todo.sort", "todo.move",
-        "calendar.search", "calendar.upcoming", "add_event", "calendar.update", "complete_event", "delete_event", "calendar.set_view", "calendar.navigate", "calendar.set_show_done",
-        "habits.search", "add_habit", "mark_habit", "habits.update", "archive_habit", "habits.restore", "habits.delete", "habits.set_target", "habits.move", "habits.set_count",
+        "todo.search", "add_todo", "todo.update", "complete_todo", "delete_todo", "todo.clear_done", "todo.sort", "todo.move", "todo.set_filter",
+        "calendar.search", "calendar.upcoming", "add_event", "calendar.update", "complete_event", "delete_event", "calendar.set_view", "calendar.navigate", "calendar.set_show_done", "calendar.snooze",
+        "habits.search", "add_habit", "mark_habit", "habits.update", "archive_habit", "habits.restore", "habits.delete", "habits.set_target", "habits.move", "habits.set_count", "habits.navigate",
         "notes.search", "add_note", "notes.append", "notes.set_color", "notes.reopen", "notes.forget",
-        "workspace.list", "workspace.move_widget", "workspace.rename_widget", "workspace.collapse_widget", "workspace.resize_widget",
-        "workspace.set_web_url", "workspace.reload_web", "workspace.add_page", "workspace.rename_page", "workspace.set_home", "workspace.goto", "workspace.focus",
+        "workspace.list", "workspace.move_widget", "workspace.rename_widget", "workspace.collapse_widget", "workspace.fill_widget", "workspace.resize_widget",
+        "workspace.set_web_url", "workspace.play_youtube", "workspace.reload_web", "workspace.add_page", "workspace.rename_page", "workspace.set_home", "workspace.goto", "workspace.focus",
         "workspace.delete_empty_pages", "workspace.delete_page", "workspace.remove_widget", "workspace.clear_widgets", "workspace.remove_timer", "workspace.set_web_keepalive", "add_widget",
-        "layouts.list", "layouts.save", "layouts.load", "layouts.delete", "app.fullscreen", "app.open_panel", "app.open_data_folder", "notifications.list", "notifications.dismiss",
+        "layouts.list", "layouts.save", "layouts.load", "layouts.delete", "app.fullscreen", "app.open_panel", "app.hide_agent", "app.open_data_folder", "notifications.list", "notifications.dismiss",
         "sounds.list", "sounds.set", "add_focus_task", "focus_tasks.list", "focus_tasks.update", "focus_tasks.set_done", "focus_tasks.delete", "focus_tasks.save_template", "focus_tasks.add_from_template",
         "focus_projects.list", "focus_projects.add", "focus_projects.rename", "focus_projects.delete",
-        "finance.summary", "finance.search", "finance.add", "finance.add_recurring", "finance.mark_paid", "finance.delete", "finance.clear_expenses", "finance.archive", "finance.set_currency",
+        "finance.summary", "finance.search", "finance.add", "finance.add_recurring", "finance.mark_paid", "finance.delete", "finance.clear_expenses", "finance.archive", "finance.set_currency", "finance.set_rate", "finance.set_view",
         "timer", "timer.inspect", "set_focus_duration", "settings.read", "settings.update", "settings.apply_rhythm",
         "memory.search", "memory.propose", "memory.confirm", "memory.forget", "memory.export", "finish"
     ];
@@ -171,22 +174,22 @@ public static class AgentCatalog
     public static readonly string[] Actions =
     [
         "get_state", "focus.summarize", "focus.query_sessions", "focus.compare_periods", "focus.list_projects",
-        "todo.search", "todo.create", "todo.update", "todo.complete", "todo.delete", "todo.clear_done", "todo.sort", "todo.move",
+        "todo.search", "todo.create", "todo.update", "todo.complete", "todo.delete", "todo.clear_done", "todo.sort", "todo.move", "todo.set_filter",
         "add_todo", "complete_todo", "delete_todo",
-        "calendar.search", "calendar.upcoming", "calendar.create", "calendar.update", "calendar.reschedule", "calendar.complete", "calendar.delete", "calendar.set_view", "calendar.navigate", "calendar.set_show_done",
+        "calendar.search", "calendar.upcoming", "calendar.create", "calendar.update", "calendar.reschedule", "calendar.complete", "calendar.delete", "calendar.set_view", "calendar.navigate", "calendar.set_show_done", "calendar.snooze",
         "add_event", "complete_event", "delete_event",
-        "habits.search", "habits.create", "habits.mark", "habits.update", "habits.archive", "habits.restore", "habits.delete", "habits.set_target", "habits.move", "habits.set_count",
+        "habits.search", "habits.create", "habits.mark", "habits.update", "habits.archive", "habits.restore", "habits.delete", "habits.set_target", "habits.move", "habits.set_count", "habits.navigate",
         "add_habit", "mark_habit", "archive_habit",
         "notes.search", "notes.create", "notes.append", "notes.set_color", "notes.reopen", "notes.forget", "notes.delete", "add_note",
-        "workspace.list", "workspace.add_widget", "workspace.move_widget", "workspace.rename_widget", "workspace.collapse_widget", "workspace.resize_widget",
-        "workspace.set_web_url", "workspace.reload_web", "workspace.set_web_keepalive", "workspace.open",
+        "workspace.list", "workspace.add_widget", "workspace.move_widget", "workspace.rename_widget", "workspace.collapse_widget", "workspace.fill_widget", "workspace.resize_widget",
+        "workspace.set_web_url", "workspace.set_window_url", "workspace.play_youtube", "workspace.reload_web", "workspace.set_web_keepalive", "workspace.open",
         "workspace.add_page", "workspace.rename_page", "workspace.set_home", "workspace.goto", "workspace.focus", "workspace.delete_empty_pages", "workspace.delete_page",
         "workspace.remove_widget", "workspace.clear_widgets", "workspace.remove_timer",
-        "layouts.list", "layouts.save", "layouts.load", "layouts.delete", "app.fullscreen", "app.open_panel", "app.open_data_folder", "notifications.list", "notifications.dismiss",
+        "layouts.list", "layouts.save", "layouts.load", "layouts.delete", "app.fullscreen", "app.open_panel", "app.hide_agent", "app.open_data_folder", "notifications.list", "notifications.dismiss",
         "add_widget", "add_focus_task", "focus_tasks.list", "focus_tasks.update", "focus_tasks.set_done", "focus_tasks.delete", "focus_tasks.save_template", "focus_tasks.add_from_template",
         "focus_projects.list", "focus_projects.add", "focus_projects.rename", "focus_projects.delete",
         "sounds.list", "sounds.set",
-        "finance.summary", "finance.search", "finance.add", "finance.add_recurring", "finance.mark_paid", "finance.delete", "finance.clear_expenses", "finance.archive", "finance.set_currency",
+        "finance.summary", "finance.search", "finance.add", "finance.add_recurring", "finance.mark_paid", "finance.delete", "finance.clear_expenses", "finance.archive", "finance.set_currency", "finance.set_rate", "finance.set_view",
         "timer", "timer.start", "timer.pause", "timer.reset", "timer.configure", "timer.inspect", "set_focus_duration",
         "settings.read", "settings.update", "settings.apply_rhythm",
         "memory.search", "memory.propose", "memory.confirm", "memory.forget", "memory.export",
@@ -200,6 +203,10 @@ public static class AgentCatalog
         "create_habit" or "new_habit" => "add_habit",
         "create_event" or "new_event" => "add_event",
         "create_widget" or "new_widget" => "add_widget",
+        "workspace.fill_widget" or "workspace.maximize_widget" or "widget.fullscreen" or "workspace.canvas_fill" or "canvas.fill" => "workspace.fill_widget",
+        "workspace.set_window_url" or "workspace.navigate_window" or "window.set_url" => "workspace.set_web_url",
+        "play_youtube" or "youtube.play" or "youtube.watch" or "cambia_cancion" => "workspace.play_youtube",
+        "hide_agent" or "app.hide_agent" or "workspace.hide_agent" or "minimize_agent" or "cerrar_chat" => "app.hide_agent",
         "delete_widget" or "remove_widget" or "workspace.delete_widget" or "quitar_widget" => "workspace.remove_widget",
         "clear_widgets" or "clear_page" or "workspace.clear" or "workspace.clear_page" or "vaciar_pantalla" or "limpiar_pantalla" => "workspace.clear_widgets",
         "delete_timer" or "remove_timer" or "quitar_timer" or "quitar_temporizador" => "workspace.remove_timer",
@@ -209,6 +216,11 @@ public static class AgentCatalog
         "rename_page" or "name_page" or "workspace.name_page" or "llamar_pagina" or "renombrar_pagina" => "workspace.rename_page",
         "set_home" or "workspace.home" or "set_home_page" => "workspace.set_home",
         "notes.delete" => "notes.forget",
+        "todo.filter" or "todo.set_filter" or "filtrar_tareas" => "todo.set_filter",
+        "finance.rate" or "finance.set_rate" or "tipo_cambio" => "finance.set_rate",
+        "finance.set_view" or "finance.set_span" or "finance.navigate" => "finance.set_view",
+        "habits.navigate" or "habits.set_week" => "habits.navigate",
+        "calendar.snooze" or "snooze_event" or "postpone_event" => "calendar.snooze",
         _ => name.Trim().ToLowerInvariant()
     };
 
@@ -223,19 +235,20 @@ public static class AgentCatalog
             or "finance.delete" or "finance.clear_expenses" or "finance.archive" or "workspace.delete_empty_pages" or "workspace.delete_page"
             or "workspace.remove_widget" or "workspace.clear_widgets" or "workspace.remove_timer" or "focus_tasks.delete" or "focus_projects.delete" or "todo.clear_done"
             or "layouts.delete" or "notes.forget" => AgentRisk.Destructive,
-        "todo.create" or "todo.update" or "todo.complete" or "todo.sort" or "todo.move"
-            or "calendar.create" or "calendar.update" or "calendar.reschedule" or "calendar.complete" or "calendar.set_view" or "calendar.navigate" or "calendar.set_show_done"
-            or "habits.create" or "habits.mark" or "habits.update" or "habits.restore" or "habits.set_target" or "habits.move" or "habits.set_count"
+        "todo.create" or "todo.update" or "todo.complete" or "todo.sort" or "todo.move" or "todo.set_filter"
+            or "calendar.create" or "calendar.update" or "calendar.reschedule" or "calendar.complete" or "calendar.set_view" or "calendar.navigate" or "calendar.set_show_done" or "calendar.snooze"
+            or "habits.create" or "habits.mark" or "habits.update" or "habits.restore" or "habits.set_target" or "habits.move" or "habits.set_count" or "habits.navigate"
             or "notes.create" or "notes.append" or "notes.set_color" or "notes.reopen"
-            or "workspace.add_widget" or "workspace.move_widget" or "workspace.rename_widget" or "workspace.collapse_widget"
-            or "workspace.resize_widget" or "workspace.set_web_url" or "workspace.reload_web" or "workspace.set_web_keepalive" or "workspace.open" or "workspace.add_page"
+            or "workspace.add_widget" or "workspace.move_widget" or "workspace.rename_widget" or "workspace.collapse_widget" or "workspace.fill_widget"
+            or "workspace.resize_widget" or "workspace.set_web_url" or "workspace.play_youtube" or "workspace.reload_web" or "workspace.set_web_keepalive" or "workspace.open" or "workspace.add_page"
             or "workspace.rename_page" or "workspace.set_home"
             or "layouts.save" or "layouts.load" or "notifications.dismiss"
             or "add_todo" or "complete_todo" or "add_event" or "complete_event" or "add_habit" or "mark_habit"
             or "add_note" or "add_widget" or "add_focus_task" or "focus_tasks.update" or "focus_tasks.set_done" or "focus_tasks.save_template" or "focus_tasks.add_from_template"
             or "focus_projects.add" or "focus_projects.rename"
             or "memory.propose" or "memory.confirm"
-            or "finance.add" or "finance.add_recurring" or "finance.mark_paid" or "finance.set_currency" => AgentRisk.Write,
+            or "finance.add" or "finance.add_recurring" or "finance.mark_paid" or "finance.set_currency" or "finance.set_rate" or "finance.set_view"
+            or "app.hide_agent" => AgentRisk.Write,
         "timer" or "timer.start" or "timer.pause" or "timer.reset" or "timer.configure" or "set_focus_duration"
             or "settings.update" or "settings.apply_rhythm" or "sounds.set" or "app.fullscreen" or "app.open_panel" or "app.open_data_folder" => AgentRisk.Batch,
         _ => AgentRisk.Write
@@ -276,7 +289,16 @@ public static class AgentCatalog
         "sounds.set" => "cambiar sonido",
         "workspace.goto" => "ir a la página",
         "workspace.focus" => "mostrar el widget",
+        "workspace.play_youtube" => "cambiar canción en YouTube",
+        "app.hide_agent" => "ocultar el chat del agente",
+        "calendar.snooze" => "posponer recordatorio",
+        "todo.set_filter" => "filtrar tareas",
+        "habits.navigate" => "cambiar semana de hábitos",
+        "finance.set_rate" => "tipo de cambio USD/MXN",
+        "finance.set_view" => "vista de finanzas",
+        "workspace.set_web_url" => "abrir URL en el widget",
         "add_widget" or "workspace.add_widget" => "añadir widget",
+        "workspace.fill_widget" => "llenar lienzo del widget",
         "timer" or "timer.start" => "temporizador",
         "memory.propose" or "memory.confirm" => "recordar",
         "memory.forget" => "olvidar",
@@ -295,10 +317,12 @@ public static class AgentCatalog
             string kind = Read(args, "kind");
             string color = Read(args, "color");
             string page = Read(args, "page");
+            string app = Read(args, "app");
             return tool switch
             {
                 "add_note" or "notes.create" => $"Crear nota{(title.Length > 0 ? " «" + title + "»" : "")}{(color.Length > 0 ? " " + color : "")}{(text.Length > 0 ? ": " + Clip(text, 72) : "")}",
-                "add_widget" or "workspace.add_widget" or "workspace.open" => $"Añadir widget{(kind.Length > 0 ? " " + kind : "")}{(title.Length > 0 ? " «" + title + "»" : "")}",
+                "add_widget" or "workspace.add_widget" or "workspace.open" => $"Añadir widget{(kind.Length > 0 ? " " + kind : "")}{(app.Length > 0 ? " " + app : "")}{(title.Length > 0 ? " «" + title + "»" : "")}{(argumentsJson.Contains("\"fill\":true", StringComparison.OrdinalIgnoreCase) || argumentsJson.Contains("\"fullscreen\":true", StringComparison.OrdinalIgnoreCase) ? " a pantalla de lienzo" : "")}",
+                "workspace.fill_widget" => title.Length > 0 ? $"Llenar el lienzo con «{title}»" : "Llenar el lienzo con ese widget",
                 "workspace.add_page" => "Crear una página nueva y abrirla para que la veas",
                 "workspace.rename_page" => DescribeRenamePage(args, page),
                 "workspace.set_home" => page.Length > 0 ? $"Marcar la página {page} como casa" : "Marcar esta página como casa",
@@ -309,6 +333,13 @@ public static class AgentCatalog
                 "sounds.set" => title.Length > 0 ? $"Usar el sonido {title}" : "Cambiar el sonido",
                 "workspace.goto" => DescribeGotoPage(args, page),
                 "workspace.focus" => title.Length > 0 ? $"Mostrar el widget «{title}»" : "Mostrar el widget",
+                "workspace.play_youtube" => (text.Length > 0 ? text : Read(args, "query")) is { Length: > 0 } topic
+                    ? $"Reproducir «{Clip(topic, 72)}» (cierra la anterior y abre de nuevo)"
+                    : "Reproducir en YouTube (cierra la anterior y abre de nuevo)",
+                "app.hide_agent" => "Ocultar el chat del agente",
+                "workspace.set_web_url" => Read(args, "url").Length > 0
+                    ? $"Abrir {Clip(Read(args, "url"), 48)} en el widget"
+                    : "Cambiar la URL del widget",
                 "add_todo" or "todo.create" => text.Length > 0 ? $"Crear tarea: {Clip(text, 72)}" : "Crear tarea",
                 _ => Label(tool, fallback)
             };
