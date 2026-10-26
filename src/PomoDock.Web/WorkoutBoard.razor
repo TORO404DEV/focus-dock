@@ -1,0 +1,651 @@
+@* Mancuernas widget scaled to the card: full-bleed covers, programs, a custom editor and the
+   set/rest player over the exercise's demo video. *@
+@using PomoDock.App
+@implements IDisposable
+
+@{
+    S = Scale.Of(Width, Height);
+}
+<div class="workout" style="@Css($"--w-title:{S.Title}px;--w-sub:{S.Sub}px;--w-body:{S.Body}px;--w-small:{S.Small}px;--w-pad:{S.Pad}px;--w-nav:{S.Nav}px;--w-tab:{S.Tab}px;--w-icon:{S.Icon}px")">
+    @switch (data.View)
+    {
+        case "player": @Player break;
+        case "program": @ProgramView break;
+        case "done": @Done break;
+        case "edit": @Editor break;
+        case "pick": @Picker break;
+        default: @Home break;
+    }
+</div>
+
+@code {
+    private static readonly System.Text.Json.JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
+
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter, EditorRequired] public WidgetConfig Config { get; set; } = null!;
+    [Parameter] public double Width { get; set; }
+    [Parameter] public double Height { get; set; }
+
+    private State data = new();
+    private Scale S = Scale.Fallback;
+    private DateTime sessionStart;
+    private int sessionKg;
+    private Dictionary<string, double> kgOverride = [];
+    private int restLeft;
+    private CancellationTokenSource? restClock;
+
+    private static string Css(FormattableString style) => FormattableString.Invariant(style);
+
+    private sealed record Scale(double W, double H, double Title, double Sub, double Body, double Small, double Pad, double Nav, double Tab, double Icon)
+    {
+        public static readonly Scale Fallback = Of(380, 640);
+        public static Scale Of(double w, double h)
+        {
+            w = Math.Max(280, w);
+            h = Math.Max(360, h);
+            return new(w, h,
+                Math.Clamp(w * 0.062, 20, 34), Math.Clamp(w * 0.038, 13, 18), Math.Clamp(w * 0.045, 15, 22),
+                Math.Clamp(w * 0.032, 11, 15), Math.Clamp(w * 0.04, 12, 22), Math.Clamp(h * 0.08, 52, 72),
+                Math.Clamp(h * 0.07, 44, 58), Math.Clamp(w * 0.055, 18, 26));
+        }
+    }
+
+    public sealed class State
+    {
+        public string View { get; set; } = "home";
+        public string Tab { get; set; } = "std";
+        public string? ProgramId { get; set; }
+        public int Day { get; set; }
+        public int Move { get; set; }
+        public int Set { get; set; }
+        public bool Resting { get; set; }
+        public string? RestNext { get; set; }
+        public int RestDone { get; set; }
+        public int RestSets { get; set; }
+        public int RestSeconds { get; set; }
+        public bool UseLb { get; set; }
+        public int HeightCm { get; set; } = 175;
+        public double BodyKg { get; set; } = 85;
+        public int Volume { get; set; } = 80;
+        public bool Voice { get; set; }
+        public Dictionary<string, double>? Kg { get; set; }
+        public List<LogRow> Log { get; set; } = [];
+        internal List<WorkoutPrograms.Program> Customs { get; set; } = [];
+    }
+
+    public sealed class LogRow
+    {
+        public DateTime When { get; set; }
+        public string Program { get; set; } = "";
+        public string Day { get; set; } = "";
+        public int Kg { get; set; }
+        public int Cal { get; set; }
+        public int Seconds { get; set; }
+    }
+
+    /// <summary>The payload the desktop wrote, read with its own shape, customs included.</summary>
+    private sealed class Stored
+    {
+        public State? State { get; set; }
+    }
+
+    protected override void OnInitialized()
+    {
+        data = Read(Config);
+        kgOverride = data.Kg ?? [];
+    }
+
+    public void Dispose()
+    {
+        restClock?.Cancel();
+        Owner.ClosePanel(this);
+    }
+
+    private static State Read(WidgetConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(config.Value)) return new State();
+        try
+        {
+            var data = System.Text.Json.JsonSerializer.Deserialize<State>(config.Value, Json);
+            if (data is null || string.IsNullOrWhiteSpace(data.View)) return new State();
+            using var document = System.Text.Json.JsonDocument.Parse(config.Value);
+            if (document.RootElement.TryGetProperty("Customs", out var customs))
+                data.Customs = System.Text.Json.JsonSerializer.Deserialize<List<WorkoutPrograms.Program>>(customs.GetRawText(), Json) ?? [];
+            data.Log ??= [];
+            data.Kg ??= [];
+            if (data.View == "player") { data.View = "program"; data.Resting = false; }
+            return data;
+        }
+        catch { return new State(); }
+    }
+
+    private void Persist()
+    {
+        data.Kg = kgOverride;
+        // Customs are written beside the rest, under the same name the desktop uses.
+        var node = System.Text.Json.Nodes.JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(data))!.AsObject();
+        node["Customs"] = System.Text.Json.Nodes.JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(data.Customs));
+        Config.Value = node.ToJsonString();
+        Owner.SaveState();
+    }
+
+    private WorkoutPrograms.Program? Resolve() => WorkoutPrograms.Find(data.ProgramId, data.Customs);
+    private bool IsCustom => data.ProgramId?.StartsWith("c-", StringComparison.Ordinal) == true;
+    private void Go(string view) { data.View = view; Persist(); }
+
+    // ---------------------------------------------------------------- pieces
+
+    private RenderFragment Header(string title, string? sub, bool back, bool gear = true, bool edit = false) => __builder =>
+    {
+        <div class="w-header">
+            <span>
+                @if (back)
+                {
+                    <button class="w-icon" @onclick="Back">‹</button>
+                }
+            </span>
+            <div class="w-titles"><b>@title</b>@if (!string.IsNullOrWhiteSpace(sub)) { <small>@sub</small> }</div>
+            <span>
+                @if (edit)
+                {
+                    <button class="w-icon" @onclick='() => Go("edit")'>✎</button>
+                }
+                else if (gear)
+                {
+                    <button class="w-icon" @onclick='() => { data.Tab = "set"; Go("home"); }'>⚙</button>
+                }
+            </span>
+        </div>
+    };
+
+    private void Back()
+    {
+        if (data.View == "home" && data.Tab == "set") { data.Tab = "std"; Persist(); return; }
+        data.View = data.View is "pick" or "edit" ? (data.View == "pick" ? "edit" : "program") : "home";
+        Persist();
+    }
+
+    private RenderFragment Photo(string coverId, double height, RenderFragment? content = null, string extra = "") => __builder =>
+    {
+        string url = WorkoutCatalog.Find(coverId)?.ThumbnailUrl(false) ?? "";
+        <div class="w-photo @extra" style="@Css($"height:{height}px")">
+            @if (url.Length > 0)
+            {
+                <img src="@url" alt="" loading="lazy" />
+            }
+            <i></i>
+            @content
+        </div>
+    };
+
+    private string WeightLabel(double kg) => data.UseLb ? $"{Math.Round(kg * 2.20462):0} lb" : $"{kg:0} kg";
+
+    private double KgOf(string programId, int day, int move, double fallback) =>
+        kgOverride.TryGetValue(Key(programId, day, move), out var kg) ? kg : fallback;
+    private static string Key(string programId, int day, int move) => $"{programId}:{day}:{move}";
+
+    private RenderFragment SettingLine(string label, string value, Action plus, Action minus) => __builder =>
+    {
+        <div class="w-setting">
+            <span>@label</span>
+            <span>
+                <button class="w-icon tiny" @onclick="minus">−</button>
+                <b>@value</b>
+                <button class="w-icon tiny" @onclick="plus">+</button>
+            </span>
+        </div>
+    };
+
+    private RenderFragment MoveRow(WorkoutPrograms.Move move, double kg, Action? click = null) => __builder =>
+    {
+        <div class="w-move @(click is null ? "" : "pick")" @onclick="() => click?.Invoke()">
+            <span class="w-thumb" style="@Css($"width:{S.Icon * 2}px;height:{S.Icon * 2}px")">@Photo(move.CatalogId, S.Icon * 2)</span>
+            <span class="w-move-text"><b>@move.Name</b><small>@WorkoutPrograms.Scheme(move)</small></span>
+            <b class="w-move-kg">@WeightLabel(kg)</b>
+        </div>
+    };
+
+    // ---------------------------------------------------------------- home
+
+    private RenderFragment Home => __builder =>
+    {
+        string sub = data.Tab switch { "log" => "Estadísticas", "set" => "Perfil", "me" => "Progreso", "custom" => "Personalizadas", _ => "Estándar" };
+        string title = data.Tab == "set" ? "Ajustes" : "Mancuernas";
+        @Header(title, sub, back: data.Tab == "set", gear: data.Tab != "set")
+        <div class="w-tabs">
+            @foreach (var (glyph, id) in new[] { ("◆", "std"), ("✚", "custom"), ("☰", "log"), ("▮", "me"), ("⚙", "set") })
+            {
+                string tab = id;
+                <button class="@(data.Tab == id ? "on" : "")" @onclick='() => { data.Tab = tab; Go("home"); }'>@glyph</button>
+            }
+        </div>
+        <div class="w-body scroll">
+            @switch (data.Tab)
+            {
+                case "log": @History break;
+                case "set": @SettingsBody break;
+                case "me": @Progress break;
+                case "custom": @Customs break;
+                default:
+                    var programs = WorkoutPrograms.All;
+                    double cover = Math.Max(72, (S.H - S.Nav - S.Tab - 4) / Math.Max(1, programs.Count));
+                    foreach (var program in programs)
+                    {
+                        var pick = program;
+                        @ProgramCard(pick, cover)
+                    }
+                    break;
+            }
+        </div>
+    };
+
+    private RenderFragment ProgramCard(WorkoutPrograms.Program program, double height) => __builder =>
+    {
+        <div class="w-card" @onclick="() => OpenProgram(program.Id)">
+            @Photo(program.CoverId, height, @<span class="w-card-text"><b>@program.Name</b><small>@program.Cadence</small></span>)
+        </div>
+    };
+
+    private void OpenProgram(string id)
+    {
+        data.ProgramId = id;
+        data.Day = 0;
+        Go("program");
+    }
+
+    private RenderFragment Customs => __builder =>
+    {
+        <div class="w-banner" style="@Css($"height:{Math.Clamp(S.H * 0.22, 110, 180)}px")" @onclick="NewCustom">
+            <i>✚</i>
+            <b>Crear entrenamiento</b>
+        </div>
+        @if (data.Customs.Count == 0)
+        {
+            <p class="w-dim" style="margin:var(--w-pad)">Toca arriba para armar tu rutina con mancuernas y banca.</p>
+        }
+        @foreach (var program in data.Customs)
+        {
+            var pick = program;
+            @ProgramCard(pick, Math.Clamp(S.H * 0.16, 88, 140))
+        }
+    };
+
+    private void NewCustom()
+    {
+        var created = new WorkoutPrograms.Program
+        {
+            Id = "c-" + Guid.NewGuid().ToString("N")[..8],
+            Name = "Mi rutina",
+            Cadence = "Personalizada",
+            CoverId = "0294",
+            RestSet = 30,
+            RestMove = 60,
+            Days = [new WorkoutPrograms.Day { Label = "Día 1", Moves = [] }]
+        };
+        data.Customs.Add(created);
+        data.ProgramId = created.Id;
+        data.Day = 0;
+        Go("edit");
+    }
+
+    private RenderFragment History => __builder =>
+    {
+        var spanish = CultureInfo.GetCultureInfo("es-ES");
+        double tons = data.Log.Sum(x => x.Kg) / 1000.0;
+        <div class="w-total">@($"{tons:0} toneladas")</div>
+        @if (data.Log.Count == 0)
+        {
+            <p class="w-dim" style="margin:12px var(--w-pad) 0;font-size:var(--w-body)">Aún no hay sesiones. Empieza una rutina en Estándar.</p>
+        }
+        string? dayHeader = null;
+        foreach (var row in data.Log.OrderByDescending(x => x.When))
+        {
+            string head = row.When.ToString("dddd, d 'de' MMMM", spanish);
+            if (!string.Equals(head, dayHeader, StringComparison.Ordinal))
+            {
+                dayHeader = head;
+                <div class="w-dim w-day">@head</div>
+            }
+            <div class="w-log">
+                <span class="w-thumb" style="@Css($"width:{S.Icon * 2.2}px;height:{S.Icon * 2.2}px")">@Photo(CoverIdOf(row.Program), S.Icon * 2.2)</span>
+                <span class="w-move-text">
+                    <b>@row.Program</b>
+                    @if (!string.IsNullOrWhiteSpace(row.Day)) { <small>@row.Day</small> }
+                    <small>@($"{row.Kg:N0} kg")</small>
+                </span>
+                <span class="w-log-right"><b>▲ @row.Cal</b><small>@TimeSpan.FromSeconds(row.Seconds).ToString(@"mm\:ss")</small></span>
+            </div>
+        }
+    };
+
+    private RenderFragment Progress => __builder =>
+    {
+        int weeks = 8;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var start = today.AddDays(-(int)today.DayOfWeek);
+        double max = 1;
+        var weekKg = new double[weeks];
+        for (int i = 0; i < weeks; i++)
+        {
+            var from = start.AddDays(-7 * (weeks - 1 - i));
+            var to = from.AddDays(7);
+            weekKg[i] = data.Log.Where(x => DateOnly.FromDateTime(x.When) >= from && DateOnly.FromDateTime(x.When) < to).Sum(x => x.Kg);
+            max = Math.Max(max, weekKg[i]);
+        }
+        double barsH = Math.Clamp(S.H * 0.28, 120, 220);
+        <div class="w-progress">
+            <b class="w-body-text">Volumen semanal</b>
+            <div class="w-bars" style="@Css($"height:{barsH}px")">
+                @foreach (var kg in weekKg)
+                {
+                    <i style="@Css($"height:{Math.Max(4, kg / max * (barsH - 8))}px")"></i>
+                }
+            </div>
+            @foreach (var (value, label) in new[] { ($"{data.Log.Count}", "entrenamientos"), ($"{data.Log.Sum(x => x.Kg):N0} kg", "levantados"), ($"{data.Log.Sum(x => x.Cal)}", "calorías") })
+            {
+                <div class="w-metric"><b>@value</b><small>@label</small></div>
+            }
+        </div>
+    };
+
+    private RenderFragment SettingsBody => __builder =>
+    {
+        <div class="w-settings">
+            <small class="w-dim">Perfil</small>
+            @SettingLine("Estatura", $"{data.HeightCm} cm", () => NudgeHeight(1), () => NudgeHeight(-1))
+            @SettingLine("Peso", $"{data.BodyKg:0} kg", () => NudgeBody(1), () => NudgeBody(-1))
+            <small class="w-dim">Sonidos</small>
+            <span class="w-body-text">Volumen de la señal sonora</span>
+            <input type="range" min="0" max="100" value="@data.Volume" @onchange="e => { data.Volume = int.TryParse(e.Value?.ToString(), out int v) ? v : data.Volume; Persist(); }" />
+            <label class="w-check"><input type="checkbox" checked="@data.Voice" @onchange="e => { data.Voice = e.Value is true; Persist(); }" /> Guía por voz</label>
+            <small class="w-dim">Equipo</small>
+            <div class="w-units">
+                <button class="@(data.UseLb ? "" : "on")" @onclick="() => { data.UseLb = false; Persist(); }">KG</button>
+                <button class="@(data.UseLb ? "on" : "")" @onclick="() => { data.UseLb = true; Persist(); }">LB</button>
+            </div>
+        </div>
+    };
+
+    private void NudgeHeight(int d) { data.HeightCm = Math.Clamp(data.HeightCm + d, 140, 220); Persist(); }
+    private void NudgeBody(double d) { data.BodyKg = Math.Clamp(data.BodyKg + d, 40, 180); Persist(); }
+
+    // ---------------------------------------------------------------- program + editor
+
+    private RenderFragment ProgramView => __builder =>
+    {
+        var program = Resolve();
+        if (program is null) { data.View = "home"; @Home return; }
+        if (program.Days.Count == 0) program.Days.Add(new WorkoutPrograms.Day { Label = "Día 1" });
+        data.Day = Math.Clamp(data.Day, 0, program.Days.Count - 1);
+        var day = program.Days[data.Day];
+        RefreshEstimates(program, day);
+        @Header(program.Name, null, true, gear: false, edit: IsCustom)
+        @Photo(program.CoverId, Math.Clamp(S.H * 0.26, 140, 220), @<span class="w-center">@program.Cadence</span>)
+        <div class="w-stats">
+            <span>▲ @day.Calories cal</span>
+            <span>◆ @($"{WorkoutPrograms.VolumeKg(day):N0}") kg</span>
+            <span>◷ @day.Minutes minutos</span>
+        </div>
+        <button class="w-start" style="@Css($"height:{Math.Clamp(S.Nav * 0.85, 44, 56)}px")" @onclick="() => BeginSession(program, day)">EMPEZAR ENTRENAMIENTO</button>
+        <div class="w-body scroll" style="padding-top:8px">
+            @if (program.Days.Count > 1)
+            {
+                <div class="w-daynav">
+                    <button class="w-icon" @onclick='() => { data.Day = (data.Day + program.Days.Count - 1) % program.Days.Count; Persist(); }'>‹</button>
+                    <b>@(string.IsNullOrWhiteSpace(day.Label) ? $"Día {data.Day + 1}" : day.Label)</b>
+                    <button class="w-icon" @onclick='() => { data.Day = (data.Day + 1) % program.Days.Count; Persist(); }'>›</button>
+                </div>
+            }
+            @for (int i = 0; i < day.Moves.Count; i++)
+            {
+                @MoveRow(day.Moves[i], KgOf(program.Id, data.Day, i, day.Moves[i].Kg))
+            }
+        </div>
+    };
+
+    private static void RefreshEstimates(WorkoutPrograms.Program program, WorkoutPrograms.Day day)
+    {
+        if (!program.Id.StartsWith("c-", StringComparison.Ordinal)) return;
+        day.Calories = WorkoutPrograms.EstimateCal(day);
+        day.Minutes = WorkoutPrograms.EstimateMin(day, program.RestSet);
+    }
+
+    private RenderFragment Editor => __builder =>
+    {
+        var program = Resolve();
+        if (program is null || !IsCustom) { data.View = "home"; data.Tab = "custom"; @Home return; }
+        if (program.Days.Count == 0) program.Days.Add(new WorkoutPrograms.Day { Label = "Día 1" });
+        data.Day = Math.Clamp(data.Day, 0, program.Days.Count - 1);
+        var day = program.Days[data.Day];
+        <div class="w-header">
+            <span><button class="w-icon" @onclick='() => Go("program")'>✕</button></span>
+            <div class="w-titles"><b>Rutina de entrenamiento</b></div>
+            <span><button class="w-icon blue" @onclick='() => { RefreshEstimates(program, day); Go("program"); }'>✓</button></span>
+        </div>
+        <div class="w-body scroll w-form">
+            <small class="w-dim">Nombre del entrenamiento</small>
+            <input class="w-name" value="@program.Name" @onchange="e => Rename(program, e.Value?.ToString())" />
+            @SettingLine("Descanso entre series", $"{program.RestSet} s", () => { program.RestSet = Math.Min(180, program.RestSet + 5); Persist(); }, () => { program.RestSet = Math.Max(15, program.RestSet - 5); Persist(); })
+            @SettingLine("Descanso entre ejercicios", $"{program.RestMove} s", () => { program.RestMove = Math.Min(180, program.RestMove + 5); Persist(); }, () => { program.RestMove = Math.Max(15, program.RestMove - 5); Persist(); })
+            <b class="w-body-text" style="margin:16px 0 8px;display:block">@day.Label</b>
+            @for (int index = 0; index < day.Moves.Count; index++)
+            {
+                int mi = index;
+                var move = day.Moves[mi];
+                <div class="w-edit-move">
+                    <div class="w-edit-head">
+                        <span class="w-thumb" style="@Css($"width:{S.Icon * 2}px;height:{S.Icon * 2}px")">@Photo(move.CatalogId, S.Icon * 2)</span>
+                        <b>@move.Name</b>
+                        <button class="w-ghost" @onclick="() => { day.Moves.RemoveAt(mi); Persist(); }">✕</button>
+                    </div>
+                    @for (int s = 0; s < move.Reps.Length; s++)
+                    {
+                        int si = s;
+                        <div class="w-serie">
+                            <span class="w-dim">Serie @(si + 1)</span>
+                            <span>
+                                <button class="w-icon tiny" @onclick="() => { move.Reps[si] = Math.Max(1, move.Reps[si] - 1); Persist(); }">−</button>
+                                <b>@move.Reps[si]</b>
+                                <button class="w-icon tiny" @onclick="() => { move.Reps[si] = Math.Min(30, move.Reps[si] + 1); Persist(); }">+</button>
+                            </span>
+                        </div>
+                    }
+                    <button class="w-kg" @onclick="() => { move.Kg = move.Kg >= 20 ? 4 : move.Kg + 1; Persist(); }">@WeightLabel(move.Kg)</button>
+                    <button class="w-ghost" @onclick="() => { move.Reps = [.. move.Reps, move.Reps.Length > 0 ? move.Reps[^1] : 12]; Persist(); }">AGREGAR SERIE</button>
+                </div>
+            }
+            <button class="w-ghost" @onclick='() => Go("pick")'>AGREGAR EJERCICIO</button>
+            <button class="w-ghost" @onclick='() => { program.Days.Add(new WorkoutPrograms.Day { Label = $"Día {program.Days.Count + 1}", Moves = [] }); data.Day = program.Days.Count - 1; Persist(); }'>AGREGAR DÍA</button>
+            @if (data.Customs.Count > 0)
+            {
+                <button class="w-ghost" @onclick='() => { data.Customs.RemoveAll(p => p.Id == program.Id); data.Tab = "custom"; data.ProgramId = null; Go("home"); }'>ELIMINAR RUTINA</button>
+            }
+        </div>
+    };
+
+    private void Rename(WorkoutPrograms.Program program, string? text)
+    {
+        text = text?.Trim() ?? string.Empty;
+        program.Name = text.Length == 0 ? "Mi rutina" : text;
+        Persist();
+    }
+
+    private RenderFragment Picker => __builder =>
+    {
+        @Header("Añadir ejercicio", null, true, gear: false)
+        <div class="w-body scroll">
+            @foreach (var ex in WorkoutCatalog.Exercises)
+            {
+                var pick = ex;
+                @MoveRow(new WorkoutPrograms.Move { Name = WorkoutPrograms.Spanish(pick.Id, pick.Name), CatalogId = pick.Id, Reps = [12], Kg = 6 }, 6, () => AddMove(pick))
+            }
+        </div>
+    };
+
+    private void AddMove(WorkoutCatalog.Exercise pick)
+    {
+        var program = Resolve();
+        if (program is null) return;
+        var day = program.Days[Math.Clamp(data.Day, 0, program.Days.Count - 1)];
+        day.Moves.Add(new WorkoutPrograms.Move { Name = WorkoutPrograms.Spanish(pick.Id, pick.Name), CatalogId = pick.Id, Reps = [12], Kg = 6 });
+        if (string.IsNullOrWhiteSpace(program.CoverId) || program.CoverId == "0294") program.CoverId = pick.Id;
+        Go("edit");
+    }
+
+    private RenderFragment Done => __builder =>
+    {
+        var program = Resolve();
+        var last = data.Log.LastOrDefault();
+        var spanish = CultureInfo.GetCultureInfo("es-ES");
+        @Header("Mancuernas", null, true, gear: false)
+        <div class="w-done">
+            @Photo(program?.CoverId ?? "0300", Math.Max(220, S.H * 0.55), @<span class="w-done-text">
+                <b class="w-title-text" style="font-weight:400">Entrenamiento completado</b>
+                @if (last is not null)
+                {
+                    <small class="w-dim" style="margin-top:16px">@last.When.ToString("d 'de' MMMM", spanish)</small>
+                    <small class="w-dim">@last.When.ToString("dddd", spanish)</small>
+                    <b class="w-title-text" style="margin:18px 0 10px">@last.Program</b>
+                    <span>◆ @($"{last.Kg:N0}") kg</span>
+                    <span>▲ @last.Cal cal</span>
+                    <span>◷ @Math.Max(1, last.Seconds / 60) minutos</span>
+                }
+            </span>)
+        </div>
+        <button class="w-check-big" @onclick='() => Go("home")'>✓</button>
+    };
+
+    // ---------------------------------------------------------------- player
+
+    private void BeginSession(WorkoutPrograms.Program program, WorkoutPrograms.Day day)
+    {
+        if (day.Moves.Count == 0) { Owner.Status("Añade al menos un ejercicio."); return; }
+        data.Move = 0; data.Set = 0; data.Resting = false;
+        sessionStart = DateTime.Now; sessionKg = 0;
+        Go("player");
+    }
+
+    private (WorkoutPrograms.Program program, WorkoutPrograms.Day day, WorkoutPrograms.Move move, double kg)? Live()
+    {
+        var program = Resolve();
+        if (program is null || program.Days.Count == 0) return null;
+        var day = program.Days[Math.Clamp(data.Day, 0, program.Days.Count - 1)];
+        if (day.Moves.Count == 0) return null;
+        data.Move = Math.Clamp(data.Move, 0, day.Moves.Count - 1);
+        var move = day.Moves[data.Move];
+        if (move.Reps.Length == 0) return null;
+        data.Set = Math.Clamp(data.Set, 0, move.Reps.Length - 1);
+        return (program, day, move, KgOf(program.Id, data.Day, data.Move, move.Kg));
+    }
+
+    /// <summary>The set and rest screens over the exercise's looping demo, as the desktop's HTML player.</summary>
+    private RenderFragment Player => __builder =>
+    {
+        var ctx = Live();
+        if (ctx is null) { data.View = "program"; @ProgramView return; }
+        var (program, day, move, kg) = ctx.Value;
+        string video = WorkoutCatalog.Find(move.CatalogId)?.VideoUrl(false) ?? "";
+        int sets = move.Reps.Length;
+        string next = data.Resting ? (data.RestNext ?? "") : data.Set + 1 < sets ? $"Serie {data.Set + 2}" : data.Move + 1 < day.Moves.Count ? day.Moves[data.Move + 1].Name : "Fin";
+        int dotsTotal = data.Resting ? Math.Max(1, data.RestSets) : sets;
+        int dotsDone = data.Resting ? data.RestDone : data.Set;
+        int reps = move.Reps[Math.Clamp(data.Set, 0, sets - 1)];
+        <div class="w-player">
+            <video src="@video" muted loop playsinline autoplay></video>
+            <i class="w-shade"></i>
+            <div class="w-ui">
+                <div class="w-top">
+                    <button class="w-back" @onclick='() => { restClock?.Cancel(); data.Resting = false; Go("program"); }'>‹</button>
+                    <div class="w-head"><b>Entrenamiento</b><small>@program.Name</small></div>
+                </div>
+                <div class="w-ptitle">@(data.Resting ? "Tiempo de descanso" : move.Name)</div>
+                @if (!data.Resting)
+                {
+                    <div class="w-psub">@($"Serie {data.Set + 1} de {sets}")</div>
+                    <div class="w-phint">@($"Haz {reps} repeticiones")</div>
+                }
+                <div class="w-grow"></div>
+                <button class="w-ring" @onclick="RingClick">
+                    @if (!data.Resting) { <small>@WeightLabel(kg)</small> }
+                    <b>@(data.Resting ? restLeft.ToString(CultureInfo.InvariantCulture) : reps.ToString(CultureInfo.InvariantCulture))</b>
+                    <span>@(data.Resting ? "Detener" : "Listo")</span>
+                </button>
+                @if (!data.Resting)
+                {
+                    <div class="w-adj"><button @onclick="() => NudgeKg(-1)">−</button><button @onclick="() => NudgeKg(1)">+</button></div>
+                }
+                <div class="w-next"><small>Siguiente ejercicio:</small><b>@next</b></div>
+                <div class="w-dots">@for (int i = 0; i < dotsTotal; i++) { <i>@(i < dotsDone ? "●" : "○")</i> }</div>
+            </div>
+        </div>
+    };
+
+    private void RingClick()
+    {
+        if (data.Resting) { restClock?.Cancel(); data.Resting = false; Persist(); return; }
+        CompleteSet();
+    }
+
+    private void NudgeKg(int delta)
+    {
+        var ctx = Live();
+        if (ctx is null) return;
+        var (program, _, _, kg) = ctx.Value;
+        kgOverride[Key(program.Id, data.Day, data.Move)] = Math.Clamp(kg + delta, 1, 80);
+        Persist();
+    }
+
+    private void CompleteSet()
+    {
+        var ctx = Live();
+        if (ctx is null) return;
+        var (program, day, move, kg) = ctx.Value;
+        sessionKg += (int)Math.Round(2 * kg * move.Reps[data.Set]);
+        bool lastSet = data.Set >= move.Reps.Length - 1;
+        bool lastMove = data.Move >= day.Moves.Count - 1;
+        data.RestSets = move.Reps.Length;
+        data.RestDone = data.Set + 1;
+        data.RestNext = lastSet ? (lastMove ? "Fin" : day.Moves[data.Move + 1].Name) : $"Serie {data.Set + 2} de {move.Reps.Length}";
+        data.RestSeconds = lastSet ? program.RestMove : program.RestSet;
+        if (lastSet && lastMove) { FinishSession(program, day); return; }
+        if (lastSet) { data.Move++; data.Set = 0; data.Resting = true; }
+        else { data.Set++; data.Resting = true; }
+        Persist();
+        StartRest(Math.Max(15, data.RestSeconds));
+    }
+
+    private async void StartRest(int seconds)
+    {
+        restClock?.Cancel();
+        var clock = restClock = new CancellationTokenSource();
+        restLeft = seconds;
+        StateHasChanged();
+        try
+        {
+            while (restLeft > 0)
+            {
+                await Task.Delay(1000, clock.Token);
+                restLeft--;
+                StateHasChanged();
+            }
+        }
+        catch (TaskCanceledException) { return; }
+        // The rest is over: a short ding, then the next set is on screen.
+        Owner.Sounds.Ding(data.Volume);
+        data.Resting = false;
+        Persist();
+        StateHasChanged();
+    }
+
+    private void FinishSession(WorkoutPrograms.Program program, WorkoutPrograms.Day day)
+    {
+        int seconds = Math.Max(1, (int)(DateTime.Now - sessionStart).TotalSeconds);
+        data.Log.Add(new LogRow { When = DateTime.Now, Program = program.Name, Day = day.Label, Kg = sessionKg, Cal = day.Calories, Seconds = seconds });
+        if (data.Log.Count > 80) data.Log = data.Log.TakeLast(80).ToList();
+        data.Resting = false;
+        Go("done");
+    }
+
+    private string CoverIdOf(string programName) =>
+        WorkoutPrograms.All.Concat(data.Customs).FirstOrDefault(p => p.Name.Equals(programName, StringComparison.OrdinalIgnoreCase))?.CoverId ?? "0300";
+}

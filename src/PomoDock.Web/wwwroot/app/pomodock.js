@@ -454,6 +454,91 @@
 
   pd.open = (url) => { window.open(url, '_blank', 'noopener'); };
 
+  // The Memento Mori board: up to five thousand weeks, drawn rather than built, as the desktop
+  // draws it in OnRender. Each cell is independent in width and height so the grid fills the card.
+  const lives = new Map();
+  const drawLife = (state) => {
+    const canvas = state.canvas;
+    const box = canvas.parentElement.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    const width = Math.max(40, box.width), height = Math.max(40, box.height);
+    canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
+    canvas.style.width = width + 'px'; canvas.style.height = height + 'px';
+    const g = canvas.getContext('2d');
+    g.setTransform(ratio, 0, 0, ratio, 0, 0);
+    const css = getComputedStyle(document.documentElement);
+    const color = (name) => css.getPropertyValue(name).trim();
+    const weeks = 52, years = state.years;
+    const labelW = state.axis ? (width >= 360 ? 22 : 16) : 0, headerH = state.axis ? 12 : 0;
+    const cellW = Math.max(1.2, Math.max(20, width - labelW) / weeks);
+    const cellH = Math.max(1.2, Math.max(20, height - headerH) / Math.max(1, years));
+    const pad = Math.min(Math.max(Math.min(cellW, cellH) * .18, .35), 1.2);
+    Object.assign(state, { labelW, headerH, cellW, cellH });
+    g.clearRect(0, 0, width, height);
+    g.fillStyle = color('--surface');
+    g.fillRect(labelW, headerH, cellW * weeks, cellH * years);
+    const axis = Math.min(Math.max(Math.min(cellW, cellH) + 2, 6.5), 9);
+    g.font = `700 ${axis}px Consolas, monospace`;
+    g.fillStyle = color('--muted');
+    g.textBaseline = 'top';
+    if (state.axis) for (let w = 0; w < weeks; w += 13) g.fillText(String(w + 1), labelW + w * cellW + 1, 0);
+    const filled = state.filled, ink = color('--ink'), raised = color('--raised'), edge = color('--edge'), paper = color('--paper');
+    for (let y = 0; y < years; y++) {
+      const top = headerH + y * cellH;
+      if (state.axis && (y % 5 === 0 || y === years - 1)) { g.fillStyle = color('--muted'); g.fillText(String(y), 0, top + Math.max(0, (cellH - axis) / 2)); }
+      for (let w = 0; w < weeks; w++) {
+        const index = y * weeks + w;
+        const x = labelW + w * cellW + pad / 2, cy = top + pad / 2;
+        const cw = Math.max(.8, cellW - pad), ch = Math.max(.8, cellH - pad);
+        const on = filled.has(index);
+        g.fillStyle = on ? ink : raised;
+        g.fillRect(x, cy, cw, ch);
+        g.lineWidth = index === state.hover ? 1.1 : Math.min(cellW, cellH) < 4 ? .25 : .45;
+        g.strokeStyle = edge;
+        g.strokeRect(x, cy, cw, ch);
+        if (index === state.current) {
+          g.lineWidth = on ? .9 : Math.min(Math.max(Math.min(cellW, cellH) * .2, .8), 1.4);
+          g.strokeStyle = on ? paper : ink;
+          if (!on) g.strokeRect(x, cy, cw, ch);
+          else if (Math.min(cellW, cellH) >= 3.5) g.strokeRect(x + .6, cy + .6, Math.max(.6, cw - 1.2), Math.max(.6, ch - 1.2));
+        }
+      }
+    }
+  };
+  const lifeHit = (state, event) => {
+    const box = state.canvas.getBoundingClientRect();
+    const px = event.clientX - box.left, py = event.clientY - box.top;
+    if (px < state.labelW || py < state.headerH) return -1;
+    const w = Math.floor((px - state.labelW) / state.cellW), y = Math.floor((py - state.headerH) / state.cellH);
+    return w < 0 || w >= 52 || y < 0 || y >= state.years ? -1 : y * 52 + w;
+  };
+  pd.drawLife = (id, ref, years, filled, current, axis) => {
+    const canvas = document.getElementById(id);
+    if (!canvas) return;
+    let state = lives.get(id);
+    if (!state || state.canvas !== canvas) {
+      state = { canvas, hover: -1 };
+      lives.set(id, state);
+      canvas.addEventListener('mousemove', (event) => {
+        const next = lifeHit(state, event);
+        if (next === state.hover) return;
+        state.hover = next;
+        canvas.title = next >= 0
+          ? `${Math.floor(next / 52)} · ${next % 52 + 1} · ${state.filled.has(next) ? '■' : '□'}`
+          : '';
+        drawLife(state);
+      });
+      canvas.addEventListener('mouseleave', () => { state.hover = -1; drawLife(state); });
+      canvas.addEventListener('click', (event) => {
+        const index = lifeHit(state, event);
+        if (index >= 0) state.ref.invokeMethod('LifeToggle', index);
+      });
+      new ResizeObserver(() => drawLife(state)).observe(canvas.parentElement);
+    }
+    Object.assign(state, { ref, years, filled: new Set(filled), current, axis });
+    drawLife(state);
+  };
+
   pd.scrollTo = (selector, top) => {
     requestAnimationFrame(() => { const element = document.querySelector(selector); if (element) element.scrollTop = top; });
   };

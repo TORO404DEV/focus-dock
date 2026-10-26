@@ -36,8 +36,17 @@
             case "todo":
                 <TodoBoard Owner="Owner" Config="Config" />
                 break;
+            case "finance":
+                <FinanceBoard Owner="Owner" Config="Config" Width="BodyWidth" Height="BodyHeight" />
+                break;
+            case "memento":
+                <MementoMoriCard Owner="Owner" Config="Config" Width="BodyWidth" Height="BodyHeight" />
+                break;
             case "calendar":
                 <CalendarWidget Owner="Owner" Config="Config" Width="BodyWidth" Height="BodyHeight" />
+                break;
+            case "workout":
+                <WorkoutBoard Owner="Owner" Config="Config" Width="BodyWidth" Height="BodyHeight" />
                 break;
             case "habits":
                 <HabitsBoard Owner="Owner" Config="Config" Width="BodyWidth" Height="BodyHeight" />
@@ -174,6 +183,8 @@
         var options = Config.Kind == "web"
             ? new[] { L.T("widgets.menuRename"), L.T("widgets.menuChangeUrl"), L.T("widgets.menuReload"), Config.KeepAlive ? L.T("widgets.menuAllowSleep") : L.T("widgets.menuKeepAlive"), L.T("web.webOpen") }
             : Config.Kind == "stats" ? [L.T("widgets.menuRename"), L.T("widgets.menuGoal", Owner.Settings.DailyGoalMinutes)]
+            : Config.Kind == "memento" ? [L.T("widgets.menuRename"), L.T("memento.menuBirth"), L.T("memento.menuExpectancy"), L.T("memento.menuSync")]
+            : Config.Kind == "finance" ? [L.T("widgets.menuRename"), L.T("finance.currency"), L.T("finance.rateTitle")]
             : [L.T("widgets.menuRename")];
         var choice = await Owner.Choose("OPCIONES DEL WIDGET", options);
         if (choice == 0)
@@ -192,6 +203,41 @@
             else if (choice == 3) Config.KeepAlive = !Config.KeepAlive;
             else if (choice == 4) Owner.Browser.Open(Config.Value);
         }
+        else if (Config.Kind == "finance")
+        {
+            var ledger = FinanceStore.For(Owner.Store);
+            if (choice == 1)
+            {
+                var pick = await Owner.Choose(L.T("finance.currency"), [MoneyFx.Usd, MoneyFx.Mxn]);
+                if (pick >= 0) ledger.SetCurrency(pick == 0 ? MoneyFx.Usd : MoneyFx.Mxn);
+            }
+            else if (choice == 2)
+            {
+                var typed = await Owner.Prompt(L.T("finance.rateTitle"), L.T("finance.rateLabel"), ledger.Book.UsdToMxn.ToString("0.####", CultureInfo.InvariantCulture));
+                if (typed is not null && decimal.TryParse(typed.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var rate) && rate > 0)
+                    ledger.SetRate(rate, true);
+            }
+        }
+        else if (Config.Kind == "memento")
+        {
+            var data = MementoMoriCard.Read(Config);
+            if (choice == 1) await PromptMementoBirth();
+            else if (choice == 2)
+            {
+                var typed = await Owner.Prompt(L.T("memento.expectancyTitle"), L.T("memento.expectancyLabel"), data.ExpectancyYears.ToString());
+                if (int.TryParse(typed, out int years))
+                {
+                    data.ExpectancyYears = Math.Clamp(years, 40, 100);
+                    MementoMoriCard.Write(Config, data);
+                    Owner.Status(L.T("memento.expectancySet", data.ExpectancyYears));
+                }
+            }
+            else if (choice == 3)
+            {
+                MementoMoriCard.SyncToToday(Owner, Config);
+                Owner.Status(L.T("memento.synced"));
+            }
+        }
         else if (Config.Kind == "stats" && choice == 1)
         {
             var minutes = await Owner.Prompt(L.T("widgets.goalTitle"), L.T("widgets.goalLabel"), Owner.Settings.DailyGoalMinutes.ToString());
@@ -206,4 +252,29 @@
     }
 
     private int reloads;
+
+    /// <summary>The birth date the calendar counts from, asked when the card is added and from its menu.</summary>
+    internal async Task<bool> PromptMementoBirth()
+    {
+        var data = MementoMoriCard.Read(Config);
+        var typed = await Owner.Prompt(L.T("memento.birthTitle"), L.T("memento.birthLabel"), data.BirthDate ?? "");
+        if (typed is null) return false;
+        if (!MementoMoriCard.TryParseBirth(typed, out var birth))
+        {
+            Owner.Status(L.T("memento.birthInvalid"));
+            return false;
+        }
+        data.BirthDate = birth.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        MementoMoriCard.Write(Config, data);
+        Owner.SaveState();
+        Owner.Status(L.T("memento.birthSet", data.BirthDate));
+        Owner.Refresh();
+        return true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // A new life calendar asks for the birth date straight away, as the desktop does on adding it.
+        if (firstRender && Config.Kind == "memento" && Owner.TakeBirthPrompt(Config.Id)) await PromptMementoBirth();
+    }
 }

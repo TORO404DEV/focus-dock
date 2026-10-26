@@ -13,4 +13,10 @@
   </ItemGroup>
   <!-- The same Core the desktop runs: timer, books, parsers, sounds and every word on screen. -->
   <ItemGroup><ProjectReference Include="..\PomoDock.Core\PomoDock.Core.csproj" /></ItemGroup>
+  <!-- The dumbbell programs and the exercise catalog are plain C#; the web compiles the desktop's files as they are. -->
+  <ItemGroup>
+    <Compile Include="..\PomoDock.App\WorkoutPrograms.cs" Link="Shared\WorkoutPrograms.cs" />
+    <Compile Include="..\PomoDock.App\WorkoutCatalog.cs" Link="Shared\WorkoutCatalog.cs" />
+    <EmbeddedResource Include="..\PomoDock.App\Assets\Workout\exercises.json" Link="Shared\exercises.json" />
+  </ItemGroup>
 </Project>

@@ -1,0 +1,617 @@
+@* Shared ledger on the canvas. The card is only a lens: closing it never deletes a movement.
+   The entry field stays pinned to the bottom at every size; the movement list is the only part that scrolls. *@
+@implements IDisposable
+
+@{
+    var shape = Measure();
+    var book = store.Book;
+    var snapshot = book.Month(cursor);
+    var (start, end) = book.SpanRange(span, cursor);
+    var inRange = book.Entries.Where(entry => entry.Date >= start && entry.Date <= end)
+        .OrderByDescending(entry => entry.Date).ThenByDescending(entry => entry.CreatedUtc).ToList();
+    decimal shownIncome = span == FinanceSpan.Month ? snapshot.Recorded.Income : inRange.Where(e => e.Flow == MoneyFlow.Income).Sum(book.ToDisplay);
+    decimal shownExpense = span == FinanceSpan.Month ? snapshot.Recorded.Expense : inRange.Where(e => e.Flow == MoneyFlow.Expense).Sum(book.ToDisplay);
+    decimal net = shownIncome - shownExpense;
+    string netText = Signed(net, book.Currency);
+    string netColor = net < 0 ? ExpenseColor : net > 0 ? IncomeColor : "var(--ink)";
+    double column = shape.Wide ? shape.Width * 0.42 : shape.Width;
+    int chars = Math.Max(6, netText.Length + 3);
+    double netSize = Math.Clamp((column - 36) / (chars * 0.62), 20, shape.Wide ? 40 : 34);
+    bool shortLabels = shape.Width < 520;
+    int unpaidFixed = span == FinanceSpan.Month ? snapshot.Fixed.Count(item => !item.Recorded) : 0;
+    int unpaidSubs = span == FinanceSpan.Month ? snapshot.Subscriptions.Count(item => !item.Recorded) : 0;
+}
+<div class="finance @(shape.Wide ? "wide" : "")" style="@($"--income:{IncomeColor};--expense:{ExpenseColor}")">
+    <div class="fin-header">
+        <button class="fin-nav" @onclick="() => Shift(-1)">‹</button>
+        <span class="fin-month">@PeriodTitle(start, end)</span>
+        @if (!shape.Summary)
+        {
+            <span class="fin-head-net" style="@Css($"color:{netColor};font-size:{Math.Clamp(shape.Width / 22, 13, 16)}px")">@netText</span>
+        }
+        @Segment([MoneyFx.Usd, MoneyFx.Mxn], book.Currency, code => { draftCode = code; store.SetCurrency(code); }, null, 12, 8)
+        <button class="fin-nav" @onclick="() => Shift(1)">›</button>
+    </div>
+    @if (shape.Toolbar)
+    {
+        <div class="fin-toolbar @(shape.Width >= 440 ? "split" : "")">
+            <span class="fin-pills">
+                @Segment([nameof(FinanceSpan.Week), nameof(FinanceSpan.Month), nameof(FinanceSpan.Quarter), nameof(FinanceSpan.Year)], span.ToString(),
+                    key => span = Enum.Parse<FinanceSpan>(key, true), key => L.T("finance.span." + key.ToLowerInvariant()), 12, shortLabels ? 7 : 10)
+            </span>
+            <span class="fin-pills">
+                @Segment(["moves", "fixed", "subs"], view, key => view = key,
+                    key => L.T(shortLabels ? "finance.tab" + TabKey(key) + "Short" : "finance.tab" + TabKey(key)), 12, shortLabels ? 7 : 10)
+            </span>
+        </div>
+    }
+    <div class="fin-main">
+        <div class="fin-side scroll">
+            @if (shape.Summary)
+            {
+                int streak = book.SurplusStreak(cursor);
+                bool drift = span == FinanceSpan.Month && snapshot.ProjectedNet != snapshot.Recorded.Net;
+                decimal fixedTotal = snapshot.Fixed.Sum(item => book.ToDisplay(item.Item));
+                decimal subsTotal = snapshot.Subscriptions.Sum(item => book.ToDisplay(item.Item));
+                var burn = new List<string>();
+                if (fixedTotal > 0) burn.Add(L.T("finance.tabFixed") + " " + Compact(fixedTotal, book.Currency));
+                if (subsTotal > 0) burn.Add(L.T("finance.tabSubs") + " " + Compact(subsTotal, book.Currency));
+                int unpaid = unpaidFixed + unpaidSubs;
+                <div class="fin-plate">
+                    <div class="fin-plate-top">
+                        <span>@L.T("finance.net")@if (streak > 0 && shape.Width >= 520) { <em>@L.T("finance.streak", streak.ToString(CultureInfo.InvariantCulture))</em> }</span>
+                        <span class="fin-rate">
+                            <button class="fin-link" title="@L.T("finance.rateTitle")" @onclick="EditRate">@L.T("finance.rate", book.UsdToMxn.ToString("0.##", CultureInfo.InvariantCulture))</button>
+                            <button class="fin-refresh" title="@L.T("finance.refresh")" @onclick="() => RefreshRateAsync(true)">↻</button>
+                        </span>
+                    </div>
+                    <div class="fin-net">
+                        <b style="@Css($"font-size:{netSize}px;color:{netColor}")">@netText</b>
+                        <small>@book.Currency</small>
+                    </div>
+                    <div class="fin-split">
+                        <div class="fin-chip" style="@($"background:{IncomeColor};color:{On(IncomeColor)}")" title="@L.T("finance.income")">
+                            @if (shape.Width >= 380) { <small>@L.T("finance.income")</small> }
+                            <b>+@Compact(shownIncome, book.Currency)</b>
+                        </div>
+                        <div class="fin-chip" style="@($"background:{ExpenseColor};color:{On(ExpenseColor)}")" title="@L.T("finance.expense")">
+                            @if (shape.Width >= 380) { <small>@L.T("finance.expense")</small> }
+                            <b>−@Compact(shownExpense, book.Currency)</b>
+                        </div>
+                    </div>
+                    @if (shownIncome + shownExpense > 0)
+                    {
+                        <div class="fin-track"><i style="@Css($"width:{(double)(shownIncome / (shownIncome + shownExpense)) * 100:0.##}%")"></i></div>
+                    }
+                    @if (drift)
+                    {
+                        <div class="fin-line">@L.T("finance.projected", Signed(snapshot.ProjectedNet, book.Currency))</div>
+                    }
+                    <div class="fin-foot">
+                        @if (burn.Count > 0)
+                        {
+                            <span title="@L.T("finance.obligations")">@string.Join("   ·   ", burn)</span>
+                        }
+                        @if (unpaid > 0)
+                        {
+                            <button class="fin-unpaid" style="@($"background:{ExpenseColor};color:{On(ExpenseColor)}")"
+                                    @onclick='() => view = unpaidFixed == 0 && unpaidSubs > 0 ? "subs" : "fixed"'>@L.T("finance.unpaid", unpaid.ToString(CultureInfo.InvariantCulture))</button>
+                        }
+                    </div>
+                </div>
+            }
+            @if (shape.Chart && shape.Wide)
+            {
+                @Pie(shape)
+            }
+        </div>
+        <div class="fin-ledger">
+            <div class="fin-list scroll">
+                @if (shape.Chart && !shape.Wide)
+                {
+                    @Pie(shape)
+                }
+                @if (view == "fixed")
+                {
+                    @Recurring(snapshot.Fixed, false)
+                }
+                else if (view == "subs")
+                {
+                    @Recurring(snapshot.Subscriptions, true)
+                }
+                else
+                {
+                    @Moves(span == FinanceSpan.Month ? snapshot.Entries : inRange)
+                }
+            </div>
+            @if (shape.Composer)
+            {
+                string hint = Hint();
+                <div class="fin-composer" style="@Css($"padding-top:{(shape.Height < 220 ? 4 : 8)}px")">
+                    <div class="fin-entry">
+                        <button class="fin-code" title="@L.T("finance.currency")" @onclick="() => draftCode = draftCode == MoneyFx.Mxn ? MoneyFx.Usd : MoneyFx.Mxn">@draftCode</button>
+                        <input id="@inputId" placeholder="@L.T("finance.placeholder")" title="@L.T("finance.hint")" aria-label="@L.T("finance.placeholder")"
+                               @bind="text" @bind:event="oninput" @onkeydown="Keys" />
+                        <button class="fin-add" title="@L.T("common.add")" aria-label="@L.T("common.add")" @onclick="Commit">+</button>
+                    </div>
+                    @if (shape.Hint && hint.Length > 0)
+                    {
+                        <div class="fin-hint">@hint</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly record struct Shape(bool Wide, bool Toolbar, bool Summary, bool Chart, bool Hint, bool Composer, double ChartH, double Width, double Height);
+
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter, EditorRequired] public WidgetConfig Config { get; set; } = null!;
+    [Parameter] public double Width { get; set; }
+    [Parameter] public double Height { get; set; }
+
+    private static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(8) };
+    private FinanceStore store = null!;
+    private readonly string inputId = "fin-" + Guid.NewGuid().ToString("N");
+    private DateOnly cursor = DateOnly.FromDateTime(DateTime.Today);
+    private FinanceSpan span = FinanceSpan.Month;
+    private int pieDays = 30;
+    private string view = "moves";
+    private string draftCode = MoneyFx.Mxn;
+    private string text = "";
+    private bool fetchingRate;
+
+    private bool Night => Owner.Settings.Dark;
+    private string IncomeColor => Night ? "#8FC9A0" : "#1E7A46";
+    private string ExpenseColor => Night ? "#E38B84" : "#B23B32";
+    private static string On(string hex) => Theme.TryParse(hex, out var color) && Theme.Luminance(color) > 0.58 ? "#171916" : "#F4F1E8";
+
+    private static string Css(FormattableString style) => FormattableString.Invariant(style);
+
+    protected override void OnInitialized()
+    {
+        store = FinanceStore.For(Owner.Store);
+        draftCode = store.Book.Currency;
+        store.Changed += OnChanged;
+        _ = RefreshRateAsync(false);
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        store.Changed -= OnChanged;
+        Owner.ClosePanel(this);
+    }
+
+    // ---------------------------------------------------------------- layout
+
+    private Shape Measure()
+    {
+        double w = Math.Max(220, Width);
+        double h = Math.Max(120, Height - 4);
+        // Wide puts the chart beside the list, so it cannot push the entry field off the card.
+        if (w >= 700 && h >= 440)
+            return new Shape(true, true, true, true, true, true, Math.Clamp(h * 0.36, 200, 280), w, h);
+        // Stacked autos are only the header, the toolbar, the summary and the field. The chart
+        // lives inside the scrolling list, so a long ledger cannot push the field off the card.
+        bool composer = h >= 72;
+        bool toolbar = true, summaryOn = true;
+        double toolbarH = w < 440 ? 76 : 42;
+        double Cost(bool hintLine = false) =>
+            40 + (toolbar ? toolbarH : 0) + (summaryOn ? 220 : 0) + (composer ? 58 : 0) + (hintLine ? 18 : 0);
+        bool Fits(bool hintLine = false) => Cost(hintLine) <= h - 4;
+        if (!Fits()) summaryOn = false;
+        if (!Fits()) toolbar = false;
+        double star = Math.Max(0, h - Cost());
+        bool chart = star >= 160;
+        double chartH = chart ? Math.Clamp(star * 0.62, 180, 250) : 0;
+        bool hint = composer && w >= 240 && Fits(true);
+        return new Shape(false, toolbar, summaryOn, chart, hint, composer, chartH, w, h);
+    }
+
+    private static string TabKey(string key) => key switch { "fixed" => "Fixed", "subs" => "Subs", _ => "Moves" };
+
+    private string PeriodTitle(DateOnly start, DateOnly end)
+    {
+        string title = span switch
+        {
+            FinanceSpan.Week when start.Month == end.Month => $"{start.ToString("d", Strings.Culture)}–{end.ToString("d MMM yyyy", Strings.Culture)}",
+            FinanceSpan.Week => $"{start.ToString("d MMM", Strings.Culture)}–{end.ToString("d MMM", Strings.Culture)}",
+            FinanceSpan.Quarter => (Strings.Culture.TwoLetterISOLanguageName == "es" ? "T" : "Q") + $"{(start.Month - 1) / 3 + 1} {start.Year}",
+            FinanceSpan.Year => start.Year.ToString(CultureInfo.InvariantCulture),
+            _ => cursor.ToString("MMMM yyyy", Strings.Culture)
+        };
+        return title.ToUpper(Strings.Culture);
+    }
+
+    private RenderFragment Segment(IReadOnlyList<string> keys, string current, Action<string> pick, Func<string, string>? label, double font, double pad) => __builder =>
+    {
+        <span class="fin-segment">
+            @foreach (var key in keys)
+            {
+                bool on = string.Equals(key, current, StringComparison.OrdinalIgnoreCase);
+                string picked = key;
+                <button class="@(on ? "on" : "")" style="@Css($"font-size:{font}px;padding:4px {pad}px")" @onclick="() => pick(picked)">@(label?.Invoke(key) ?? key)</button>
+            }
+        </span>
+    };
+
+    // ---------------------------------------------------------------- chart
+
+    private (DateOnly Start, DateOnly End) PieRange()
+    {
+        var end = DateOnly.FromDateTime(DateTime.Today);
+        return pieDays <= 1 ? (end, end) : (end.AddDays(1 - pieDays), end);
+    }
+
+    private RenderFragment Pie(Shape shape) => __builder =>
+    {
+        var (start, end) = PieRange();
+        var items = store.Book.Categories(start, end);
+        bool beside = shape.Width * (shape.Wide ? 0.44 : 1) >= 380;
+        double size = beside ? Math.Clamp(shape.ChartH - 44, 108, 210) : Math.Clamp(shape.ChartH * 0.58, 96, 150);
+        string range = (start == end ? start.ToString("d MMM", Strings.Culture) : $"{start.ToString("d MMM", Strings.Culture)}–{end.ToString("d MMM", Strings.Culture)}").ToUpper(Strings.Culture);
+        <div class="fin-chart" style="@Css($"min-height:{shape.ChartH}px")">
+            <div class="fin-chart-head">
+                <b>@L.T("finance.pieSpent")</b>
+                @Segment(["1", "7", "30", "90", "365"], pieDays.ToString(CultureInfo.InvariantCulture), key => pieDays = int.Parse(key, CultureInfo.InvariantCulture),
+                    key => key == "365" ? L.T("finance.pieYear") : L.T("finance.pieDays", key), 11, 7)
+            </div>
+            <div class="fin-chart-body @(beside ? "beside" : "")">
+                <svg width="@Css($"{size}")" height="@Css($"{size}")" viewBox="@Css($"0 0 {size} {size}")" class="fin-pie">
+                    @{
+                        double inset = 3, radius = Math.Max(8, size - inset * 2) / 2, cx = size / 2;
+                    }
+                    @if (items.Count == 0 || items.Count == 1 || items[0].Share >= 0.999)
+                    {
+                        <circle cx="@Css($"{cx}")" cy="@Css($"{cx}")" r="@Css($"{radius}")" fill="@(items.Count == 0 ? "var(--surface)" : SliceColor(items[0].Category))" />
+                    }
+                    else
+                    {
+                        double angle = 0;
+                        foreach (var slice in items)
+                        {
+                            double sweep = slice.Share * 360;
+                            if (sweep >= 0.4)
+                            {
+                                <path d="@SlicePath(cx, radius, angle, Math.Min(sweep, 359.9))" fill="@SliceColor(slice.Category)" />
+                            }
+                            angle += sweep;
+                        }
+                    }
+                </svg>
+                <div class="fin-legend">
+                    <small>@range</small>
+                    @if (items.Count == 0)
+                    {
+                        <b>@L.T("finance.pieEmpty")</b>
+                    }
+                    @foreach (var slice in items)
+                    {
+                        <div>
+                            <i style="background:@SliceColor(slice.Category)"></i>
+                            <span>@L.T("finance.cat." + slice.Category)</span>
+                            <b>@((slice.Share * 100).ToString("0", Strings.Culture))%</b>
+                            <em>@Compact(slice.Amount, store.Book.Currency)</em>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    };
+
+    private static string SlicePath(double center, double radius, double start, double sweep)
+    {
+        (double X, double Y) Polar(double degrees)
+        {
+            double rad = (degrees - 90) * Math.PI / 180;
+            return (center + radius * Math.Cos(rad), center + radius * Math.Sin(rad));
+        }
+        var a = Polar(start);
+        var b = Polar(start + sweep);
+        return FormattableString.Invariant($"M{center},{center} L{a.X:0.###},{a.Y:0.###} A{radius:0.###},{radius:0.###} 0 {(sweep > 180 ? 1 : 0)} 1 {b.X:0.###},{b.Y:0.###} Z");
+    }
+
+    private static string SliceColor(string category) => category switch
+    {
+        "rent" => "#C46B4A",
+        "food" => "#C4A35A",
+        "ai" => "#5C6B7A",
+        "transport" => "#C4843A",
+        "utilities" => "#4F7C8A",
+        "health" => "#C46B73",
+        "software" => "#3A3F38",
+        "hosting" => "#5E8A6A",
+        "media" => "#A67C5D",
+        _ => "#B0AA9E"
+    };
+
+    // ---------------------------------------------------------------- lists
+
+    private RenderFragment Moves(IReadOnlyList<MoneyEntry> entries) => __builder =>
+    {
+        var book = store.Book;
+        if (entries.Count == 0)
+        {
+            <p class="fin-empty">@L.T("finance.emptyMoves")</p>
+            return;
+        }
+        DateOnly? last = null;
+        foreach (var entry in entries)
+        {
+            if (entry.Date != last)
+            {
+                <div class="fin-day @(last is null ? "first" : "")">@entry.Date.ToString("ddd dd MMM", Strings.Culture).ToUpper(Strings.Culture).Replace(".", "")</div>
+                last = entry.Date;
+            }
+            string sign = entry.Flow == MoneyFlow.Income ? "+" : "−";
+            string meta = $"{L.T("finance.cat." + entry.Category)} · {entry.Currency}";
+            if (!string.Equals(entry.Currency, book.Currency, StringComparison.OrdinalIgnoreCase))
+                meta += " · " + sign + Compact(book.ToDisplay(entry), book.Currency);
+            var item = entry;
+            <div class="fin-row" @onclick="() => EditEntry(item)">
+                <div class="fin-row-text"><b>@entry.Title</b><small>@meta</small></div>
+                @Amount(sign + Compact(entry.Amount, entry.Currency), entry.Flow)
+                <button class="fin-x" @onclick="() => store.RemoveEntry(item)" @onclick:stopPropagation>×</button>
+            </div>
+        }
+    };
+
+    private RenderFragment Recurring(IReadOnlyList<RecurringDue> items, bool subscriptions) => __builder =>
+    {
+        if (items.Count == 0)
+        {
+            <p class="fin-empty">@(subscriptions ? L.T("finance.emptySubs") : L.T("finance.emptyFixed"))</p>
+            return;
+        }
+        foreach (var due in items)
+        {
+            var item = due.Item;
+            string cadence = item.Repeat == MoneyRepeat.Yearly ? L.T("finance.yearly") : L.T("finance.dayOfMonth", item.DayOfMonth);
+            <div class="fin-row recurring" @onclick="() => EditRecurring(item)">
+                <div class="fin-row-text">
+                    <b>@item.Title</b>
+                    <small>@($"{L.T("finance.cat." + item.Category)} · {cadence} · {item.Currency}")</small>
+                </div>
+                <div class="fin-row-side">
+                    @Amount((item.Flow == MoneyFlow.Income ? "+" : "−") + Compact(item.Amount, item.Currency), item.Flow)
+                    <span>
+                        @if (!due.Recorded)
+                        {
+                            <button class="fin-paid" style="@($"background:{IncomeColor};color:{On(IncomeColor)}")"
+                                    @onclick="() => store.MarkPaid(item, new DateOnly(cursor.Year, cursor.Month, 1))" @onclick:stopPropagation>@L.T("finance.paid")</button>
+                        }
+                        else
+                        {
+                            <small>@L.T("finance.alreadyPaid")</small>
+                        }
+                        <button class="fin-x" @onclick="() => ArchiveRecurring(item)" @onclick:stopPropagation>×</button>
+                    </span>
+                </div>
+            </div>
+        }
+    };
+
+    private RenderFragment Amount(string label, MoneyFlow flow) => __builder =>
+    {
+        string color = flow == MoneyFlow.Income ? IncomeColor : ExpenseColor;
+        <span class="fin-amount" style="@($"background:{color};color:{On(color)}")">@label</span>
+    };
+
+    private async Task ArchiveRecurring(RecurringMoney item)
+    {
+        if (await Owner.Choose(L.T("finance.archiveTitle"), [L.T("finance.archive"), L.T("common.cancel")]) == 0)
+            store.Archive(item);
+    }
+
+    // ---------------------------------------------------------------- input
+
+    private string Hint()
+    {
+        var parsed = FinanceQuickAdd.Parse(text, DateOnly.FromDateTime(DateTime.Today), draftCode);
+        return parsed switch
+        {
+            MoneyEntry entry => L.T(entry.Flow == MoneyFlow.Income ? "finance.hintIncome" : "finance.hintExpense", entry.Title, FinanceBook.Format(entry.Amount, CurrencyOf(entry.Currency), Strings.Culture)),
+            RecurringMoney item => L.T(item.Subscription ? "finance.hintSub" : "finance.hintFixed", item.Title, FinanceBook.Format(item.Amount, CurrencyOf(item.Currency), Strings.Culture)),
+            _ => text.Trim().Length == 0 ? "" : L.T("finance.hint")
+        };
+    }
+
+    private string CurrencyOf(string code) => code.Length > 0 ? MoneyFx.Normalize(code) : draftCode;
+
+    private void Keys(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") Commit();
+        else if (e.Key == "Escape") text = "";
+    }
+
+    private void Commit()
+    {
+        var parsed = FinanceQuickAdd.Parse(text, DateOnly.FromDateTime(DateTime.Today), draftCode);
+        if (parsed is MoneyEntry entry)
+        {
+            var date = span == FinanceSpan.Month && cursor.Year == DateTime.Today.Year && cursor.Month == DateTime.Today.Month
+                ? DateOnly.FromDateTime(DateTime.Today)
+                : cursor;
+            store.AddEntry(entry.Flow, entry.Amount, entry.Title, date, entry.Category, entry.Notes, CurrencyOf(entry.Currency));
+        }
+        else if (parsed is RecurringMoney item)
+        {
+            store.AddRecurring(item.Title, item.Amount, item.Subscription, item.Category, item.Flow, item.DayOfMonth, item.Repeat, CurrencyOf(item.Currency));
+            view = item.Subscription ? "subs" : "fixed";
+        }
+        else return;
+        text = "";
+        Owner.Browser.Focus("#" + inputId);
+    }
+
+    private void Shift(int steps) => cursor = store.Book.Shift(span, cursor, steps);
+
+    private async Task EditRate()
+    {
+        var typed = await Owner.Prompt(L.T("finance.rateTitle"), L.T("finance.rateLabel"), store.Book.UsdToMxn.ToString("0.####", CultureInfo.InvariantCulture));
+        if (typed is null) return;
+        if (decimal.TryParse(typed.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var rate) && rate > 0)
+            store.SetRate(rate, true);
+    }
+
+    /// <summary>Pulls USD→MXN from Frankfurter (ECB). Offline, the book keeps the last stored rate.</summary>
+    private async Task RefreshRateAsync(bool force)
+    {
+        if (fetchingRate) return;
+        if (!force && store.Book.RateManual) return;
+        if (!force && store.Book.RateUpdatedUtc is { } when && DateTime.UtcNow - when < TimeSpan.FromHours(12)) return;
+        fetchingRate = true;
+        try
+        {
+            // The desktop's frankfurter.app address now redirects without CORS headers; the browser needs the new host.
+            using var response = await http.GetAsync("https://api.frankfurter.dev/v1/latest?from=USD&to=MXN");
+            if (!response.IsSuccessStatusCode) return;
+            using var doc = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("rates", out var rates) && rates.TryGetProperty("MXN", out var mxn) && mxn.GetDecimal() is > 0 and var value)
+                store.SetRate(decimal.Round(value, 4, MidpointRounding.AwayFromZero), false);
+        }
+        catch (Exception) { }
+        finally { fetchingRate = false; }
+    }
+
+    // ---------------------------------------------------------------- edit
+
+    private MoneyEntry? editing;
+    private RecurringMoney? editingRecurring;
+    private string editTitle = "", editAmount = "", editDate = "", editCategory = "", editCurrency = "";
+    private MoneyFlow editFlow;
+    private bool editInvalid;
+
+    private void EditEntry(MoneyEntry entry)
+    {
+        editing = entry;
+        editingRecurring = null;
+        editTitle = entry.Title;
+        editAmount = entry.Amount.ToString("0.##", CultureInfo.InvariantCulture);
+        editDate = entry.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        editFlow = entry.Flow;
+        editCategory = entry.Category;
+        editCurrency = string.IsNullOrWhiteSpace(entry.Currency) ? store.Book.Currency : entry.Currency;
+        editInvalid = false;
+        ShowEditor();
+    }
+
+    private void EditRecurring(RecurringMoney item)
+    {
+        editingRecurring = item;
+        editing = null;
+        editTitle = item.Title;
+        editAmount = item.Amount.ToString("0.##", CultureInfo.InvariantCulture);
+        editDate = item.DayOfMonth.ToString(CultureInfo.InvariantCulture);
+        editFlow = item.Flow;
+        editCategory = item.Category;
+        editCurrency = string.IsNullOrWhiteSpace(item.Currency) ? store.Book.Currency : item.Currency;
+        editInvalid = false;
+        ShowEditor();
+    }
+
+    private void ShowEditor() => Owner.ShowPanel(this, Editor);
+
+    private RenderFragment Editor => __builder =>
+    {
+        var allowed = editFlow == MoneyFlow.Income ? FinanceBook.IncomeCategories : FinanceBook.ExpenseCategories;
+        if (!allowed.Contains(editCategory)) editCategory = allowed[0];
+        <div class="backdrop">
+            <div class="dialog" style="width:420px">
+                <div class="dialog-head">
+                    <strong>POMODOCK / @L.T("finance.edit")</strong>
+                    <button class="chrome-btn" @onclick="() => Owner.ClosePanel(this)">×</button>
+                </div>
+                <div class="dialog-body fin-editor">
+                    <input class="field" value="@editTitle" @oninput="e => editTitle = e.Value?.ToString() ?? string.Empty" />
+                    <div class="fin-editor-row">
+                        <input class="field" value="@editAmount" @oninput="e => editAmount = e.Value?.ToString() ?? string.Empty" />
+                        @foreach (var money in new[] { MoneyFx.Usd, MoneyFx.Mxn })
+                        {
+                            string picked = money;
+                            <button class="btn @(editCurrency == money ? "ink" : "")" @onclick="() => { editCurrency = picked; ShowEditor(); }">@money</button>
+                        }
+                    </div>
+                    @if (editing is not null)
+                    {
+                        <div class="fin-editor-row">
+                            <button class="btn" style="@(editFlow == MoneyFlow.Income ? $"background:{IncomeColor};color:{On(IncomeColor)}" : "")" @onclick="() => { editFlow = MoneyFlow.Income; ShowEditor(); }">@L.T("finance.income")</button>
+                            <button class="btn" style="@(editFlow == MoneyFlow.Expense ? $"background:{ExpenseColor};color:{On(ExpenseColor)}" : "")" @onclick="() => { editFlow = MoneyFlow.Expense; ShowEditor(); }">@L.T("finance.expense")</button>
+                        </div>
+                    }
+                    <div class="fin-editor-cats">
+                        @foreach (var key in allowed)
+                        {
+                            string picked = key;
+                            <button class="btn @(editCategory == key ? "ink" : "")" @onclick="() => { editCategory = picked; ShowEditor(); }">@L.T("finance.cat." + key)</button>
+                        }
+                    </div>
+                    <div class="form-label" style="font-size:11px">@(editing is not null ? L.T("finance.editDate") : L.T("finance.editDay"))</div>
+                    <input class="field" value="@editDate" @oninput="e => editDate = e.Value?.ToString() ?? string.Empty" />
+                    @if (editInvalid)
+                    {
+                        <p style="@($"color:{ExpenseColor};font-weight:700;font-size:11px;margin:8px 0 0")">@L.T("finance.editInvalid")</p>
+                    }
+                    <div class="dialog-row" style="margin-top:14px">
+                        <button class="btn" @onclick="SaveEdit">@L.T("common.save")</button>
+                        <button class="btn" @onclick="() => Owner.ClosePanel(this)">@L.T("common.cancel")</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    private void SaveEdit()
+    {
+        bool ok;
+        if (editing is not null)
+        {
+            ok = editTitle.Trim().Length > 0 && TryMoney(editAmount, out var value) && TryDate(editDate, out var when);
+            if (ok)
+            {
+                TryMoney(editAmount, out value); TryDate(editDate, out when);
+                store.UpdateEntry(editing, editFlow, value, editTitle, when, editCategory, editCurrency);
+            }
+        }
+        else
+        {
+            ok = editingRecurring is not null && editTitle.Trim().Length > 0 && TryMoney(editAmount, out _) && int.TryParse(editDate.Trim(), out _);
+            if (ok)
+            {
+                TryMoney(editAmount, out var value);
+                store.UpdateRecurring(editingRecurring!, value, editTitle, editCategory, editCurrency, int.Parse(editDate.Trim(), CultureInfo.InvariantCulture));
+            }
+        }
+        if (!ok) { editInvalid = true; ShowEditor(); return; }
+        Owner.ClosePanel(this);
+    }
+
+    private static bool TryMoney(string text, out decimal amount)
+    {
+        string raw = text.Trim().Replace(" ", "").Replace("$", "");
+        if (decimal.TryParse(raw, NumberStyles.Number, Strings.Culture, out amount) && amount > 0) return true;
+        return decimal.TryParse(raw.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out amount) && amount > 0;
+    }
+
+    private static bool TryDate(string text, out DateOnly date)
+    {
+        string raw = text.Trim();
+        if (DateOnly.TryParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date)) return true;
+        return DateOnly.TryParse(raw, Strings.Culture, DateTimeStyles.None, out date);
+    }
+
+    private static string Compact(decimal amount, string currency)
+    {
+        CultureInfo culture;
+        try { culture = currency == MoneyFx.Mxn ? CultureInfo.GetCultureInfo("es-MX") : CultureInfo.GetCultureInfo("en-US"); }
+        catch (CultureNotFoundException) { culture = CultureInfo.InvariantCulture; }
+        return "$" + Math.Abs(amount).ToString("N2", culture);
+    }
+
+    private static string Signed(decimal amount, string currency) =>
+        (amount < 0 ? "−" : amount > 0 ? "+" : "") + Compact(amount, currency);
+}

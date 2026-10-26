@@ -58,6 +58,9 @@ public sealed class SoundEngine
         browser.AudioStopAlarms();
     }
 
+    /// <summary>The workout's end-of-rest cue. The desktop rings the system chime, which ignores the click settings.</summary>
+    public void Ding(int volume) => PlayOnce(settings.ReminderSound, null, Math.Clamp(volume, 0, 100));
+
     public void Reminder()
     {
         if (settings.Sound) PlayOnce(settings.ReminderSound, null, settings.AlarmVolume);

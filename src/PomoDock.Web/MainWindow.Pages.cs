@@ -214,6 +214,16 @@ public partial class MainWindow
             if (config != keep && config.CanvasFill) config.RestoreFromCanvasFill();
     }
 
+    private Guid? askBirthFor;
+
+    /// <summary>True once, for the life calendar that was just added and still needs a birth date.</summary>
+    internal bool TakeBirthPrompt(Guid id)
+    {
+        if (askBirthFor != id) return false;
+        askBirthFor = null;
+        return true;
+    }
+
     internal void BringCardToFront(WidgetConfig config)
     {
         if (front == config.Id) return;
@@ -323,7 +333,12 @@ public partial class MainWindow
         else if (choice == 5) AddCard(new() { Kind = "habits", Title = L.T("widgets.kindHabits") }, true);
         else if (choice == 6) AddCard(new() { Kind = "calendar", Title = "AGENDA" }, true);
         else if (choice == 7) AddCard(new() { Kind = "finance", Title = L.T("widgets.kindFinance") }, true);
-        else if (choice == 8) AddCard(new() { Kind = "memento", Title = L.T("widgets.kindMemento") }, true);
+        else if (choice == 8)
+        {
+            var memento = new WidgetConfig { Kind = "memento", Title = L.T("widgets.kindMemento") };
+            askBirthFor = memento.Id;
+            AddCard(memento, true);
+        }
         else if (choice == 9) AddCard(new() { Kind = "workout", Title = L.T("widgets.kindWorkout") }, true);
         else if (choice == 10) AddTimerWidget();
         StateHasChanged();

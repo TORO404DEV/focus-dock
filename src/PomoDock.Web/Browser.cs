@@ -47,6 +47,8 @@ public sealed class Browser
     public void Open(string url) => js.InvokeVoid("pd.open", url);
     public void Copy(string text) => js.InvokeVoid("pd.copy", text);
     public void ScrollTo(string selector, double top) => js.InvokeVoid("pd.scrollTo", selector, top);
+    public void DrawLife<T>(string id, DotNetObjectReference<T> card, int years, int[] filled, int current, bool axis) where T : class =>
+        js.InvokeVoid("pd.drawLife", id, card, years, filled, current, axis);
     /// <summary>The To Do row a dragged task would land before, among rows of the same done state.</summary>
     public Guid? TaskUnder(double x, double y, string group) =>
         Guid.TryParse(js.Invoke<string?>("pd.taskUnder", x, y, group), out var id) ? id : null;

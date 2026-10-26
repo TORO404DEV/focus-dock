@@ -1,0 +1,235 @@
+@* Interactive life calendar built for dock widgets: stats and grid reflow by width/height
+   so a small card, a medium panel and a filled canvas all stay readable. *@
+@implements IDisposable
+
+@{
+    var data = Read(Config);
+    double inset = Width < 280 || Height < 140 ? 5 : Width < 420 ? 8 : 11;
+    string rootStyle = Css($"padding:{Math.Max(3, inset - 2)}px {inset}px {inset}px");
+    bool ready = TryParseBirth(data.BirthDate, out var birth) && birth <= DateOnly.FromDateTime(DateTime.Now);
+}
+@if (!ready)
+{
+    <div class="memento setup" style="@rootStyle">
+        <small>@L.T("memento.latin")</small>
+        <b style="@Css($"font-size:{Math.Clamp(Width * .06, 14, 22)}px")">@L.T("memento.setupTitle")</b>
+        @if (Height >= 90)
+        {
+            <p style="@Css($"font-size:{Math.Clamp(Width * .035, 10, 12)}px")">@L.T("memento.setupTip")</p>
+        }
+    </div>
+}
+else
+{
+    int years = data.ExpectancyYears;
+    int total = years * WeeksPerYear;
+    var today = DateOnly.FromDateTime(DateTime.Now);
+    filled = EnsureFilled(data, birth, today, total);
+    if (Read(Config).Filled is null)
+    {
+        data.Filled = filled.OrderBy(x => x).ToList();
+        Write(Config, data);
+        Owner.SaveState();
+    }
+    int livedCount = filled.Count;
+    int left = Math.Max(0, total - livedCount);
+    double livedRatio = Math.Clamp(livedCount / (double)Math.Max(1, total), 0, 1);
+    int ageYears = AgeYears(birth, today);
+    bool strip = Height < 100 || Width < 200;
+    bool sideBySide = Width >= 380 && Height >= 150;
+    showGrid = Height >= 170;
+    bool showFooter = Height >= 280 && Width >= 240;
+    showAxis = Width >= 280 && Height >= 220;
+    bool showTip = Width >= 400 && Height >= 300;
+    double hero = Math.Clamp(Math.Max(18, Math.Min(44, Math.Min(Width * .11, Height * (showGrid ? .09 : .18)))), 18, 44);
+    double label = Math.Clamp(hero * .36, 10, 12.5);
+    double tileNum = Math.Clamp(hero * .72, 15, 26);
+    current = MementoWeeks(birth, today);
+    this.years = years;
+    if (strip)
+    {
+        double fontCap = Math.Max(12, Math.Min(26, Height * .42));
+        double font = Math.Clamp(Math.Min(Width / 9, Height * .42), Math.Min(15, fontCap), fontCap);
+        <div class="memento compact" style="@rootStyle">
+            @if (Width >= 300)
+            {
+                <div class="memento-minis">
+                    @MiniMetric(left.ToString("N0", CultureInfo.CurrentCulture), L.T("memento.weeksLeft"), font)
+                    @MiniMetric(livedCount.ToString("N0", CultureInfo.CurrentCulture), L.T("memento.weeksLived"), font)
+                    @MiniMetric(ageYears.ToString(CultureInfo.InvariantCulture), L.T("memento.ageYears"), font)
+                </div>
+            }
+            else
+            {
+                <div class="memento-strip">
+                    <b style="@Css($"font-size:{Math.Clamp(font, 14, 18)}px")">†</b>
+                    <span>
+                        <b style="@Css($"font-size:{font}px")">@L.T("memento.compact", left)</b>
+                        <small style="@Css($"font-size:{Math.Clamp(font * .55, 9, 11)}px")">@L.T("memento.livedPercent", livedRatio * 100)</small>
+                    </span>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="memento" style="@rootStyle">
+            <div class="memento-head" style="@(showGrid ? "margin-bottom:6px" : "")">
+                <small style="@Css($"font-size:{Math.Clamp(label - 1, 9.5, 11.5)}px")">@L.T("memento.latin")</small>
+                <div class="@(sideBySide ? "memento-side" : "")">
+                    <div class="memento-primary">
+                        <b style="@Css($"font-size:{hero}px")" title="@L.T("memento.weeksLeftTip")">@left.ToString("N0", CultureInfo.CurrentCulture)</b>
+                        <small style="@Css($"font-size:{label}px")">@L.T("memento.weeksLeft")</small>
+                        <em style="@Css($"font-size:{Math.Clamp(label, 10.5, 12.5)}px")">@L.T("memento.livedPercent", livedRatio * 100)</em>
+                        @if (sideBySide && showTip)
+                        {
+                            <p>@L.T("memento.paintTip")</p>
+                        }
+                    </div>
+                    <div class="memento-pair" style="@(sideBySide ? Css($"width:{Math.Clamp(hero * 7.2, 160, 240)}px") : "margin-top:8px")">
+                        @MetaTile(livedCount.ToString("N0", CultureInfo.CurrentCulture), L.T("memento.weeksLived"), sideBySide ? tileNum : Math.Min(tileNum, 20), label)
+                        @MetaTile(ageYears.ToString(CultureInfo.InvariantCulture), L.T("memento.ageYears"), sideBySide ? tileNum : Math.Min(tileNum, 20), label)
+                    </div>
+                    @if (!sideBySide && showTip)
+                    {
+                        <p>@L.T("memento.paintTip")</p>
+                    }
+                </div>
+            </div>
+            @if (showGrid)
+            {
+                <div class="memento-board" title="@L.T("memento.paintTip")"><canvas id="@canvasId"></canvas></div>
+            }
+            @if (showFooter)
+            {
+                <p class="memento-foot" style="@Css($"font-size:{Math.Clamp(label, 10.5, 12.5)}px;max-height:{Math.Max(28, Height * .12)}px")">@L.T("memento.footer")</p>
+            }
+        </div>
+    }
+}
+
+@code {
+    public const int WeeksPerYear = 52;
+    private static readonly System.Text.Json.JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
+
+    public sealed class Data
+    {
+        public string? BirthDate { get; set; }
+        public int ExpectancyYears { get; set; } = 80;
+        /// <summary>Week indices (0 = birth week) the user has painted. Null = not seeded yet.</summary>
+        public List<int>? Filled { get; set; }
+    }
+
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter, EditorRequired] public WidgetConfig Config { get; set; } = null!;
+    [Parameter] public double Width { get; set; }
+    [Parameter] public double Height { get; set; }
+
+    private readonly string canvasId = "life-" + Guid.NewGuid().ToString("N");
+    private DotNetObjectReference<MementoMoriCard>? self;
+    private HashSet<int> filled = [];
+    private bool showGrid, showAxis;
+    private int years, current;
+
+    private static string Css(FormattableString style) => FormattableString.Invariant(style);
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        self ??= DotNetObjectReference.Create(this);
+        if (showGrid) Owner.Browser.DrawLife(canvasId, self, years, filled.OrderBy(x => x).ToArray(), current, showAxis);
+    }
+
+    /// <summary>A week of the grid was clicked: painted weeks are the user's to set.</summary>
+    [JSInvokable]
+    public void LifeToggle(int index)
+    {
+        if (!filled.Add(index)) filled.Remove(index);
+        var data = Read(Config);
+        data.Filled = filled.OrderBy(x => x).ToList();
+        Write(Config, data);
+        Owner.SaveState();
+        StateHasChanged();
+    }
+
+    public void Dispose() => self?.Dispose();
+
+    public static Data Read(WidgetConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(config.Value)) return new Data();
+        try
+        {
+            var data = System.Text.Json.JsonSerializer.Deserialize<Data>(config.Value, Json) ?? new Data();
+            data.ExpectancyYears = Math.Clamp(data.ExpectancyYears <= 0 ? 80 : data.ExpectancyYears, 40, 100);
+            return data;
+        }
+        catch { return new Data(); }
+    }
+
+    public static void Write(WidgetConfig config, Data data)
+    {
+        data.ExpectancyYears = Math.Clamp(data.ExpectancyYears <= 0 ? 80 : data.ExpectancyYears, 40, 100);
+        if (data.Filled is { Count: > 0 })
+            data.Filled = data.Filled.Distinct().OrderBy(x => x).ToList();
+        config.Value = System.Text.Json.JsonSerializer.Serialize(data);
+    }
+
+    public static bool TryParseBirth(string? text, out DateOnly birth)
+    {
+        birth = default;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        text = text.Trim();
+        string[] formats = ["yyyy-MM-dd", "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy"];
+        if (DateOnly.TryParseExact(text, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out birth))
+            return birth.Year >= 1900 && birth.Year <= DateTime.Now.Year;
+        if (DateOnly.TryParse(text, CultureInfo.CurrentCulture, DateTimeStyles.None, out birth))
+            return birth.Year >= 1900 && birth.Year <= DateTime.Now.Year;
+        return false;
+    }
+
+    public static int MementoWeeks(DateOnly birth, DateOnly today) => Math.Max(0, (today.DayNumber - birth.DayNumber) / 7);
+
+    public static HashSet<int> EnsureFilled(Data data, DateOnly birth, DateOnly today, int totalWeeks)
+    {
+        int lived = Math.Min(MementoWeeks(birth, today), totalWeeks);
+        if (data.Filled is null)
+        {
+            data.Filled = Enumerable.Range(0, lived).ToList();
+            return data.Filled.ToHashSet();
+        }
+        return data.Filled.Where(i => i >= 0 && i < totalWeeks).ToHashSet();
+    }
+
+    public static void SyncToToday(MainWindow owner, WidgetConfig config)
+    {
+        var data = Read(config);
+        if (!TryParseBirth(data.BirthDate, out var birth)) return;
+        int total = data.ExpectancyYears * WeeksPerYear;
+        int lived = Math.Min(MementoWeeks(birth, DateOnly.FromDateTime(DateTime.Now)), total);
+        data.Filled = Enumerable.Range(0, lived).ToList();
+        Write(config, data);
+        owner.SaveState();
+    }
+
+    private static int AgeYears(DateOnly birth, DateOnly today)
+    {
+        int years = today.Year - birth.Year;
+        if (today < birth.AddYears(years)) years--;
+        return Math.Max(0, years);
+    }
+
+    private static RenderFragment MiniMetric(string value, string caption, double numberSize) => __builder =>
+    {
+        <div class="memento-tile mini">
+            <b style="@Css($"font-size:{numberSize}px")">@value</b>
+            <small style="@Css($"font-size:{Math.Clamp(numberSize * .4, 8, 10)}px")">@caption</small>
+        </div>
+    };
+
+    private static RenderFragment MetaTile(string value, string label, double numberSize, double labelSize) => __builder =>
+    {
+        <div class="memento-tile" style="@Css($"padding:{Math.Clamp(numberSize * .25, 4, 7)}px {Math.Clamp(numberSize * .32, 5, 9)}px")">
+            <b style="@Css($"font-size:{numberSize}px")">@value</b>
+            <small style="@Css($"font-size:{Math.Clamp(labelSize - 1, 9, 11)}px")">@label</small>
+        </div>
+    };
+}
