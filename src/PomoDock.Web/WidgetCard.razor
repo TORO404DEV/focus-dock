@@ -1,0 +1,176 @@
+@* The desktop's WidgetCard: a framed card with its kind and title, three header buttons, eight
+   resize edges, and the body of whatever widget it holds. *@
+
+<div class="card @(Config.Collapsed ? "is-collapsed" : "") @(Arriving ? "arriving" : "")"
+     data-id="@Config.Id" data-minw="@(Config.Kind == "agent" ? 260 : 220)" data-minh="@(Config.Collapsed ? 42 : Config.Kind == "agent" ? 280 : 90)"
+     style="@CardStyle"
+     @onpointerdown="() => Owner.BringCardToFront(Config)" @onanimationend="() => Owner.ClearArrival(Config)">
+    <div class="card-head">
+        <div class="card-title" data-move @oncontextmenu="Options" @oncontextmenu:preventDefault>
+            <span>@KindLabel() / @Config.Title</span>
+        </div>
+        <div class="card-actions">
+            <button class="chrome-btn" title="@L.T(Config.CanvasFill ? "widgets.canvasRestore" : "widgets.canvasFill")" @onclick="ToggleCanvasFill">@(Config.CanvasFill ? ChromeIcon.Restore() : ChromeIcon.Expand())</button>
+            <button class="chrome-btn" title="Contraer / expandir" @onclick="ToggleCollapsed">@ChromeIcon.Collapse()</button>
+            <button class="chrome-btn" title="@L.T("widgets.remove")" @onclick="() => Owner.RemoveCard(Config)">@ChromeIcon.Close()</button>
+        </div>
+    </div>
+    <div class="card-body">
+        @if (!Config.Collapsed)
+        {
+            @switch (Config.Kind)
+            {
+                case "web":
+                    @if (Live)
+                    {
+                        <iframe @key="reloads" src="@EmbedUrl" title="@Config.Title" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"
+                                allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write"
+                                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"></iframe>
+                    }
+                    break;
+                case "window":
+                    <div class="card-placeholder">
+                        <strong>@L.T("web.windowTitle")</strong>
+                        @L.T("web.windowHelp")
+                        @if (Config.Value.Length > 0)
+                        {
+                            <div style="font-family:var(--mono);margin-top:8px">@Config.Value</div>
+                        }
+                    </div>
+                    break;
+                default:
+                    <div class="card-placeholder">@L.T("web.comingSoon")</div>
+                    break;
+            }
+        }
+    </div>
+    @if (!Config.Collapsed)
+    {
+        <div class="handles">
+            @foreach (var edge in MainWindow.Edges)
+            {
+                <i data-edge="@edge"></i>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter, EditorRequired] public WidgetConfig Config { get; set; } = null!;
+    [Parameter] public CardBox Rect { get; set; }
+    /// <summary>False while the card is on a page that is only sliding in; live surfaces wait for it to land.</summary>
+    [Parameter] public bool Live { get; set; } = true;
+    /// <summary>Another widget fills the canvas; this one steps aside without losing its state.</summary>
+    [Parameter] public bool Hidden { get; set; }
+    [Parameter] public bool Front { get; set; }
+    [Parameter] public bool Arriving { get; set; }
+
+    private string CardStyle => Rect.Style(Front ? 1 : 0) + (Hidden ? ";visibility:hidden" : "") + Skin;
+
+    /// <summary>A post-it or the dumbbells paint the whole card in their own colours.</summary>
+    private string Skin => Config.Kind == "workout" ? ";background:#000;color:#fff;border-color:#222" : "";
+
+    private string KindLabel() => Config.Kind switch
+    {
+        "window" => L.T("widgets.kindApp"),
+        "web" => L.T("widgets.kindWeb"),
+        "stats" => L.T("widgets.kindStats"),
+        "todo" => L.T("widgets.kindTodo"),
+        "habits" => L.T("widgets.kindHabits"),
+        "workout" => L.T("widgets.kindWorkout"),
+        "calendar" => L.T("widgets.kindCalendar"),
+        "finance" => L.T("widgets.kindFinance"),
+        "memento" => L.T("widgets.kindMemento"),
+        "notes" => L.T("widgets.kindNote"),
+        "agent" => L.T("widgets.kindAgent"),
+        _ => L.T("widgets.kindText")
+    };
+
+    /// <summary>
+    /// YouTube refuses to be framed on its own pages but offers the same video as an embed. Every
+    /// other address is framed as typed; a site that forbids framing shows blank, and the menu
+    /// opens it in a tab instead.
+    /// </summary>
+    private string EmbedUrl
+    {
+        get
+        {
+            var value = Config.Value;
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != "https") return "about:blank";
+            if (YouTubeWatch.IsWatch(value) && QueryValue(uri, "v") is { Length: > 0 } id) return $"https://www.youtube-nocookie.com/embed/{id}?autoplay=1";
+            if (uri.Host.EndsWith("youtu.be", StringComparison.OrdinalIgnoreCase) && uri.AbsolutePath.Trim('/') is { Length: > 0 } shortId)
+                return $"https://www.youtube-nocookie.com/embed/{shortId}?autoplay=1";
+            return uri.AbsoluteUri;
+        }
+    }
+
+    private static string? QueryValue(Uri uri, string key)
+    {
+        foreach (var part in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = part.Split('=', 2);
+            if (pair.Length == 2 && pair[0] == key) return Uri.UnescapeDataString(pair[1]);
+        }
+        return null;
+    }
+
+    private void ToggleCollapsed()
+    {
+        if (!Config.Collapsed && Config.CanvasFill) Config.RestoreFromCanvasFill();
+        Config.Collapsed = !Config.Collapsed;
+        Owner.SaveState();
+        Owner.Refresh();
+    }
+
+    private void ToggleCanvasFill()
+    {
+        if (Config.CanvasFill) Config.RestoreFromCanvasFill();
+        else
+        {
+            Config.Collapsed = false;
+            Owner.ClearCanvasFillsExcept(Config);
+            Config.FillCanvas(Owner.CanvasWidth, Owner.CanvasHeight);
+        }
+        Owner.BringCardToFront(Config);
+        Owner.SaveState();
+        Owner.Refresh();
+    }
+
+    private async Task Options()
+    {
+        var options = Config.Kind == "web"
+            ? new[] { L.T("widgets.menuRename"), L.T("widgets.menuChangeUrl"), L.T("widgets.menuReload"), L.T("web.webOpen") }
+            : Config.Kind == "stats" ? [L.T("widgets.menuRename"), L.T("widgets.menuGoal", Owner.Settings.DailyGoalMinutes)]
+            : [L.T("widgets.menuRename")];
+        var choice = await Owner.Choose("OPCIONES DEL WIDGET", options);
+        if (choice == 0)
+        {
+            var name = await Owner.Prompt("NOMBRE DEL WIDGET", "Nombre", Config.Title);
+            if (!string.IsNullOrWhiteSpace(name)) Config.Title = name;
+        }
+        else if (Config.Kind == "web")
+        {
+            if (choice == 1)
+            {
+                var url = await Owner.Prompt("URL DEL WIDGET", "URL HTTPS", Config.Value);
+                if (url is not null && Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == "https") Config.Value = uri.AbsoluteUri;
+            }
+            else if (choice == 2) reloads++;
+            else if (choice == 3) Owner.Browser.Open(Config.Value);
+        }
+        else if (Config.Kind == "stats" && choice == 1)
+        {
+            var minutes = await Owner.Prompt(L.T("widgets.goalTitle"), L.T("widgets.goalLabel"), Owner.Settings.DailyGoalMinutes.ToString());
+            if (int.TryParse(minutes, out int value))
+            {
+                Owner.Settings.DailyGoalMinutes = Math.Clamp(value, 15, 960);
+                Owner.Status(L.T("widgets.goalSet", Owner.Settings.DailyGoalMinutes));
+            }
+        }
+        Owner.SaveState();
+        Owner.Refresh();
+    }
+
+    private int reloads;
+}

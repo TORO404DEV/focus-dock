@@ -1,0 +1,419 @@
+@* The control panel. Settings are grouped into rooms instead of one long list, every change
+   lands the moment it is made, and the header shows what all that focus has added up to. *@
+
+<div class="backdrop">
+    <div class="dialog settings">
+        <div class="dialog-head">
+            <strong>@L.T("settings.title")</strong>
+            <button class="chrome-btn" title="@L.T("common.close")" @onclick="OnClose">×</button>
+        </div>
+        <div class="dialog-body">
+            <div>
+                <div class="rank-title">@L.T("settings.rank", rank.Level.ToString("00", CultureInfo.InvariantCulture), rank.Name)</div>
+                <div class="rank-detail">
+                    @(rank.IsHighest
+                        ? L.T("settings.rankHighest", rank.Hours.ToString("0.#", Strings.Culture), rank.Detail)
+                        : L.T("settings.rankProgress", rank.Hours.ToString("0.#", Strings.Culture), rank.ToNext.ToString("0.#", Strings.Culture), FocusProfile.NextName(rank)))
+                </div>
+                <div class="xp-track"><div class="xp-fill" style="width:@Percent(rank.Share)"></div></div>
+            </div>
+
+            <div class="settings-tabs">
+                @foreach (var (key, label) in Tabs)
+                {
+                    <button class="btn @(section == key ? "ink" : "")" @onclick="() => section = key">@label</button>
+                }
+            </div>
+
+            <div class="settings-body scroll">
+                @switch (section)
+                {
+                    case "sound": @Sound break;
+                    case "look": @Look break;
+                    case "space": @Space break;
+                    default: @Rhythm break;
+                }
+            </div>
+
+            <div class="settings-footer">
+                <p>@statusLine</p>
+                <button class="btn" title="@L.T("settings.undoTip")" @onclick="RestoreOpening">@L.T("settings.undo")</button>
+                <button class="btn ink done" @onclick="OnClose">@L.T("common.done")</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Everything this panel can touch, kept so a whole visit can be undone at once.</summary>
+    private Settings opening = null!;
+    private FocusRank rank = null!;
+    private string section = "rhythm";
+    private string statusLine = "";
+    private Settings settings => Owner.Settings;
+
+    /// <summary>Rhythms worth having a name. Anything else is simply "custom".</summary>
+    private static (string Name, string Detail, string Story, int Focus, int Short, int Long, int Interval)[] Rhythms =>
+    [
+        (L.T("settings.rhythmClassic"), "25 · 5 · 15", L.T("settings.rhythmClassicStory"), 25, 5, 15, 4),
+        (L.T("settings.rhythmDeep"), "50 · 10 · 20", L.T("settings.rhythmDeepStory"), 50, 10, 20, 3),
+        (L.T("settings.rhythmSprint"), "15 · 3 · 10", L.T("settings.rhythmSprintStory"), 15, 3, 10, 4),
+        (L.T("settings.rhythmMarathon"), "90 · 20 · 30", L.T("settings.rhythmMarathonStory"), 90, 20, 30, 2)
+    ];
+
+    /// <summary>Soft tones that keep the paper look when they fill the whole timer frame.</summary>
+    private static readonly string[] Tones =
+        ["#D7D9D1", "#BFD7EA", "#F3C4A8", "#DCCFE6", "#CFE4D3", "#EBCFD0", "#E8DFAE", "#C9CBC4"];
+
+    private static (string Key, string Label)[] Tabs =>
+    [
+        ("rhythm", L.T("settings.tabRhythm")), ("sound", L.T("settings.tabSound")),
+        ("look", L.T("settings.tabLook")), ("space", L.T("settings.tabSpace"))
+    ];
+
+    protected override void OnInitialized()
+    {
+        opening = Copy(settings);
+        rank = FocusProfile.Of(Owner.Store.Sessions());
+        statusLine = L.T("settings.footerHint");
+    }
+
+    private static Settings Copy(Settings source) =>
+        System.Text.Json.JsonSerializer.Deserialize<Settings>(System.Text.Json.JsonSerializer.Serialize(source))!;
+
+    private static string Percent(double share) => string.Create(CultureInfo.InvariantCulture, $"{Math.Clamp(share, 0, 1) * 100:0.##}%");
+
+    /// <summary>Applies the change and redraws, so what is on screen is always what is stored.</summary>
+    private void Changed()
+    {
+        Owner.ApplyLiveSettings();
+        Owner.SaveState();
+    }
+
+    /// <summary>Puts every setting back to the moment the panel was opened.</summary>
+    private void RestoreOpening()
+    {
+        settings.FocusMinutes = opening.FocusMinutes; settings.ShortMinutes = opening.ShortMinutes;
+        settings.LongMinutes = opening.LongMinutes; settings.LongInterval = opening.LongInterval;
+        settings.DailyGoalMinutes = opening.DailyGoalMinutes; settings.WhiteNoiseVolume = opening.WhiteNoiseVolume; settings.AlarmRepeats = opening.AlarmRepeats;
+        settings.AutoBreak = opening.AutoBreak; settings.AutoFocus = opening.AutoFocus; settings.Sound = opening.Sound; settings.ButtonSounds = opening.ButtonSounds;
+        settings.WhiteNoise = opening.WhiteNoise; settings.AlarmEnabled = opening.AlarmEnabled; settings.Dark = opening.Dark; settings.ReduceMotion = opening.ReduceMotion;
+        settings.TimerAtBottom = opening.TimerAtBottom; settings.Language = opening.Language;
+        settings.FocusColor = opening.FocusColor; settings.ShortBreakColor = opening.ShortBreakColor; settings.LongBreakColor = opening.LongBreakColor; settings.AccentColor = opening.AccentColor;
+        settings.FocusEndSound = opening.FocusEndSound; settings.BreakEndSound = opening.BreakEndSound; settings.ReminderSound = opening.ReminderSound; settings.ClickSound = opening.ClickSound;
+        settings.AmbientSound = opening.AmbientSound; settings.AlarmVolume = opening.AlarmVolume; settings.EffectsVolume = opening.EffectsVolume;
+        Changed();
+        statusLine = L.T("settings.undone");
+    }
+
+    private void ApplyRhythm((string Name, string Detail, string Story, int Focus, int Short, int Long, int Interval) preset)
+    {
+        settings.FocusMinutes = preset.Focus; settings.ShortMinutes = preset.Short;
+        settings.LongMinutes = preset.Long; settings.LongInterval = preset.Interval;
+        Changed();
+        statusLine = L.T("settings.rhythmApplied", preset.Name, preset.Detail);
+    }
+
+    private static string Minutes(int value) =>
+        value < 60 ? L.T("common.minutesShort", value) : value % 60 == 0 ? L.T("common.hoursShort", value / 60) : L.T("common.hoursMinutes", value / 60, value % 60);
+
+    // ---------------------------------------------------------------- sections
+
+    private RenderFragment Rhythm => __builder =>
+    {
+        var active = Rhythms.FirstOrDefault(preset =>
+            preset.Focus == settings.FocusMinutes && preset.Short == settings.ShortMinutes &&
+            preset.Long == settings.LongMinutes && preset.Interval == settings.LongInterval);
+        @Lead(L.T("settings.rhythmLead"), L.T("settings.rhythmHelp"))
+        <div class="presets">
+            @foreach (var preset in Rhythms)
+            {
+                bool chosen = preset.Name == active.Name;
+                var chosenPreset = preset;
+                <button class="btn preset @(chosen ? "chosen" : "")" aria-label="@L.T("settings.rhythmName", preset.Name, preset.Detail)" @onclick="() => ApplyRhythm(chosenPreset)">
+                    <strong>@preset.Name</strong>
+                    <code>@preset.Detail</code>
+                    <small>@preset.Story</small>
+                </button>
+            }
+        </div>
+        if (active.Name is null)
+        {
+            <p class="note" style="font-family:var(--mono);margin-bottom:10px">@L.T("settings.custom")</p>
+        }
+        @Lead(L.T("settings.numbersLead"), "")
+        @Stepper(L.T("settings.focusLabel"), L.T("settings.focusHelp"), settings.FocusMinutes, 1, 180, 5, Minutes, value => settings.FocusMinutes = value)
+        @Stepper(L.T("settings.shortLabel"), L.T("settings.shortHelp"), settings.ShortMinutes, 1, 60, 1, Minutes, value => settings.ShortMinutes = value)
+        @Stepper(L.T("settings.longLabel"), L.T("settings.longHelp"), settings.LongMinutes, 1, 120, 5, Minutes, value => settings.LongMinutes = value)
+        @Stepper(L.T("settings.cycleLabel"), L.T("settings.cycleHelp"), settings.LongInterval, 1, 12, 1, value => $"{value}", value => settings.LongInterval = value)
+        @Stepper(L.T("settings.goalLabel"), L.T("settings.goalHelp"), settings.DailyGoalMinutes, 15, 720, 15, Minutes, value => settings.DailyGoalMinutes = value)
+        @Lead(L.T("settings.chainLead"), "")
+        @Toggle(L.T("settings.autoBreak"), L.T("settings.autoBreakHelp"), settings.AutoBreak, value => settings.AutoBreak = value)
+        @Toggle(L.T("settings.autoFocus"), L.T("settings.autoFocusHelp"), settings.AutoFocus, value => settings.AutoFocus = value)
+    };
+
+    private RenderFragment Sound => __builder =>
+    {
+        string Percent(int value) => L.T("settings.percent", value);
+        @Lead(L.T("settings.soundLead"), L.T("settings.soundHelp", SoundLibrary.Catalog.Count))
+        @Toggle(L.T("settings.soundMaster"), L.T("settings.soundMasterHelp"), settings.Sound, value => settings.Sound = value)
+        if (!settings.Sound)
+        {
+            <p class="note">@L.T("settings.soundOff")</p>
+            return;
+        }
+        @Lead(L.T("settings.alarmsLead"), L.T("settings.alarmsHelp"))
+        @Toggle(L.T("settings.alarmEnabled"), L.T("settings.alarmEnabledHelp"), settings.AlarmEnabled, value => settings.AlarmEnabled = value)
+        if (settings.AlarmEnabled)
+        {
+            @Picker(L.T("settings.focusEnd"), L.T("settings.focusEndHelp"), SoundKind.Alarm, settings.FocusEndSound, value => settings.FocusEndSound = value)
+            @Picker(L.T("settings.breakEnd"), L.T("settings.breakEndHelp"), SoundKind.Alarm, settings.BreakEndSound, value => settings.BreakEndSound = value)
+            @Stepper(L.T("settings.alarmRepeats"), L.T("settings.alarmRepeatsHelp"), settings.AlarmRepeats, 1, 8, 1, value => $"{value}", value => settings.AlarmRepeats = value)
+        }
+        @Stepper(L.T("settings.alarmVolume"), L.T("settings.alarmVolumeHelp"), settings.AlarmVolume, 0, 100, 5, Percent, value => settings.AlarmVolume = value)
+
+        @Lead(L.T("settings.sessionLead"), L.T("settings.sessionHelp"))
+        @Toggle(L.T("settings.ambient"), L.T("settings.ambientHelp"), settings.WhiteNoise, value => settings.WhiteNoise = value)
+        if (settings.WhiteNoise)
+        {
+            @Picker(L.T("settings.ambientPick"), L.T("settings.ambientPickHelp"), SoundKind.Ambient, settings.AmbientSound, value => settings.AmbientSound = value)
+            @Stepper(L.T("settings.ambientVolume"), "", settings.WhiteNoiseVolume, 0, 100, 5, Percent, value => settings.WhiteNoiseVolume = value)
+        }
+
+        @Lead(L.T("settings.calendarLead"), L.T("settings.calendarHelp"))
+        @Picker(L.T("settings.reminders"), "", SoundKind.Reminder, settings.ReminderSound, value => settings.ReminderSound = value)
+
+        @Lead(L.T("settings.buttonsLead"), L.T("settings.buttonsHelp"))
+        @Toggle(L.T("settings.buttonSounds"), L.T("settings.buttonSoundsHelp"), settings.ButtonSounds, value => settings.ButtonSounds = value)
+        if (settings.ButtonSounds)
+        {
+            @Picker(L.T("settings.clickPack"), "", SoundKind.Click, settings.ClickSound, value => settings.ClickSound = value)
+            @Stepper(L.T("settings.clickVolume"), "", settings.EffectsVolume, 0, 100, 5, Percent, value => settings.EffectsVolume = value)
+        }
+    };
+
+    private RenderFragment Look => __builder =>
+    {
+        @Lead(L.T("settings.languageLead"), L.T("settings.languageHelp"))
+        @LanguagePicker
+        @Lead(L.T("settings.lookLead"), L.T("settings.lookHelp"))
+        @Toggle(L.T("settings.dark"), L.T("settings.darkHelp"), settings.Dark, value => settings.Dark = value)
+        @Toggle(L.T("settings.reduceMotion"), L.T("settings.reduceMotionHelp"), settings.ReduceMotion, value => settings.ReduceMotion = value)
+        @Swatches(L.T("settings.colorFocus"), L.T("settings.colorFocusHelp"), settings.FocusColor, value => settings.FocusColor = value)
+        @Swatches(L.T("settings.colorShort"), "", settings.ShortBreakColor, value => settings.ShortBreakColor = value)
+        @Swatches(L.T("settings.colorLong"), "", settings.LongBreakColor, value => settings.LongBreakColor = value)
+        @Swatches(L.T("settings.colorAccent"), L.T("settings.colorAccentHelp"), settings.AccentColor, value => settings.AccentColor = value)
+    };
+
+    private RenderFragment Space => __builder =>
+    {
+        @Lead(L.T("settings.spaceLead"), L.T("settings.spaceHelp"))
+        @Toggle(L.T("settings.timerAtBottom"), L.T("settings.timerAtBottomHelp"), settings.TimerAtBottom, value => settings.TimerAtBottom = value)
+        @Lead(L.T("settings.dataLead"), L.T("web.dataHelp"))
+        <p class="note">@Owner.Store.DirectoryPath</p>
+        <div class="settings-actions">
+            <button class="btn" @onclick="Export">@L.T("web.export")</button>
+            <label class="btn">
+                @L.T("web.import")
+                <InputFile accept=".json,application/json" style="display:none" OnChange="Import" />
+            </label>
+        </div>
+    };
+
+    // ---------------------------------------------------------------- pieces
+
+    private RenderFragment Lead(string title, string detail) => __builder =>
+    {
+        <div class="lead">
+            <strong>@title</strong>
+            @if (detail.Length > 0)
+            {
+                <p>@detail</p>
+            }
+        </div>
+    };
+
+    /// <summary>A row that reads like a sentence and flips when you click anywhere on it.</summary>
+    private RenderFragment Toggle(string label, string help, bool value, Action<bool> set) => __builder =>
+    {
+        <button class="row toggle @(value ? "on" : "")" aria-label="@(label + (value ? L.T("settings.on") : L.T("settings.off")))" @onclick="() => { set(!value); Changed(); }">
+            <div>
+                <div class="row-label">@label</div>
+                @if (help.Length > 0)
+                {
+                    <div class="row-help">@help</div>
+                }
+            </div>
+            <span class="pill"><i></i></span>
+        </button>
+    };
+
+    /// <summary>A number with its own bar: step it precisely, or click the bar to jump.</summary>
+    private RenderFragment Stepper(string label, string help, int value, int min, int max, int step, Func<int, string> format, Action<int> set) => __builder =>
+    {
+        void Apply(int candidate)
+        {
+            int clamped = Math.Clamp(candidate, min, max);
+            if (clamped == value) return;
+            set(clamped);
+            Changed();
+        }
+        <div class="row">
+            <div class="stepper-head">
+                <div>
+                    <div class="row-label">@label</div>
+                    @if (help.Length > 0)
+                    {
+                        <div class="row-help">@help</div>
+                    }
+                </div>
+                <div class="stepper-controls">
+                    <button class="btn" disabled="@(value <= min)" aria-label="@L.T("settings.stepDown", label)" @onclick="() => Apply(value - step)">−</button>
+                    <span class="stepper-value">@format(value)</span>
+                    <button class="btn" disabled="@(value >= max)" aria-label="@L.T("settings.stepUp", label)" @onclick="() => Apply(value + step)">+</button>
+                </div>
+            </div>
+            <input type="range" class="track" aria-label="@label" min="@min" max="@max" step="@step" value="@value"
+                   style="--fill:@Percent((value - min) / (double)Math.Max(1, max - min))"
+                   @onchange="e => Apply(int.TryParse(e.Value?.ToString(), out int picked) ? picked : value)" />
+        </div>
+    };
+
+    /// <summary>
+    /// A shelf of sounds of one kind. A card chooses and plays at once, so the choice is made by
+    /// ear rather than by name.
+    /// </summary>
+    private RenderFragment Picker(string label, string help, SoundKind kind, string current, Action<string> set) => __builder =>
+    {
+        <div class="row">
+            <div class="row-label">@label</div>
+            @if (help.Length > 0)
+            {
+                <div class="row-help">@help</div>
+            }
+            <div class="shelf">
+                @foreach (var sound in SoundLibrary.OfKind(kind))
+                {
+                    bool chosen = sound.Id == current;
+                    var picked = sound;
+                    <button class="btn sound-card @(chosen ? "chosen" : "")" title="@L.T("settings.pickAndHear")" aria-label="@($"{label}: {sound.Name}")"
+                            @onclick="() => PickSound(label, kind, picked, set)">
+                        <strong>@((chosen ? "♪  " : "") + sound.Name)</strong>
+                        <small>@sound.Detail</small>
+                    </button>
+                }
+            </div>
+        </div>
+    };
+
+    private void PickSound(string label, SoundKind kind, SoundInfo sound, Action<string> set)
+    {
+        set(sound.Id);
+        Changed();
+        // During a focus session the new ambience already took over; a preview would only stutter it.
+        bool sessionAmbience = kind == SoundKind.Ambient && Owner.Timer.Running && Owner.Timer.Phase == Phase.Focus;
+        if (!sessionAmbience) Owner.Sounds.Preview(sound.Id);
+        statusLine = L.T("settings.soundChosen", label.ToUpper(Strings.Culture), sound.Name);
+    }
+
+    /// <summary>
+    /// The interface language. "Same as the system" is the default and names the language it
+    /// currently resolves to, so the choice is never a mystery.
+    /// </summary>
+    private RenderFragment LanguagePicker => __builder =>
+    {
+        var systemName = Strings.Catalog.First(language => language.Code == Strings.Resolve("system")).Name;
+        var choices = new[] { ("system", L.T("settings.languageSystem"), L.T("settings.languageSystemDetail", systemName)) }
+            .Concat(Strings.Catalog.Select(language => (language.Code, language.Name, "")));
+        <div class="row">
+            <div class="row-label">@L.T("settings.languageLabel")</div>
+            <div class="shelf">
+                @foreach (var (code, label, detail) in choices)
+                {
+                    bool chosen = settings.Language == code;
+                    string picked = code;
+                    <button class="btn language-card @(chosen ? "chosen" : "")" @onclick="() => PickLanguage(picked)">
+                        <span>@label</span>
+                        @if (detail.Length > 0)
+                        {
+                            <small>@detail</small>
+                        }
+                    </button>
+                }
+            </div>
+            <div class="row-help" style="margin-top:4px">@L.T("settings.languageParserNote")</div>
+        </div>
+    };
+
+    private void PickLanguage(string code)
+    {
+        settings.Language = code;
+        Changed();
+        statusLine = L.T("settings.languageChanged", Strings.Catalog.First(language => language.Code == Strings.Code).Name);
+    }
+
+    /// <summary>A palette instead of a hexadecimal field. "Other" still accepts an exact code.</summary>
+    private RenderFragment Swatches(string label, string help, string current, Action<string> set) => __builder =>
+    {
+        bool known = Tones.Any(tone => string.Equals(tone, current, StringComparison.OrdinalIgnoreCase));
+        <div class="row">
+            <div class="row-label">@label</div>
+            @if (help.Length > 0)
+            {
+                <div class="row-help">@help</div>
+            }
+            <div class="shelf">
+                @foreach (var tone in Tones)
+                {
+                    bool chosen = string.Equals(tone, current, StringComparison.OrdinalIgnoreCase);
+                    string picked = tone;
+                    <button class="btn swatch @(chosen ? "chosen" : "")" style="background:@tone" title="@tone"
+                            aria-label="@L.T("settings.colorName", label, tone)" @onclick="() => { set(picked); Changed(); }">@(chosen ? "✓" : "")</button>
+                }
+                <button class="btn swatch-other @(known ? "" : "chosen")" style="@(known ? "" : $"background:{current}")" title="@L.T("settings.colorOtherTip")"
+                        @onclick="() => OtherColor(current, set)">@(known ? L.T("settings.colorOther") : current.ToUpperInvariant())</button>
+            </div>
+        </div>
+    };
+
+    private async Task OtherColor(string current, Action<string> set)
+    {
+        var typed = await Owner.Prompt(L.T("settings.colorExactTitle"), L.T("settings.colorExactLabel"), current);
+        if (string.IsNullOrWhiteSpace(typed)) return;
+        var value = typed.Trim();
+        if (!Theme.TryParse(value, out var color)) { statusLine = L.T("settings.colorBad"); return; }
+        set(Theme.Hex(color));
+        Changed();
+        StateHasChanged();
+    }
+
+    // ---------------------------------------------------------------- data
+
+    private void Export()
+    {
+        Owner.SaveState();
+        string stamp = DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        Owner.Browser.Download($"pomodock-{stamp}.json", Owner.Store.ExportJson(settings));
+        statusLine = L.T("web.exported");
+    }
+
+    private async Task Import(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            using var stream = e.File.OpenReadStream(32 * 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            var data = WebStore.ReadBackup(await reader.ReadToEndAsync());
+            int count = Owner.Store.ImportSessions(data);
+            rank = FocusProfile.Of(Owner.Store.Sessions());
+            statusLine = L.T("web.imported", count);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or System.Text.Json.JsonException or IOException)
+        {
+            statusLine = L.T("web.importFailed", ex.Message);
+        }
+    }
+}

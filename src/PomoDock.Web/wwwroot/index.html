@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
+  <title>PomoDock Web — temporizador Pomodoro en el navegador</title>
+  <meta name="description" content="PomoDock en el navegador: temporizador Pomodoro, páginas de widgets y el mismo espacio de la app de escritorio. Sin cuenta, tus datos se quedan en este navegador.">
+  <meta name="theme-color" content="#171916">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://pomodock.com/">
+  <link rel="alternate" hreflang="en" href="https://pomodock.com/en/">
+  <link rel="alternate" hreflang="es" href="https://pomodock.com/es/">
+  <link rel="alternate" hreflang="x-default" href="https://pomodock.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="PomoDock">
+  <meta property="og:title" content="PomoDock Web — Pomodoro para el segundo monitor">
+  <meta property="og:description" content="Abre el temporizador y empieza. Sin cuenta: el espacio vive en tu navegador.">
+  <meta property="og:url" content="https://pomodock.com/">
+  <meta property="og:image" content="https://pomodock.com/assets/hero.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="app/pomodock-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app/pomodock.css">
+  <script>
+    // Paint the saved skin before WebAssembly starts, so a dark workspace never flashes paper.
+    (() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('pomodock:settings') || 'null');
+        if (saved && saved.Dark) document.documentElement.dataset.theme = 'dark';
+      } catch (_) { }
+    })();
+  </script>
+</head>
+<body>
+  <div id="app">
+    <div class="boot" id="boot">
+      <div>
+        <strong>POMODOCK / WEB</strong>
+        <span>25:00</span>
+        <small>Cargando el espacio…</small>
+      </div>
+    </div>
+  </div>
+  <noscript>
+    <p style="padding:24px;font-family:Segoe UI,sans-serif">
+      PomoDock Web necesita JavaScript. Mientras tanto puedes leer
+      <a href="/es/">la página de PomoDock</a> · <a href="/en/">PomoDock in English</a>.
+    </p>
+  </noscript>
+  <script src="app/pomodock.js"></script>
+  <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>

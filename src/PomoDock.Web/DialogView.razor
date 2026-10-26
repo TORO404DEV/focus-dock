@@ -1,0 +1,111 @@
+@* The desktop's Dialogs: a modal window with the dark header, a heading, and its buttons. *@
+
+<div class="backdrop">
+    <div class="dialog" style="@Size" @onkeydown="Keys">
+        <div class="dialog-head">
+            <strong>POMODOCK / @Request.Title</strong>
+            <button class="chrome-btn" title="@L.T("common.close")" @onclick="Request.Cancel">×</button>
+        </div>
+        <div class="dialog-body scroll">
+            @switch (Request.Kind)
+            {
+                case DialogKind.Choose:
+                    <h2 class="dialog-heading">@Request.Title</h2>
+                    <div class="dialog-stack">
+                        @for (int i = 0; i < Request.Options.Length; i++)
+                        {
+                            int index = i;
+                            <button class="btn" @onclick="() => Request.Complete(index)">@Request.Options[i]</button>
+                        }
+                    </div>
+                    break;
+                case DialogKind.Prompt:
+                    <h2 class="dialog-heading">@Request.Title</h2>
+                    <form @onsubmit="() => Request.Complete(0, Request.Value)">
+                        <label class="dialog-label" for="@inputId">@Request.Label</label>
+                        <input id="@inputId" class="field" @bind="Request.Value" @bind:event="oninput" autocomplete="off" />
+                        <div class="dialog-row">
+                            <button type="submit" class="btn">@L.T("common.save")</button>
+                            <button type="button" class="btn" @onclick="Request.Cancel">@L.T("common.cancel")</button>
+                        </div>
+                    </form>
+                    break;
+                case DialogKind.Alert:
+                    <h2 class="dialog-heading">@Request.Title</h2>
+                    <p class="dialog-text">@Request.Label</p>
+                    <button class="btn" @onclick="() => Request.Complete(0)">@L.T("common.ok")</button>
+                    break;
+                case DialogKind.ChooseWidget:
+                    <h2 class="dialog-heading">@L.T("widgets.addTitle")</h2>
+                    <p class="row-help" style="font-size:12px;margin:-8px 0 20px">@L.T("widgets.addHelp")</p>
+                    <p class="launcher-key">@L.T("widgets.addGuide")</p>
+                    <div class="launcher">
+                        @for (int i = 0; i < Launcher.Length; i++)
+                        {
+                            int index = i;
+                            var entry = Launcher[i];
+                            bool desktopOnly = index == 0;
+                            bool taken = index == Launcher.Length - 1 && !Owner.CanAddTimerWidget;
+                            <button class="btn" disabled="@(desktopOnly || taken)"
+                                    title="@(desktopOnly ? L.T("web.desktopOnly") : taken ? L.T("widgets.timerTaken") : entry.Title)"
+                                    @onclick="() => Request.Complete(index)">
+                                <span class="launcher-glyph">@entry.Glyph</span>
+                                <span class="launcher-title">@entry.Title</span>
+                                <span class="launcher-help">@(desktopOnly ? L.T("web.desktopOnly") : entry.Help)</span>
+                            </button>
+                        }
+                    </div>
+                    break;
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DialogRequest Request { get; set; } = null!;
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    private readonly string inputId = "prompt-" + Guid.NewGuid().ToString("N");
+
+    private string Size => Request.Kind switch
+    {
+        DialogKind.ChooseWidget => "width:780px;max-height:900px",
+        DialogKind.Alert => "width:520px",
+        DialogKind.Prompt => "width:470px",
+        _ => "width:480px"
+    };
+
+    private static (string Glyph, string Title, string Help, string Key)[] Launcher =>
+    [
+        ("▣", L.T("widgets.windowTitle"), L.T("widgets.windowHelp"), "1"),
+        ("◎", L.T("widgets.webTitle"), L.T("widgets.webHelp"), "2"),
+        ("✎", L.T("widgets.notesTitle"), L.T("widgets.notesHelp"), "3"),
+        ("◒", L.T("widgets.statsTitle"), L.T("widgets.statsHelp"), "4"),
+        ("☑", L.T("widgets.todoTitle"), L.T("widgets.todoHelp"), "5"),
+        ("↻", L.T("widgets.habitsTitle"), L.T("widgets.habitsHelp"), "6"),
+        ("▦", L.T("widgets.calendarTitle"), L.T("widgets.calendarHelp"), "7"),
+        ("◈", L.T("widgets.financeTitle"), L.T("widgets.financeHelp"), "8"),
+        ("†", L.T("widgets.mementoTitle"), L.T("widgets.mementoHelp"), "9"),
+        ("⇌", L.T("widgets.workoutTitle"), L.T("widgets.workoutHelp"), "W"),
+        ("◷", L.T("widgets.timerTitle"), L.T("widgets.timerHelp"), "0")
+    ];
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+        if (Request.Kind == DialogKind.Prompt) Owner.Browser.Focus("#" + inputId);
+        else Owner.Browser.Focus(".dialog .btn:not([disabled])");
+    }
+
+    /// <summary>The launcher's number keys, as on the desktop: 1–9, W for the dumbbells, 0 for the timer.</summary>
+    private void Keys(KeyboardEventArgs e)
+    {
+        if (Request.Kind != DialogKind.ChooseWidget) return;
+        int key = e.Key.Length == 1 && e.Key[0] is >= '1' and <= '9' ? e.Key[0] - '1'
+            : e.Key == "0" ? Launcher.Length - 1
+            : e.Key is "w" or "W" ? 9
+            : -1;
+        if (key <= 0 || key >= Launcher.Length) return;
+        if (key == Launcher.Length - 1 && !Owner.CanAddTimerWidget) return;
+        Request.Complete(key);
+    }
+}

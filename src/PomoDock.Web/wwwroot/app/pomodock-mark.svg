@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="PomoDock">
+  <rect width="256" height="256" fill="#F15B4E"/>
+  <rect x="14" y="14" width="228" height="228" fill="#F1F0E9" stroke="#171916" stroke-width="12"/>
+  <circle cx="128" cy="128" r="74" fill="#171916"/>
+  <path d="M91 128l25 25 52-59" fill="none" stroke="#F15B4E" stroke-width="19" stroke-linecap="square" stroke-linejoin="miter"/>
+  <rect x="26" y="26" width="58" height="15" fill="#171916"/>
+  <rect x="172" y="215" width="58" height="15" fill="#171916"/>
+</svg>

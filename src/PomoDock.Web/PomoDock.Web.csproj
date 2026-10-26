@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>PomoDock.Web</RootNamespace>
+    <!-- Month and weekday names come from Strings.Culture, so the browser needs real culture data. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- The Core seals the agent key with Windows DPAPI; the web never calls that path. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.31" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.31" PrivateAssets="all" />
+  </ItemGroup>
+  <!-- The same Core the desktop runs: timer, books, parsers, sounds and every word on screen. -->
+  <ItemGroup><ProjectReference Include="..\PomoDock.Core\PomoDock.Core.csproj" /></ItemGroup>
+</Project>

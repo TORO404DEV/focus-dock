@@ -6,3 +6,32 @@
     Header set Cache-Control "no-cache, must-revalidate"
   </FilesMatch>
 </IfModule>
+
+# PomoDock Web (Blazor WebAssembly) lives at /. Its runtime is in /_framework.
+AddType application/wasm .wasm
+AddType application/octet-stream .dat
+AddType application/json .json
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # The build ships a Brotli copy of every runtime file; hand it over when the browser takes it.
+  RewriteCond %{HTTP:Accept-Encoding} br
+  RewriteCond %{REQUEST_URI} ^/_framework/
+  RewriteCond %{REQUEST_FILENAME}.br -f
+  RewriteRule ^(.*)$ $1.br [L]
+  RewriteRule \.wasm\.br$ - [T=application/wasm,E=no-gzip:1]
+  RewriteRule \.js\.br$ - [T=text/javascript,E=no-gzip:1]
+  RewriteRule \.json\.br$ - [T=application/json,E=no-gzip:1]
+  RewriteRule \.dat\.br$ - [T=application/octet-stream,E=no-gzip:1]
+</IfModule>
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.br$">
+    Header set Content-Encoding br
+    Header append Vary Accept-Encoding
+  </FilesMatch>
+  # Blazor checks every file against blazor.boot.json, so the manifest must always be fresh.
+  <FilesMatch "blazor\.boot\.json">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>

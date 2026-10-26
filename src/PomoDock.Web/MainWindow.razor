@@ -1,0 +1,295 @@
+@implements IDisposable
+
+@if (!loaded)
+{
+    return;
+}
+<div class="window @(fullscreen ? "is-fullscreen" : "")">
+    <div class="titlebar">
+        <span class="titlebar-text">@L.T("web.subtitle")</span>
+        <div class="titlebar-actions">
+            <a class="btn" href="@DownloadUrl" title="@L.T("web.downloadTip")">@L.T("web.downloadShort")<span class="long">&nbsp;@L.T("web.downloadRest")</span></a>
+            <a class="btn primary" href="@Landing" title="@L.T("web.siteTip")">@L.T("web.site") ↗</a>
+        </div>
+    </div>
+
+    <div class="header">
+        <div class="header-clock">
+            <span class="header-date">@headerDate</span>
+            <span class="header-time">@headerTime</span>
+            @if (headerTimer.Length > 0)
+            {
+                <button class="header-timer @(Timer.Running ? "" : "paused")" title="@(Timer.Running ? L.T("chrome.headerTimerPause") : L.T("chrome.headerTimerResume"))" @onclick="HeaderTimerClick">@headerTimer</button>
+            }
+        </div>
+        <div class="header-actions">
+            <button class="btn glyph" title="@L.T("agent.open")" @onclick="AgentClick">✦</button>
+            <button class="btn accent" title="@L.T("chrome.report")" @onclick="ReportClick">@ChromeIcon.Report()</button>
+            <button class="btn" title="@L.T("chrome.tasks")" @onclick="TasksClick">@ChromeIcon.Tasks()</button>
+            <span class="bell-wrap">
+                <button class="btn bell @(notifications.History.Unread > 0 ? "unread" : "")" title="@BellTip" @onclick="NotificationsClick">@BellText</button>
+                @if (notificationsOpen)
+                {
+                    @NotificationHistoryPopup
+                }
+                @if (bannerVisible)
+                {
+                    @NotificationBanner
+                }
+            </span>
+            <button class="btn glyph" title="@L.T("chrome.settings")" @onclick="SettingsClick">⚙</button>
+            <button class="btn glyph" title="@L.T("chrome.fullscreen")" @onclick="FullscreenClick">⛶</button>
+            <button class="btn @(pageMapOpen ? "accent" : "") @(pulsePageMap ? "pulsing" : "")" title="@L.T("chrome.pageMap")" @onclick="PageMapClick" @onanimationend="() => pulsePageMap = false">@ChromeIcon.PageMap()</button>
+            <button class="btn add" title="@L.T("chrome.addWidget")" @onclick="AddWidgetClick">+ WIDGET</button>
+        </div>
+    </div>
+
+    <div class="workspace">
+        <div class="carousel-viewport">
+            @foreach (var page in LivePages())
+            {
+                bool current = page == CurrentPage;
+                bool incoming = pageTransitioning && swipeTargetIndex is { } target && Settings.WorkspacePages[target] == page;
+                <div @key="page.Id" class="page-layer @(current ? "widget-area current" : incoming ? "page-preview incoming" : "parked")"
+                     style="@(incoming ? IncomingStyle : null)">
+                    @PageContent(page, current)
+                </div>
+            }
+            @if (pageTransitioning && swipeCreatesPage)
+            {
+                <div class="page-layer page-preview incoming" style="@IncomingStyle">
+                    <div class="preview-label">@L.T("pages.newPage")</div>
+                </div>
+            }
+        </div>
+        @if (pageMapOpen)
+        {
+            @PageMapOverlay
+        }
+    </div>
+</div>
+
+<div class="sr-status" role="status" aria-live="polite">@statusText</div>
+
+@if (settingsOpen)
+{
+    <SettingsWindow Owner="this" OnClose="CloseSettings" />
+}
+@foreach (var dialog in dialogs)
+{
+    <DialogView @key="dialog.Id" Request="dialog" Owner="this" />
+}
+@if (alerts.Count > 0)
+{
+    <div class="alert-stack">
+        @foreach (var alert in alerts)
+        {
+            <div @key="alert.Id" class="alert-card">
+                <i></i>
+                <div>
+                    <div class="alert-lead">
+                        <span>@alert.Lead</span>
+                        <button class="chrome-btn" title="@L.T("agenda.dismiss")" @onclick="() => AcknowledgeAlert(alert, null)">×</button>
+                    </div>
+                    <div class="alert-title">@alert.Title</div>
+                    @if (alert.Detail.Length > 0)
+                    {
+                        <div class="alert-detail">@alert.Detail</div>
+                    }
+                    <div class="alert-actions">
+                        @foreach (var action in alert.Actions)
+                        {
+                            <button class="btn @(action.Primary ? "ink" : "")" @onclick="() => AcknowledgeAlert(alert, action)">@action.Label</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>One page of the workspace: its widgets, its Pomodoro, or the empty-page welcome.</summary>
+    private RenderFragment PageContent(WorkspacePage page, bool current) => __builder =>
+    {
+        bool timerFilled = page.TimerWidget is { CanvasFill: true };
+        var filled = page.Widgets.FirstOrDefault(widget => widget.CanvasFill && !widget.Collapsed);
+        if (!page.HasContent)
+        {
+            <div class="welcome">
+                <div>
+                    <div class="welcome-title">@L.T("pages.emptyTitle")</div>
+                    @if (current)
+                    {
+                        <button class="btn accent" @onclick="AddWidgetClick">@L.T("pages.addFirst")</button>
+                        <div class="welcome-hint">@L.T("pages.swipeHint")</div>
+                    }
+                </div>
+            </div>
+        }
+        foreach (var config in page.Widgets)
+        {
+            bool hidden = (filled is not null || timerFilled) && config != filled;
+            <WidgetCard @key="config.Id" Owner="this" Config="config" Live="current" Hidden="hidden"
+                        Rect="CardRect(config)" Front="front == config.Id" Arriving="arriving == config.Id" />
+        }
+        if (page.TimerWidget is { } timer && filled is null)
+        {
+            @TimerFrame(page, timer)
+        }
+    };
+
+    /// <summary>The Pomodoro: one clock, drawn on every page that keeps a copy of its frame.</summary>
+    private RenderFragment TimerFrame(WorkspacePage page, WidgetConfig config) => __builder =>
+    {
+        var rect = TimerRect(page, config);
+        bool filled = config.CanvasFill;
+        <div class="timer-frame @(arriving == config.Id ? "arriving" : "")" data-id="@config.Id" data-kind="timer"
+             data-minw="360" data-minh="300" style="@rect.Style(front == config.Id ? 20 : 0)"
+             @onpointerdown="() => BringTimerToFront(config)">
+            <div class="timer-head" data-move>
+                <span class="timer-head-title">@L.T("timer.pomodoro")</span>
+                <span class="timer-head-hint">@L.T("timer.dragToMove")</span>
+                <button class="chrome-btn" title="@L.T(filled ? "widgets.canvasRestore" : "widgets.canvasFill")" @onclick="TimerFillClick">@(filled ? ChromeIcon.Restore() : ChromeIcon.Expand())</button>
+                <button class="chrome-btn" title="@L.T("timer.removeFromPage")" @onclick="RemoveTimerClick">@ChromeIcon.Close()</button>
+            </div>
+            <div class="timer-surface @(surfacePulse ? "surface-in" : "")" style="background:@PhaseColor()" @onanimationend="() => surfacePulse = false">
+                <div class="timer-phases">
+                    @foreach (var (phase, label) in PhaseButtons())
+                    {
+                        bool active = Timer.Phase == phase;
+                        <button class="btn @(active ? "ink" : "")" @onclick="() => PhaseClick(phase)">@label</button>
+                    }
+                </div>
+                <div class="timer-clock"><span>@clockText</span></div>
+                <div class="timer-labels">
+                    <span class="timer-phase-label">@phaseLabel</span>
+                    <span class="timer-cycle">@cycleText</span>
+                </div>
+                <div class="timer-controls">
+                    <button class="btn start" @onclick="StartClick">@startText</button>
+                    <button class="btn square" title="@L.T("timer.reset")" @onclick="ResetClick">↺</button>
+                    <button class="btn square last" title="@L.T("timer.skip")" @onclick="SkipClick">↠</button>
+                </div>
+                <button class="timer-context" @onclick="TasksClick">@contextText</button>
+            </div>
+            <div class="handles">
+                @foreach (var edge in Edges)
+                {
+                    <i data-edge="@edge"></i>
+                }
+            </div>
+        </div>
+    };
+
+    internal static readonly string[] Edges = ["NW", "N", "NE", "W", "E", "SW", "S", "SE"];
+
+    /// <summary>The bell's history: everything that rang, newest first, unread ones in red.</summary>
+    private RenderFragment NotificationHistoryPopup => __builder =>
+    {
+        int unread = notifications.History.Unread;
+        var items = notifications.History.Items;
+        <div class="bell-popup">
+            <div class="bell-popup-head">
+                <div>
+                    <strong>@(unread > 0 ? L.T("notifications.pendingTitle") : L.T("notifications.title"))</strong>
+                    <small>@(unread > 0 ? L.T("notifications.pendingMeta", unread) : L.T("notifications.meta", items.Count, unread))</small>
+                </div>
+                <button class="chrome-btn" @onclick="() => notificationsOpen = false">×</button>
+            </div>
+            <div class="bell-list scroll">
+                @if (items.Count == 0)
+                {
+                    <p class="bell-empty">@L.T("notifications.empty")</p>
+                }
+                @foreach (var item in items)
+                {
+                    string delivered = item.DeliveredLocal.ToString("ddd dd MMM · HH:mm", Strings.Culture).ToUpper(Strings.Culture);
+                    string kind = NotificationKind(item);
+                    <div class="bell-item @(item.Read ? "" : "unread")">
+                        <i></i>
+                        <div>
+                            <strong>@item.Title</strong>
+                            <small>@(item.Read ? $"{kind}  ·  {delivered}" : $"{kind}  ·  {delivered}  ·  {L.T("notifications.pendingTitle")}")</small>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    };
+
+    /// <summary>The short-lived strip under the bell: what just happened, in one line.</summary>
+    private RenderFragment NotificationBanner => __builder =>
+    {
+        <div class="banner" @onclick="NotificationBannerClick" @onmouseenter="() => bannerHovered = true" @onmouseleave="BannerLeave">
+            <i></i>
+            <span class="banner-icon">🔔</span>
+            <span class="banner-copy">
+                <small>@bannerLead</small>
+                <strong>@bannerTitle</strong>
+            </span>
+            <button class="chrome-btn" @onclick="HideNotificationBanner" @onclick:stopPropagation>×</button>
+        </div>
+    };
+
+    /// <summary>Every page at once, laid out on its grid. A tile opens its page; right-click deletes it.</summary>
+    private RenderFragment PageMapOverlay => __builder =>
+    {
+        var grid = PageMapGrid();
+        double aspect = canvasWidth > 1 && canvasHeight > 1 ? Math.Clamp(canvasWidth / canvasHeight, 0.45, 1.1) : 0.72;
+        double ratio = grid.Cols * aspect / grid.Rows;
+        var byCell = Settings.WorkspacePages.Select((page, index) => (page, index)).ToDictionary(entry => (entry.page.Col, entry.page.Row));
+        string gridStyle = string.Create(CultureInfo.InvariantCulture,
+            $"grid-template-columns:repeat({grid.Cols},minmax(0,1fr));grid-template-rows:repeat({grid.Rows},minmax(0,1fr));width:min(100cqw,calc(100cqh * {ratio:0.####}));height:auto;aspect-ratio:{ratio:0.####}");
+        <div class="page-map">
+            <div class="page-map-head">
+                <div>
+                    <div class="page-map-title">@L.T("pages.mapTitle")</div>
+                    <div class="page-map-hint">@L.T("pages.mapHint")</div>
+                </div>
+                <button class="btn last" style="font-size:16px;padding:2px 10px" title="@L.T("chrome.pageMapClose")" @onclick="HidePageMap">×</button>
+            </div>
+            <div class="page-map-stage" style="container-type:size">
+                <div class="page-map-grid" style="@gridStyle">
+                    @for (int row = grid.MinRow; row < grid.MinRow + grid.Rows; row++)
+                    {
+                        for (int col = grid.MinCol; col < grid.MinCol + grid.Cols; col++)
+                        {
+                            string cell = $"grid-column:{col - grid.MinCol + 1};grid-row:{row - grid.MinRow + 1}";
+                            if (byCell.TryGetValue((col, row), out var entry))
+                            {
+                                var page = entry.page;
+                                int index = entry.index;
+                                bool active = index == currentPageIndex;
+                                <button class="map-tile @(active ? "active" : "")" style="@cell" title="@PageMapTip(page)"
+                                        @onclick="() => OpenPageFromMap(index)"
+                                        @oncontextmenu="() => DeleteWorkspacePageClick(index)" @oncontextmenu:preventDefault>
+                                    <span class="map-tile-head">@(active ? L.T("pages.mapHere") + "  ·  " + page.Name : page.Name)</span>
+                                    <span class="map-tile-stage">
+                                        @if (page.TimerWidget is { } timer)
+                                        {
+                                            <i class="map-widget timer" style="@MapWidgetStyle(timer, true)"></i>
+                                        }
+                                        @foreach (var widget in page.Widgets)
+                                        {
+                                            <i class="map-widget" style="@MapWidgetStyle(widget, false)"></i>
+                                        }
+                                        @if (!page.HasContent)
+                                        {
+                                            <span class="map-empty">@L.T("pages.emptyTitle")</span>
+                                        }
+                                    </span>
+                                </button>
+                            }
+                            else if (grid.Add.Contains((col, row)))
+                            {
+                                int addCol = col, addRow = row;
+                                <button class="map-add" style="@cell" title="@L.T("pages.mapAdd")" @onclick="() => CreatePageFromMap(addCol, addRow)"><span>＋</span></button>
+                            }
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    };
+}

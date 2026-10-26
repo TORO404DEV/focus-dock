@@ -9,3 +9,7 @@ TestResults/
 local-data/
 # Written by external preview harnesses that were relaunched as the guardian process.
 /--guardian/
+# PomoDock Web, written into the site by scripts/build-web.ps1
+/website/index.html
+/website/app/
+/website/_framework/
