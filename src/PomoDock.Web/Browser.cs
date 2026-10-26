@@ -45,4 +45,15 @@ public sealed class Browser
     public void Focus(string selector) => js.InvokeVoid("pd.focus", selector);
     public void Download(string name, string text) => js.InvokeVoid("pd.download", name, text);
     public void Open(string url) => js.InvokeVoid("pd.open", url);
+    public void Copy(string text) => js.InvokeVoid("pd.copy", text);
+    /// <summary>The To Do row a dragged task would land before, among rows of the same done state.</summary>
+    public Guid? TaskUnder(double x, double y, string group) =>
+        Guid.TryParse(js.Invoke<string?>("pd.taskUnder", x, y, group), out var id) ? id : null;
+
+    public void RichAttach<T>(string id, DotNetObjectReference<T> editor, string html) where T : class => js.InvokeVoid("pd.rich.attach", id, editor, html);
+    public void RichDetach(string id) => js.InvokeVoid("pd.rich.detach", id);
+    public void RichCommand(string id, string command) => js.InvokeVoid("pd.rich.command", id, command);
+    public void RichInsert(string id, string text) => js.InvokeVoid("pd.rich.insert", id, text);
+    public void RichSet(string id, string html) => js.InvokeVoid("pd.rich.set", id, html);
+    public List<RichBlock> RichRead(string id) => js.Invoke<List<RichBlock>>("pd.rich.read", id);
 }

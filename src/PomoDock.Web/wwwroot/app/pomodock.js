@@ -321,6 +321,12 @@
     unlockAudio();
     if (event.button !== 0 || gesture || carousel.animating) return;
     const target = event.target;
+    const floatHead = target.closest('[data-float-move]');
+    if (floatHead && !target.closest('button')) {
+      beginFloat(event, floatHead.closest('[data-float]'));
+      event.preventDefault();
+      return;
+    }
     const handle = target.closest('[data-edge]');
     if (handle) {
       const frame = handle.closest('[data-id]');
@@ -347,11 +353,13 @@
   };
 
   const onPointerMove = (event) => {
+    if (floating) { moveFloat(event); return; }
     if (gesture) { updateGesture(event); return; }
     if (carousel.candidate) swipeMove(event);
   };
 
   const onPointerUp = () => {
+    if (floating) { endFloat(); return; }
     if (gesture) { endGesture(); return; }
     if (carousel.candidate || carousel.active) swipeEnd();
   };
@@ -445,4 +453,263 @@
   };
 
   pd.open = (url) => { window.open(url, '_blank', 'noopener'); };
+
+  pd.copy = (text) => {
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => { });
+  };
+
+  // The To Do row a dragged task would land before: the first row of the same kind whose middle
+  // is below the pointer, as TodoBoard.DropIndex measures it.
+  pd.taskUnder = (x, y, group) => {
+    const hit = document.elementFromPoint(x, y);
+    const list = hit && hit.closest('.todo-list');
+    if (!list) return null;
+    for (const row of list.querySelectorAll('.todo-row')) {
+      if (row.classList.contains('done') !== (group === 'done')) continue;
+      const box = row.getBoundingClientRect();
+      if (y < box.top + box.height / 2) return row.dataset.task;
+    }
+    return null;
+  };
+
+  // Floating post-its move by their header, the way a desktop window is dragged by its title.
+  let floating = null;
+  const beginFloat = (event, frame) => {
+    floating = { frame, x: event.clientX, y: event.clientY, left: frame.offsetLeft, top: frame.offsetTop };
+    document.body.classList.add('is-gesturing');
+  };
+  const moveFloat = (event) => {
+    const f = floating;
+    const left = Math.min(Math.max(f.left + event.clientX - f.x, 0), window.innerWidth - 80);
+    const top = Math.min(Math.max(f.top + event.clientY - f.y, 0), window.innerHeight - 42);
+    f.frame.style.left = left + 'px';
+    f.frame.style.top = top + 'px';
+    f.result = [left, top];
+  };
+  const endFloat = () => {
+    const f = floating;
+    floating = null;
+    document.body.classList.remove('is-gesturing');
+    if (f.result) call('FloatMoved', f.frame.dataset.float, f.result[0], f.result[1]);
+  };
+
+  // ------------------------------------------------------------------ rich notes
+
+  // The note editor: a contenteditable that the C# side fills with HTML and reads back as a
+  // block model (paragraphs, lists, checklist lines, runs). Same keys as the desktop's
+  // RichTextBox: Ctrl+B/I/U, Ctrl+Shift+X strike, Ctrl+Shift+C checklist, Enter continues a
+  // checklist and Backspace beside its box turns the line back into text.
+  const BLOCKS = new Set(['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE']);
+  const editors = new Map();
+
+  const inlineRuns = (node, look, runs) => {
+    for (const child of node.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        const text = child.nodeValue.replace(/ /g, ' ');
+        if (text.length) runs.push({ text, bold: look.b, italic: look.i, underline: look.u, strike: look.s, break: false });
+        continue;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      const tag = child.tagName;
+      if (tag === 'BR') { runs.push({ text: '', break: true }); continue; }
+      if (BLOCKS.has(tag) || tag === 'UL' || tag === 'OL' || tag === 'LI') { inlineRuns(child, look, runs); continue; }
+      const style = child.style || {};
+      const decoration = (style.textDecorationLine || style.textDecoration || '').toLowerCase();
+      const weight = (style.fontWeight || '').toLowerCase();
+      inlineRuns(child, {
+        b: look.b || tag === 'B' || tag === 'STRONG' || weight === 'bold' || +weight >= 600,
+        i: look.i || tag === 'I' || tag === 'EM' || (style.fontStyle || '') === 'italic',
+        u: look.u || tag === 'U' || decoration.includes('underline'),
+        s: look.s || tag === 'S' || tag === 'STRIKE' || tag === 'DEL' || decoration.includes('line-through')
+      }, runs);
+    }
+  };
+
+  const plain = { b: false, i: false, u: false, s: false };
+
+  const paragraphOf = (element) => {
+    const runs = [];
+    inlineRuns(element, plain, runs);
+    // The browser keeps a lone <br> so an empty line has height; it is not a line break.
+    if (runs.length && runs[runs.length - 1].break) runs.pop();
+    const block = { list: false, ordered: false, runs, items: [] };
+    if (element.classList && element.classList.contains('check')) block.check = element.dataset.checked === 'true';
+    return block;
+  };
+
+  const readBlocks = (container) => {
+    const blocks = [];
+    let loose = null;
+    const flush = () => { if (loose) { blocks.push(paragraphOf(loose)); loose = null; } };
+    for (const child of container.childNodes) {
+      const element = child.nodeType === Node.ELEMENT_NODE ? child : null;
+      if (element && (element.tagName === 'UL' || element.tagName === 'OL')) {
+        flush();
+        const list = { list: true, ordered: element.tagName === 'OL', runs: [], items: [] };
+        for (const item of element.children) {
+          if (item.tagName !== 'LI') continue;
+          const hasBlocks = [...item.children].some((inner) => BLOCKS.has(inner.tagName) || inner.tagName === 'UL' || inner.tagName === 'OL');
+          list.items.push(hasBlocks ? readBlocks(item) : [paragraphOf(item)]);
+        }
+        blocks.push(list);
+      } else if (element && BLOCKS.has(element.tagName)) {
+        flush();
+        const nested = [...element.children].some((inner) => BLOCKS.has(inner.tagName) || inner.tagName === 'UL' || inner.tagName === 'OL');
+        if (nested && !element.classList.contains('check')) blocks.push(...readBlocks(element));
+        else blocks.push(paragraphOf(element));
+      } else {
+        // Text typed straight into the editor before any paragraph existed.
+        if (!loose) loose = document.createElement('p');
+        loose.appendChild(child.cloneNode(true));
+      }
+    }
+    flush();
+    return blocks;
+  };
+
+  const currentParagraph = (root) => {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return null;
+    let node = selection.getRangeAt(0).startContainer;
+    while (node && node !== root) {
+      if (node.nodeType === Node.ELEMENT_NODE && BLOCKS.has(node.tagName)) return node;
+      node = node.parentNode;
+    }
+    return null;
+  };
+
+  const selectedParagraphs = (root) => {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return [];
+    const range = selection.getRangeAt(0);
+    const all = [...root.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6, blockquote, pre')]
+      .filter((element) => ![...element.children].some((inner) => BLOCKS.has(inner.tagName)));
+    if (range.collapsed) { const one = currentParagraph(root); return one ? [one] : []; }
+    return all.filter((element) => range.intersectsNode(element));
+  };
+
+  const caretAtStart = (paragraph) => {
+    const selection = window.getSelection();
+    if (!selection.rangeCount || !selection.isCollapsed) return false;
+    const range = selection.getRangeAt(0).cloneRange();
+    range.setStart(paragraph, 0);
+    return range.toString().trim().length === 0;
+  };
+
+  const changed = (state) => {
+    clearTimeout(state.timer);
+    state.timer = setTimeout(() => state.ref.invokeMethod('RichChanged', readBlocks(state.root)), 300);
+    state.ref.invokeMethod('RichEditing');
+  };
+
+  const toggleChecklist = (state) => {
+    const root = state.root;
+    let paragraphs = selectedParagraphs(root);
+    if (!paragraphs.length) {
+      document.execCommand('formatBlock', false, 'p');
+      paragraphs = selectedParagraphs(root);
+    }
+    // A mixed selection becomes a checklist; a selection that already is one stops being one.
+    const remove = paragraphs.length > 0 && paragraphs.every((p) => p.classList.contains('check'));
+    for (const p of paragraphs) {
+      if (remove) { p.classList.remove('check'); delete p.dataset.checked; }
+      else if (!p.classList.contains('check')) { p.classList.add('check'); p.dataset.checked = 'false'; }
+    }
+    changed(state);
+  };
+
+  const onRichKey = (state, event) => {
+    const root = state.root;
+    const control = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+    if (control && event.shiftKey && key === 'c') { event.preventDefault(); toggleChecklist(state); return; }
+    if (control && event.shiftKey && key === 'x') { event.preventDefault(); document.execCommand('strikeThrough'); changed(state); return; }
+    const paragraph = currentParagraph(root);
+    if (!paragraph || !paragraph.classList.contains('check')) return;
+    if (event.key === 'Enter' && !event.shiftKey && !control) {
+      // Enter on an empty item ends the list instead of piling up empty boxes.
+      if (paragraph.textContent.trim().length === 0) {
+        event.preventDefault();
+        paragraph.classList.remove('check');
+        delete paragraph.dataset.checked;
+        changed(state);
+        return;
+      }
+      // The new line is a pending item, never a copy of a finished one.
+      setTimeout(() => {
+        const next = currentParagraph(root);
+        if (next && next !== paragraph) { next.classList.add('check'); next.dataset.checked = 'false'; }
+        changed(state);
+      }, 0);
+    } else if (event.key === 'Backspace' && caretAtStart(paragraph)) {
+      // Backspace next to the box turns the item back into plain text, the way lists do.
+      event.preventDefault();
+      paragraph.classList.remove('check');
+      delete paragraph.dataset.checked;
+      changed(state);
+    }
+  };
+
+  pd.rich = {
+    attach(id, ref, html) {
+      const root = document.getElementById(id);
+      if (!root) return;
+      const state = { root, ref, timer: 0 };
+      editors.set(id, state);
+      root.innerHTML = html;
+      try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (_) { }
+      root.addEventListener('input', () => changed(state));
+      root.addEventListener('keydown', (event) => onRichKey(state, event));
+      // The box sits in the paragraph's left padding: a click there ticks it, not the caret.
+      root.addEventListener('mousedown', (event) => {
+        const paragraph = event.target.closest && event.target.closest('p.check');
+        if (!paragraph || !root.contains(paragraph)) return;
+        const box = paragraph.getBoundingClientRect();
+        if (event.clientX - box.left > 24) return;
+        event.preventDefault();
+        paragraph.dataset.checked = paragraph.dataset.checked === 'true' ? 'false' : 'true';
+        changed(state);
+      });
+      root.addEventListener('paste', (event) => {
+        // Pasted pages bring their own fonts and colours; a note takes the words.
+        const text = event.clipboardData && event.clipboardData.getData('text/plain');
+        if (text == null) return;
+        event.preventDefault();
+        document.execCommand('insertText', false, text);
+      });
+      root.addEventListener('blur', () => {
+        clearTimeout(state.timer);
+        state.ref.invokeMethod('RichChanged', readBlocks(root));
+      });
+    },
+    detach(id) {
+      const state = editors.get(id);
+      if (!state) return;
+      clearTimeout(state.timer);
+      editors.delete(id);
+    },
+    command(id, name) {
+      const state = editors.get(id);
+      if (!state) return;
+      state.root.focus();
+      if (name === 'checklist') toggleChecklist(state);
+      else if (name === 'stamp') { /* inserted from C# with insert() */ }
+      else { document.execCommand(name); changed(state); }
+    },
+    insert(id, text) {
+      const state = editors.get(id);
+      if (!state) return;
+      state.root.focus();
+      document.execCommand('insertText', false, text);
+      changed(state);
+    },
+    set(id, html) {
+      const state = editors.get(id);
+      if (state) state.root.innerHTML = html;
+    },
+    read(id) {
+      const state = editors.get(id);
+      return state ? readBlocks(state.root) : [];
+    }
+  };
 })();

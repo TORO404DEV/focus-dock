@@ -1,0 +1,130 @@
+@* A post-it for one To Do row: the task title is the note, and the colour chosen here
+   paints that row in the list. It floats above the workspace and can be dragged by its header. *@
+@implements IDisposable
+
+<div class="float-note" data-float="@Task.Id" style="@($"left:{Left}px;top:{Top}px;z-index:{80 + Z};{skin.Variables}")" @onpointerdown="() => OnFront.InvokeAsync()">
+    <div class="float-note-head" data-float-move>
+        <strong>@heading</strong>
+        <button class="chrome-btn" @onclick="Close">×</button>
+    </div>
+    <div class="note-paper scroll">
+        <div id="@editorId" class="rich" contenteditable="true" spellcheck="true"></div>
+    </div>
+    <div class="float-note-foot" title="Color del post-it">
+        @foreach (var preset in NoteSkin.Palette)
+        {
+            var key = preset.Key;
+            bool selected = string.Equals(NoteSkin.ToHex(NoteSkin.Resolve(key)), skin.Hex, StringComparison.OrdinalIgnoreCase);
+            <button class="swatch-dot @(selected ? "selected" : "")" title="@preset.Name" style="background:@preset.Hex" @onclick="() => SetColor(key)"></button>
+        }
+        @{
+            bool custom = NoteSkin.Palette.All(preset => !string.Equals(NoteSkin.ToHex(NoteSkin.Resolve(preset.Key)), skin.Hex, StringComparison.OrdinalIgnoreCase));
+        }
+        <button class="swatch-dot @(custom ? "selected" : "")" title="Color a medida" style="@(custom ? $"background:{skin.Hex}" : "")" @onclick="PickColor">@(custom ? "" : "+")</button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter, EditorRequired] public TodoTask Task { get; set; } = null!;
+    [Parameter] public int Left { get; set; }
+    [Parameter] public int Top { get; set; }
+    [Parameter] public int Z { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnFront { get; set; }
+
+    private readonly string editorId = "todo-note-" + Guid.NewGuid().ToString("N");
+    private DotNetObjectReference<TodoNoteWindow>? self;
+    private TodoStore store = null!;
+    private NoteSkin skin = NoteSkin.For("paper");
+    private string heading = "TO DO";
+    private List<RichBlock> blocks = [];
+    private CancellationTokenSource? saveTimer;
+
+    protected override void OnInitialized()
+    {
+        store = TodoStore.For(Owner.Store);
+        store.Changed += OnStoreChanged;
+        skin = NoteSkin.For(string.IsNullOrWhiteSpace(Task.Color) ? "paper" : Task.Color);
+        blocks = RichText.FromXaml(Task.DocumentXaml, null, Task.Title ?? "");
+        heading = HeadingText();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+        self = DotNetObjectReference.Create(this);
+        Owner.Browser.RichAttach(editorId, self, RichText.ToHtml(blocks));
+        Owner.Browser.Focus("#" + editorId);
+    }
+
+    private void OnStoreChanged()
+    {
+        if (!store.Book.Items.Any(item => item.Id == Task.Id)) _ = InvokeAsync(() => OnClose.InvokeAsync());
+    }
+
+    private string HeadingText()
+    {
+        string label = Task.ListLabel();
+        return label.Length == 0 ? "TO DO" : label.ToUpper(Strings.Culture);
+    }
+
+    [JSInvokable]
+    public void RichEditing() { }
+
+    [JSInvokable]
+    public void RichChanged(List<RichBlock> read)
+    {
+        blocks = read;
+        string first = RichText.Text(blocks).Replace('\r', '\n').Split('\n')[0].Trim();
+        heading = first.Length == 0 ? "TO DO" : first.ToUpper(Strings.Culture);
+        QueueSave();
+        StateHasChanged();
+    }
+
+    private async void QueueSave()
+    {
+        saveTimer?.Cancel();
+        var timer = saveTimer = new CancellationTokenSource();
+        try { await System.Threading.Tasks.Task.Delay(500, timer.Token); }
+        catch (TaskCanceledException) { return; }
+        Flush();
+    }
+
+    private void Flush()
+    {
+        saveTimer?.Cancel();
+        string text = RichText.Text(blocks).TrimEnd('\r', '\n').Trim();
+        if (text.Length > 0) Task.Title = text;
+        Task.DocumentXaml = RichText.ToXaml(blocks);
+        heading = HeadingText();
+        store.Save();
+    }
+
+    private void SetColor(string value)
+    {
+        Task.Color = value;
+        skin = NoteSkin.For(value);
+        store.Save();
+    }
+
+    private async System.Threading.Tasks.Task PickColor()
+    {
+        var picked = await Owner.PickNoteColor(string.IsNullOrWhiteSpace(Task.Color) ? "paper" : Task.Color);
+        if (picked is not null) SetColor(picked);
+    }
+
+    private async System.Threading.Tasks.Task Close()
+    {
+        Flush();
+        await OnClose.InvokeAsync();
+    }
+
+    public void Dispose()
+    {
+        store.Changed -= OnStoreChanged;
+        if (saveTimer is { IsCancellationRequested: false }) Flush();
+        try { Owner.Browser.RichDetach(editorId); } catch (JSDisconnectedException) { }
+        self?.Dispose();
+    }
+}

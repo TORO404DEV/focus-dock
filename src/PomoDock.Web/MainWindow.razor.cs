@@ -240,9 +240,18 @@ public partial class MainWindow : ComponentBase
     {
         if (Settings.ReduceMotion) return;
         surfacePulse = true;
+        After(220, () => surfacePulse = false);
     }
 
     public void Status(string text) => statusText = text;
+
+    /// <summary>Runs a small change a moment later and draws it: the end of an animation, a fading cue.</summary>
+    private async void After(int milliseconds, Action action)
+    {
+        await Task.Delay(milliseconds);
+        action();
+        StateHasChanged();
+    }
 
     /// <summary>Draws the workspace again after a widget changed something the whole page shows.</summary>
     internal void Refresh() => StateHasChanged();

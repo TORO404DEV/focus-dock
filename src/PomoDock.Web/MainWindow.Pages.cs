@@ -193,7 +193,7 @@ public partial class MainWindow
         front = config.Id;
         if (save)
         {
-            arriving = Settings.ReduceMotion ? null : config.Id;
+            Arrive(config.Id);
             SaveState();
         }
     }
@@ -228,9 +228,12 @@ public partial class MainWindow
         StateHasChanged();
     }
 
-    internal void ClearArrival(WidgetConfig config)
+    /// <summary>The widget that just landed plays its arrival once, for as long as the animation lasts.</summary>
+    private void Arrive(Guid id)
     {
-        if (arriving == config.Id) arriving = null;
+        if (Settings.ReduceMotion) return;
+        arriving = id;
+        After(260, () => { if (arriving == id) arriving = null; });
     }
 
     [JSInvokable]
@@ -290,7 +293,7 @@ public partial class MainWindow
         CurrentPage.TimerWidget = timer;
         CurrentPage.TimerPositionCustomized = false;
         front = timer.Id;
-        arriving = Settings.ReduceMotion ? null : timer.Id;
+        Arrive(timer.Id);
         SaveState();
     }
 
@@ -380,15 +383,7 @@ public partial class MainWindow
     }
 
     /// <summary>Closing a note keeps its words in the note history instead of throwing them away.</summary>
-    internal void ArchiveNote(WidgetConfig config)
-    {
-        NoteArchive archive;
-        try { archive = Store.Read<NoteArchive>(WebStore.NotesKey) ?? new NoteArchive(); }
-        catch (JsonException) { archive = new NoteArchive(); }
-        archive.Close(config.Id, DateTime.UtcNow);
-        archive.Normalize();
-        Store.Write(WebStore.NotesKey, archive);
-    }
+    internal void ArchiveNote(WidgetConfig config) => NoteArchiveStore.For(Store).Close(config);
 
     private void SwitchWorkspacePage(int target)
     {
@@ -515,5 +510,6 @@ public partial class MainWindow
     {
         if (Settings.ReduceMotion) return;
         pulsePageMap = true;
+        After(420, () => pulsePageMap = false);
     }
 }

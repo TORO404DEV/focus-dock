@@ -4,7 +4,7 @@
 <div class="card @(Config.Collapsed ? "is-collapsed" : "") @(Arriving ? "arriving" : "")"
      data-id="@Config.Id" data-minw="@(Config.Kind == "agent" ? 260 : 220)" data-minh="@(Config.Collapsed ? 42 : Config.Kind == "agent" ? 280 : 90)"
      style="@CardStyle"
-     @onpointerdown="() => Owner.BringCardToFront(Config)" @onanimationend="() => Owner.ClearArrival(Config)">
+     @onpointerdown="() => Owner.BringCardToFront(Config)">
     <div class="card-head">
         <div class="card-title" data-move @oncontextmenu="Options" @oncontextmenu:preventDefault>
             <span>@KindLabel() / @Config.Title</span>
@@ -16,32 +16,39 @@
         </div>
     </div>
     <div class="card-body">
-        @if (!Config.Collapsed)
+        @switch (Config.Kind)
         {
-            @switch (Config.Kind)
-            {
-                case "web":
-                    @if (Live)
+            case "web":
+                @* A collapsed page sleeps unless it was asked to keep playing, as the desktop suspends its WebView. *@
+                @if (!Config.Collapsed || Config.KeepAlive)
+                {
+                    <iframe @key="reloads" src="@EmbedUrl" title="@Config.Title" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"
+                            allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write"
+                            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"></iframe>
+                }
+                break;
+            case "stats":
+                <FocusCard Owner="Owner" Width="BodyWidth" Height="BodyHeight" />
+                break;
+            case "notes":
+                <NotesEditor Owner="Owner" Config="Config" OnSkin="ApplySkin" />
+                break;
+            case "todo":
+                <TodoBoard Owner="Owner" Config="Config" />
+                break;
+            case "window":
+                <div class="card-placeholder">
+                    <strong>@L.T("web.windowTitle")</strong>
+                    @L.T("web.windowHelp")
+                    @if (Config.Value.Length > 0)
                     {
-                        <iframe @key="reloads" src="@EmbedUrl" title="@Config.Title" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"
-                                allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write"
-                                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"></iframe>
+                        <div style="font-family:var(--mono);margin-top:8px">@Config.Value</div>
                     }
-                    break;
-                case "window":
-                    <div class="card-placeholder">
-                        <strong>@L.T("web.windowTitle")</strong>
-                        @L.T("web.windowHelp")
-                        @if (Config.Value.Length > 0)
-                        {
-                            <div style="font-family:var(--mono);margin-top:8px">@Config.Value</div>
-                        }
-                    </div>
-                    break;
-                default:
-                    <div class="card-placeholder">@L.T("web.comingSoon")</div>
-                    break;
-            }
+                </div>
+                break;
+            default:
+                <div class="card-placeholder">@L.T("web.comingSoon")</div>
+                break;
         }
     </div>
     @if (!Config.Collapsed)
@@ -66,10 +73,27 @@
     [Parameter] public bool Front { get; set; }
     [Parameter] public bool Arriving { get; set; }
 
+    /// <summary>The body's own size: the card less its border, the 46-px header and the 8-px margins.</summary>
+    internal double BodyWidth => Math.Max(0, Rect.Width - 3 - 16);
+    internal double BodyHeight => Math.Max(0, Rect.Height - 3 - 46 - 8);
+
     private string CardStyle => Rect.Style(Front ? 1 : 0) + (Hidden ? ";visibility:hidden" : "") + Skin;
 
-    /// <summary>A post-it or the dumbbells paint the whole card in their own colours.</summary>
-    private string Skin => Config.Kind == "workout" ? ";background:#000;color:#fff;border-color:#222" : "";
+    /// <summary>
+    /// Paints the whole card in a widget's own colours. A post-it is its colour, so the frame,
+    /// the header and its buttons follow it instead of the app theme; the dumbbells are black.
+    /// </summary>
+    private string Skin => Config.Kind == "workout" ? ";background:#000;color:#fff;border-color:#222;--card-ink:#fff"
+        : noteSkin is { } skin ? $";background:{skin.ChromeHex};border-color:{skin.LineHex};color:{skin.InkHex};--card-ink:{skin.InkHex}"
+        : "";
+
+    private NoteSkin? noteSkin;
+
+    private void ApplySkin(NoteSkin skin)
+    {
+        noteSkin = skin;
+        StateHasChanged();
+    }
 
     private string KindLabel() => Config.Kind switch
     {
@@ -139,8 +163,10 @@
 
     private async Task Options()
     {
+        // A note has nothing to configure; right-click opens every note ever written, closed ones included.
+        if (Config.Kind == "notes") { Owner.ShowNotesHistory(Config.Id); return; }
         var options = Config.Kind == "web"
-            ? new[] { L.T("widgets.menuRename"), L.T("widgets.menuChangeUrl"), L.T("widgets.menuReload"), L.T("web.webOpen") }
+            ? new[] { L.T("widgets.menuRename"), L.T("widgets.menuChangeUrl"), L.T("widgets.menuReload"), Config.KeepAlive ? L.T("widgets.menuAllowSleep") : L.T("widgets.menuKeepAlive"), L.T("web.webOpen") }
             : Config.Kind == "stats" ? [L.T("widgets.menuRename"), L.T("widgets.menuGoal", Owner.Settings.DailyGoalMinutes)]
             : [L.T("widgets.menuRename")];
         var choice = await Owner.Choose("OPCIONES DEL WIDGET", options);
@@ -157,7 +183,8 @@
                 if (url is not null && Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == "https") Config.Value = uri.AbsoluteUri;
             }
             else if (choice == 2) reloads++;
-            else if (choice == 3) Owner.Browser.Open(Config.Value);
+            else if (choice == 3) Config.KeepAlive = !Config.KeepAlive;
+            else if (choice == 4) Owner.Browser.Open(Config.Value);
         }
         else if (Config.Kind == "stats" && choice == 1)
         {

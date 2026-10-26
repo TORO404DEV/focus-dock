@@ -1,0 +1,169 @@
+@* A compact rich-text editor that keeps old plain-text notes readable. *@
+@implements IDisposable
+
+<div class="notes" style="@skin.Variables">
+    <div class="notes-tools">
+        <button class="note-tool" title="@L.T("notes.bold")" style="font-weight:900" @onclick='() => Command("bold")'>B</button>
+        <button class="note-tool" title="@L.T("notes.italic")" style="font-style:italic" @onclick='() => Command("italic")'>I</button>
+        <button class="note-tool" title="@L.T("notes.underline")" style="text-decoration:underline" @onclick='() => Command("underline")'>U</button>
+        <button class="note-tool" title="@L.T("notes.strike")" style="text-decoration:line-through" @onclick='() => Command("strikeThrough")'>S</button>
+        <button class="note-tool" title="@L.T("notes.checkbox")" @onclick='() => Command("checklist")'>☐</button>
+        <button class="note-tool" title="@L.T("notes.bullets")" @onclick='() => Command("insertUnorderedList")'>•</button>
+        <button class="note-tool" title="Lista numerada" @onclick='() => Command("insertOrderedList")'>1.</button>
+        <button class="note-tool wide" title="Quitar formato" @onclick='() => Command("removeFormat")'>Aa</button>
+        <button class="note-tool" title="Insertar fecha y hora" @onclick="InsertTimestamp">＋</button>
+        <button class="note-tool" title="@L.T("notes.undo")" @onclick='() => Command("undo")'>↶</button>
+        <button class="note-tool" title="@L.T("notes.redo")" @onclick='() => Command("redo")'>↷</button>
+        <button class="note-tool wide" title="Historial de notas" @onclick="() => Owner.ShowNotesHistory(Config.Id)">☰</button>
+    </div>
+    <div class="note-paper scroll">
+        <div id="@editorId" class="rich" contenteditable="true" spellcheck="true"></div>
+    </div>
+    <div class="notes-foot">
+        <span class="notes-status">@status</span>
+        <span class="swatches" title="Color del post-it">
+            @foreach (var preset in NoteSkin.Palette)
+            {
+                var key = preset.Key;
+                bool selected = string.Equals(NoteSkin.ToHex(NoteSkin.Resolve(key)), skin.Hex, StringComparison.OrdinalIgnoreCase);
+                <button class="swatch-dot @(selected ? "selected" : "")" title="@preset.Name" style="background:@preset.Hex" @onclick="() => SetColor(key)"></button>
+            }
+            @{
+                bool custom = NoteSkin.Palette.All(preset => !string.Equals(NoteSkin.ToHex(NoteSkin.Resolve(preset.Key)), skin.Hex, StringComparison.OrdinalIgnoreCase));
+            }
+            <button class="swatch-dot @(custom ? "selected" : "")" title="Color a medida" style="@(custom ? $"background:{skin.Hex}" : "")" @onclick="PickColor">@(custom ? "" : "+")</button>
+        </span>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter, EditorRequired] public WidgetConfig Config { get; set; } = null!;
+    /// <summary>The card around the note, which wears the note's colour.</summary>
+    [Parameter] public EventCallback<NoteSkin> OnSkin { get; set; }
+
+    private readonly string editorId = "note-" + Guid.NewGuid().ToString("N");
+    private DotNetObjectReference<NotesEditor>? self;
+    private NoteArchiveStore archive = null!;
+    private NotesWidgetData data = null!;
+    private List<RichBlock> blocks = [];
+    private NoteSkin skin = NoteSkin.For("paper");
+    private string status = "";
+    private CancellationTokenSource? saveTimer;
+
+    protected override void OnInitialized()
+    {
+        archive = NoteArchiveStore.For(Owner.Store);
+        data = ReadData(Config.Value, out var legacyText);
+        blocks = RichText.FromXaml(data.DocumentXaml, data.Checklists, legacyText);
+        skin = NoteSkin.For(data.Color);
+        UpdateStatus();
+        // A note is in the history from the moment it exists, not only once it is edited.
+        archive.Track(Config);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        self = DotNetObjectReference.Create(this);
+        Owner.Browser.RichAttach(editorId, self, RichText.ToHtml(blocks));
+        await OnSkin.InvokeAsync(skin);
+    }
+
+    private void Command(string name) => Owner.Browser.RichCommand(editorId, name);
+
+    private void InsertTimestamp() => Owner.Browser.RichInsert(editorId, DateTime.Now.ToString(L.T("notes.stampFormat"), Strings.Culture));
+
+    [JSInvokable]
+    public void RichEditing()
+    {
+        if (editing) return;
+        editing = true;
+        UpdateStatus("EDITANDO");
+        StateHasChanged();
+    }
+
+    private bool editing;
+
+    /// <summary>The page read the editor back: keep it, and write it down half a second later.</summary>
+    [JSInvokable]
+    public void RichChanged(List<RichBlock> read)
+    {
+        blocks = read;
+        data.Checklists = RichText.Checklists(blocks);
+        data.DocumentXaml = RichText.ToXaml(blocks);
+        data.UpdatedUtc = DateTime.UtcNow;
+        Config.Value = System.Text.Json.JsonSerializer.Serialize(data);
+        UpdateStatus("EDITANDO");
+        QueueSave();
+        StateHasChanged();
+    }
+
+    private async void QueueSave()
+    {
+        saveTimer?.Cancel();
+        var timer = saveTimer = new CancellationTokenSource();
+        try { await Task.Delay(500, timer.Token); }
+        catch (TaskCanceledException) { return; }
+        Owner.SaveState();
+        archive.Track(Config);
+        editing = false;
+        UpdateStatus("GUARDADO");
+        StateHasChanged();
+    }
+
+    private async Task SetColor(string value)
+    {
+        data.Color = value;
+        skin = NoteSkin.For(value);
+        data.UpdatedUtc = DateTime.UtcNow;
+        Config.Value = System.Text.Json.JsonSerializer.Serialize(data);
+        QueueSave();
+        await OnSkin.InvokeAsync(skin);
+    }
+
+    private async Task PickColor()
+    {
+        var picked = await Owner.PickNoteColor(data.Color);
+        if (picked is not null) await SetColor(picked);
+    }
+
+    private void UpdateStatus(string state = "LISTO")
+    {
+        var text = RichText.Text(blocks).TrimEnd('\r', '\n');
+        var words = text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
+        status = L.T("notes.status", words.ToString("00", CultureInfo.InvariantCulture), text.Length.ToString("000", CultureInfo.InvariantCulture), state);
+    }
+
+    private static NotesWidgetData ReadData(string value, out string? legacyText)
+    {
+        legacyText = null;
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            try
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<NotesWidgetData>(value);
+                if (parsed is not null && parsed.Version > 0)
+                {
+                    parsed.Checklists ??= [];
+                    return parsed;
+                }
+            }
+            catch (System.Text.Json.JsonException) { }
+            legacyText = value;
+        }
+        return new NotesWidgetData();
+    }
+
+    public void Dispose()
+    {
+        if (saveTimer is not null && !saveTimer.IsCancellationRequested)
+        {
+            saveTimer.Cancel();
+            Owner.SaveState();
+            archive.Track(Config);
+        }
+        try { Owner.Browser.RichDetach(editorId); } catch (JSDisconnectedException) { }
+        self?.Dispose();
+    }
+}

@@ -1,0 +1,127 @@
+@* The note history behind a note's ☰ button: every note the workspace has held, the closed ones
+   included. It is searchable, copies any note's text, and puts a closed note back on the page. *@
+
+<div class="backdrop">
+    <div class="dialog history">
+        <div class="dialog-head">
+            <strong>POMODOCK / HISTORIAL DE NOTAS</strong>
+            <button class="chrome-btn" title="@L.T("common.close")" @onclick="OnClose">×</button>
+        </div>
+        <div class="dialog-body history-body">
+            <h2 class="dialog-heading">TUS NOTAS</h2>
+            <p class="row-help" style="font-size:11px;margin:-8px 0 12px">@L.T("notes.historyHelp")</p>
+            <input id="history-search" class="field" style="margin:0 0 10px;font-size:12px" placeholder="Buscar en todas las notas" aria-label="Buscar en las notas"
+                   @bind="query" @bind:event="oninput" />
+            <div class="history-list scroll">
+                @foreach (var note in notes)
+                {
+                    var item = note;
+                    var skin = NoteSkin.For(note.Color);
+                    string when = (note.ClosedUtc ?? note.UpdatedUtc).ToLocalTime().ToString(L.T("notes.editedFormat"), Strings.Culture).ToUpper(Strings.Culture).Replace(".", "");
+                    string where = note.IsOpen
+                        ? (note.Id == Current ? L.T("notes.thisNote") : pages.TryGetValue(note.Id, out var page) ? L.T("notes.onPage", page) : L.T("notes.onSomePage")) + L.T("notes.editedAt", when)
+                        : $"CERRADA {when}";
+                    <button class="history-row @(selected?.Id == note.Id ? "selected" : "") @(note.IsOpen ? "" : "closed")"
+                            @onclick="() => selected = item" @ondblclick="() => Reopen(item)">
+                        <i style="background:@skin.PaperHex"></i>
+                        <span>
+                            <strong>@note.Title</strong>
+                            @if (note.Body.Length > 0)
+                            {
+                                <small>@note.Body</small>
+                            }
+                            <em class="@(note.IsOpen ? "open" : "")">@L.T("notes.wordCount", where, note.Words == 1 ? L.T("notes.wordOne") : L.T("notes.wordMany", note.Words))</em>
+                        </span>
+                    </button>
+                }
+            </div>
+            <div class="history-foot">
+                <div>
+                    <button class="btn ink" disabled="@(selected is not { IsOpen: false })" title="@L.T("notes.reopenTip")" @onclick="() => Reopen(selected)">@L.T("notes.reopenHere")</button>
+                    <button class="btn" disabled="@(selected is null)" @onclick="Copy">COPIAR TEXTO</button>
+                    <button class="btn" disabled="@(selected is not { IsOpen: false })" title="Borrar la nota cerrada del historial para siempre" @onclick="Forget">ELIMINAR</button>
+                </div>
+                <button class="btn last" @onclick="OnClose">CERRAR</button>
+            </div>
+            <p class="row-help" style="margin-top:8px">@StatusText</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter] public Guid Current { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private NoteArchiveStore archive = null!;
+    private Dictionary<Guid, string> pages = [];
+    private string query = "";
+    private ArchivedNote? selected;
+    private string status = "";
+
+    private List<ArchivedNote> notes
+    {
+        get
+        {
+            var found = archive.Archive.Search(query);
+            if (selected is not null && found.All(note => note.Id != selected.Id)) selected = found.FirstOrDefault();
+            selected ??= found.FirstOrDefault(note => note.Id == Current) ?? found.FirstOrDefault();
+            return found;
+        }
+    }
+
+    private string StatusText
+    {
+        get
+        {
+            if (status.Length > 0) return status;
+            var found = archive.Archive.Search(query);
+            if (found.Count == 0) return query.Trim().Length > 0 ? L.T("notes.noMatch") : L.T("notes.historyEmpty");
+            return L.T("notes.historyCount", found.Count(note => note.IsOpen).ToString("00", CultureInfo.InvariantCulture), found.Count(note => !note.IsOpen).ToString("00", CultureInfo.InvariantCulture));
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        archive = NoteArchiveStore.For(Owner.Store);
+        archive.Sync(Owner.Settings);
+        // Which page holds each open note, by its widget id.
+        foreach (var page in Owner.Settings.WorkspacePages)
+            foreach (var widget in page.Widgets.Where(widget => widget.Kind == "notes"))
+                pages[widget.Id] = page.Name;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) Owner.Browser.Focus("#history-search");
+    }
+
+    /// <summary>
+    /// Puts a closed note back on the current page, under its own identity, so its history entry
+    /// simply becomes open again. A note is only ever on one page at a time.
+    /// </summary>
+    private async Task Reopen(ArchivedNote? note)
+    {
+        if (note is null || note.IsOpen || Owner.Settings.WorkspacePages.SelectMany(page => page.Widgets).Any(widget => widget.Id == note.Id)) return;
+        Owner.AddCard(new WidgetConfig { Id = note.Id, Kind = "notes", Title = "NOTAS", Value = note.Payload }, true);
+        Owner.Status(L.T("notes.reopened", note.Title));
+        await OnClose.InvokeAsync();
+    }
+
+    private void Copy()
+    {
+        if (selected is null) return;
+        Owner.Browser.Copy(selected.Text);
+        status = "TEXTO COPIADO AL PORTAPAPELES.";
+    }
+
+    private async Task Forget()
+    {
+        if (selected is not { IsOpen: false } note) return;
+        if (await Owner.Choose("ELIMINAR DEL HISTORIAL", ["Eliminar para siempre", "Cancelar"]) != 0) return;
+        archive.Forget(note.Id);
+        selected = null;
+        status = "";
+        StateHasChanged();
+    }
+}

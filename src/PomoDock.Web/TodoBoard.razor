@@ -1,0 +1,336 @@
+@* The To Do card: what is left today, what is overdue, and the order the user chose. Tasks live
+   in the shared list, so closing a card never loses one; each card keeps only its own filter. *@
+@implements IDisposable
+
+@{
+    var today = DateOnly.FromDateTime(DateTime.Now);
+    var counts = book.Counts(today);
+    double share = counts.Total == 0 ? 0 : (double)counts.Done / counts.Total;
+    var visible = book.Visible(today, filter);
+}
+<div class="todo">
+    <div class="todo-head">
+        <span class="todo-counter">@($"{counts.Done:00} / {counts.Total:00} HECHAS")</span>
+        @if (counts.Overdue > 0)
+        {
+            <span class="todo-meta overdue">@($"{counts.Overdue:00} VENCIDA{(counts.Overdue == 1 ? "" : "S")}")</span>
+        }
+        else
+        {
+            <span class="todo-meta">@(counts.Today > 0 ? $"{counts.Today:00} PARA HOY" : $"{counts.Open:00} PENDIENTES")</span>
+        }
+    </div>
+    @* A flat bar instead of a system progress bar: its colour belongs to another theme. *@
+    <div class="todo-progress"><i style="@($"width:{share * 100:0.##}%".Replace(',', '.'))"></i></div>
+    <div class="todo-add">
+        <input class="field" placeholder="@L.T("todo.placeholder")" title="@L.T("todo.hint")" aria-label="Nueva tarea"
+               @bind="text" @bind:event="oninput" @onkeydown="InputKey" />
+        <button class="btn last" @onclick="Commit">@L.T("common.add")</button>
+    </div>
+    @if (Hint is { } hint)
+    {
+        <div class="todo-hint">@hint</div>
+    }
+    <div class="todo-bar">
+        <div>
+            @foreach (var (key, label) in Filters)
+            {
+                var picked = key;
+                <button class="btn chip-btn @(filter == key ? "ink" : "")" @onclick="() => SetFilter(picked)">@label</button>
+            }
+        </div>
+        <div>
+            @if (counts.Open > 1)
+            {
+                <button class="btn chip-btn" style="font-size:12px;padding:3px 7px" title="Ordenar por fecha y prioridad" @onclick="Sort">⇅</button>
+            }
+            @if (counts.Done > 0)
+            {
+                <button class="btn chip-btn last" title="Eliminar todas las tareas hechas" @onclick="ClearDone">LIMPIAR</button>
+            }
+        </div>
+    </div>
+    <div class="todo-list scroll" @onpointermove="DragMove" @onpointerup="DragEnd" @onpointerleave="DragCancel">
+        @for (int index = 0; index < visible.Count; index++)
+        {
+            var task = visible[index];
+            if (dragging && dropBefore == task.Id)
+            {
+                <div class="drop-line"></div>
+            }
+            @Row(task, today)
+        }
+        @if (dragging && dropBefore is null)
+        {
+            <div class="drop-line"></div>
+        }
+        @if (visible.Count == 0)
+        {
+            <p class="empty" style="font-size:11px;margin:14px 2px 8px">@EmptyText(counts)</p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter, EditorRequired] public WidgetConfig Config { get; set; } = null!;
+
+    private TodoStore store = null!;
+    private TodoBook book = null!;
+    private string filter = "all";
+    private string text = "";
+    private const double DragSlop = 8;
+    private TodoTask? pressTask;
+    private (double X, double Y) pressAt;
+    private bool dragging;
+    private Guid? dropBefore;
+
+    private static (string Key, string Label)[] Filters => [("all", "TODAS"), ("open", "PENDIENTES"), ("today", "HOY"), ("done", "HECHAS")];
+
+    protected override void OnInitialized()
+    {
+        store = TodoStore.For(Owner.Store);
+        filter = store.Adopt(Config);
+        book = store.Book;
+        store.Changed += OnChanged;
+    }
+
+    /// <summary>Another card or the calendar changed the list.</summary>
+    private void OnChanged()
+    {
+        if (dragging) return;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => store.Changed -= OnChanged;
+
+    /// <summary>The filter belongs to the card, not to the list: two cards can look at different slices.</summary>
+    private void SaveView()
+    {
+        Config.Value = TodoStore.View(filter);
+        Owner.SaveState();
+    }
+
+    private void SetFilter(string key)
+    {
+        filter = key;
+        SaveView();
+    }
+
+    /// <summary>What the line will become, read before it is added: day, hour, rhythm and reminder.</summary>
+    private string? Hint
+    {
+        get
+        {
+            string typed = text.Trim();
+            var reading = typed.Length == 0 ? null : TodoBook.Read(typed, DateTime.Now);
+            if (reading?.Draft is not { } draft) return null;
+            var day = DateOnly.FromDateTime(draft.Start);
+            string when = draft.AllDay ? AgendaVisuals.DayLabel(day) : $"{AgendaVisuals.DayLabel(day)} · {draft.Start:HH:mm}";
+            string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToLower(Strings.Culture);
+            string alert = draft.Reminders.Count == 0 ? L.T("todo.noAlert")
+                : draft.AllDay ? L.T("todo.alertAtHour", AgendaEvent.AllDayHour)
+                : draft.Reminders[0] == 0 ? L.T("todo.alertAtTime")
+                : draft.Reminders[0] >= 60 && draft.Reminders[0] % 60 == 0 ? L.T("todo.alertHoursBefore", draft.Reminders[0] / 60)
+                : L.T("todo.alertMinutesBefore", draft.Reminders[0]);
+            return L.T("todo.preview", reading.Task.Title, when, repeat, alert);
+        }
+    }
+
+    private void InputKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") Commit();
+        else if (e.Key == "Escape") text = "";
+    }
+
+    private void Commit()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var task = store.Add(text, DateTime.Now);
+        if (task is null) return;
+        text = "";
+        // A task typed while looking at another slice would vanish; show where it landed.
+        if (filter == "done" || (filter == "today" && !task.IsDueToday(today) && !task.IsOverdue(today)))
+        {
+            filter = "all";
+            SaveView();
+        }
+        if (task.Due is { } due)
+        {
+            string key = task.At is not null ? "todo.reminderAdded" : "todo.added";
+            Owner.Status(L.T(key, task.Title, AgendaVisuals.DayLabel(due), task.At is { } at ? $" {at:HH:mm}" : ""));
+        }
+    }
+
+    private void Sort()
+    {
+        book.SortByUrgency(DateOnly.FromDateTime(DateTime.Now));
+        store.Save();
+        Owner.Status(L.T("todo.sorted"));
+    }
+
+    private void ClearDone()
+    {
+        int removed = book.ClearDone();
+        store.Save();
+        Owner.Status($"{removed} TAREA{(removed == 1 ? "" : "S")} HECHA{(removed == 1 ? "" : "S")} FUERA DE LA LISTA.");
+    }
+
+    private string EmptyText((int Total, int Done, int Open, int Overdue, int Today) counts) => filter switch
+    {
+        "done" => L.T("todo.emptyDone"),
+        "today" => counts.Open > 0 ? L.T("todo.emptyTodayOpen") : L.T("todo.emptyToday"),
+        "open" => counts.Total > 0 ? "Todo hecho. Disfruta el hueco." : "Sin tareas. Escribe arriba la primera.",
+        _ => L.T("todo.emptyAll")
+    };
+
+    private RenderFragment Row(TodoTask task, DateOnly today) => __builder =>
+    {
+        bool overdue = task.IsOverdue(today);
+        string accent = AgendaVisuals.Solid(task.ColorKey());
+        NoteSkin? skin = task.HasNoteColor ? NoteSkin.For(task.Color) : null;
+        string due = task.DueLabel(today) + (task.Due is not null && task.At is { } at ? " " + at.ToString("HH:mm") : "");
+        string frame = skin is null ? "" : $"background:{skin.PaperHex};border-color:{skin.LineHex};color:{skin.InkHex}";
+        <div class="todo-row @(task.Done ? "done" : "") @(dragging && pressTask == task ? "lifted" : "")" style="@frame" title="@Tooltip(task, today)"
+             data-task="@task.Id" @onpointerdown="e => Press(e, task)" @onclick="() => Click(task)">
+            @* A bar on the left edge carries the priority, so urgency reads before a single word does. *@
+            <i class="todo-priority-bar" style="background:@(task.Priority == TodoPriority.None ? "transparent" : accent)"></i>
+            <button class="todo-check" style="@CheckStyle(task, skin)" title="@(task.Done ? "Marcar como pendiente" : "Completar tarea")"
+                    aria-label="@((task.Done ? "Marcar pendiente: " : "Completar: ") + task.ListLabel())"
+                    @onclick="() => store.SetDone(task, !task.Done)" @onclick:stopPropagation>@(task.Done ? "✓" : "○")</button>
+            <button class="todo-bang" style="@($"color:{accent};opacity:{(task.Priority == TodoPriority.None ? "0.22" : "1")}")"
+                    title="@L.T("todo.priorityTip", task.PriorityLabel())" aria-label="@task.PriorityLabel()"
+                    @onclick="() => { task.Priority = task.NextPriority(); store.Save(); }" @onclick:stopPropagation>!</button>
+            <span class="todo-title">@task.ListLabel()</span>
+            <button class="todo-due @(due.Length > 0 ? "set" : "") @(overdue ? "overdue" : "")"
+                    title="@(due.Length > 0 ? L.T("todo.dueTip", $"{task.Due:dd/MM/yyyy}") : L.T("todo.noDueTip"))"
+                    aria-label="@(due.Length > 0 ? "Fecha: " + due : "Poner fecha")"
+                    @onclick="() => { task.Due = task.NextDue(today); store.Save(); }" @onclick:stopPropagation>@(due.Length > 0 ? due : "◷")</button>
+            <button class="todo-more" title="@L.T("todo.moreActions")" aria-label="Acciones de la tarea" @onclick="() => Actions(task)" @onclick:stopPropagation>⋯</button>
+        </div>
+    };
+
+    private static string CheckStyle(TodoTask task, NoteSkin? skin) => task.Done
+        ? $"background:{skin?.InkHex ?? "var(--ink)"};color:{skin?.PaperHex ?? "var(--paper)"}"
+        : $"background:{skin?.ChromeHex ?? "var(--surface)"};color:{skin?.MutedHex ?? "var(--muted)"}";
+
+    private static string Tooltip(TodoTask task, DateOnly today)
+    {
+        var lines = new List<string> { task.ListLabel(), task.PriorityLabel() };
+        if (task.Due is { } due) lines.Add((task.IsOverdue(today) ? L.T("todo.overdueOn", $"{due:dd/MM/yyyy}") : L.T("todo.dueOn", $"{due:dd/MM/yyyy}")) + (task.At is { } at ? L.T("todo.atTime", $"{at:HH:mm}") : ""));
+        if (task.EventId is not null) lines.Add(L.T("todo.inCalendar"));
+        lines.Add(task.Done ? L.T("todo.doneRename") : L.T("todo.rename"));
+        return string.Join("\n", lines);
+    }
+
+    // ---------------------------------------------------------------- drag to reorder
+
+    private bool suppressClick;
+
+    private void Press(PointerEventArgs e, TodoTask task)
+    {
+        if (e.Button != 0) return;
+        pressTask = task;
+        pressAt = (e.ClientX, e.ClientY);
+        dragging = false;
+        suppressClick = false;
+    }
+
+    private void DragMove(PointerEventArgs e)
+    {
+        if (pressTask is null || (e.Buttons & 1) == 0) return;
+        if (!dragging)
+        {
+            double dx = e.ClientX - pressAt.X, dy = e.ClientY - pressAt.Y;
+            if (dx * dx + dy * dy < DragSlop * DragSlop) return;
+            var peers = book.Visible(DateOnly.FromDateTime(DateTime.Now), filter).Where(item => item.Done == pressTask.Done).ToList();
+            if (peers.Count < 2) return;
+            dragging = true;
+        }
+        dropBefore = Owner.Browser.TaskUnder(e.ClientX, e.ClientY, pressTask.Done ? "done" : "open");
+    }
+
+    private void DragEnd()
+    {
+        if (!dragging) { pressTask = null; return; }
+        var task = pressTask;
+        dragging = false;
+        pressTask = null;
+        suppressClick = true;
+        if (task is null) return;
+        var visible = book.Visible(DateOnly.FromDateTime(DateTime.Now), filter);
+        var shown = visible.Where(item => item.Done == task.Done).ToList();
+        int index = dropBefore is { } before ? shown.FindIndex(item => item.Id == before) : shown.Count;
+        if (index < 0) index = shown.Count;
+        int current = shown.IndexOf(task);
+        if (current >= 0 && index > current) index--;
+        if (book.PlaceVisible(task, index, visible)) store.Save();
+    }
+
+    private void DragCancel()
+    {
+        if (!dragging) return;
+        dragging = false;
+        pressTask = null;
+    }
+
+    private void Click(TodoTask task)
+    {
+        if (suppressClick) { suppressClick = false; return; }
+        Owner.OpenTodoNote(task);
+    }
+
+    private async Task Actions(TodoTask task)
+    {
+        int choice = await Owner.Choose("TAREA", ["Abrir nota", "Elegir fecha", "Quitar fecha", "Subir", "Bajar", "Eliminar"]);
+        switch (choice)
+        {
+            case 0:
+                Owner.OpenTodoNote(task);
+                return;
+            case 1:
+                var typed = await Owner.Prompt(L.T("todo.dateTitle"), L.T("todo.dateLabel"), task.Due?.ToString("dd/MM/yyyy") ?? L.T("todo.dateDefault"));
+                if (typed is null) return;
+                // The same reader as the entry line, so a date can be written the same way here.
+                if (AgendaQuickAdd.Read("tarea " + typed, DateTime.Now) is { Scheduled: true } when)
+                {
+                    task.Due = DateOnly.FromDateTime(when.Event.Start);
+                    task.At = when.Event.AllDay ? null : TimeOnly.FromDateTime(when.Event.Start);
+                }
+                else { Owner.Status(L.T("todo.dateUnknown")); return; }
+                break;
+            case 2:
+                task.Due = null;
+                break;
+            case 3:
+            case 4:
+                if (!book.Move(task, choice == 3 ? -1 : 1)) return;
+                break;
+            case 5:
+                book.Items.RemoveAll(item => item.Id == task.Id);
+                Owner.Status(L.T("todo.deleted", task.Title));
+                break;
+            default:
+                return;
+        }
+        store.Save();
+        StateHasChanged();
+    }
+
+    internal bool ApplyFilter(string key)
+    {
+        string next = key.Trim().ToLowerInvariant() switch
+        {
+            "all" or "todas" or "todo" or "todos" => "all",
+            "open" or "pendientes" or "pending" => "open",
+            "today" or "hoy" => "today",
+            "done" or "hechas" or "completadas" => "done",
+            _ => ""
+        };
+        if (next.Length == 0 || !TodoBook.Filters.Contains(next)) return false;
+        filter = next;
+        SaveView();
+        StateHasChanged();
+        return true;
+    }
+}

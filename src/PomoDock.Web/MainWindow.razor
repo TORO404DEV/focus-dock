@@ -39,7 +39,7 @@
             </span>
             <button class="btn glyph" title="@L.T("chrome.settings")" @onclick="SettingsClick">⚙</button>
             <button class="btn glyph" title="@L.T("chrome.fullscreen")" @onclick="FullscreenClick">⛶</button>
-            <button class="btn @(pageMapOpen ? "accent" : "") @(pulsePageMap ? "pulsing" : "")" title="@L.T("chrome.pageMap")" @onclick="PageMapClick" @onanimationend="() => pulsePageMap = false">@ChromeIcon.PageMap()</button>
+            <button class="btn @(pageMapOpen ? "accent" : "") @(pulsePageMap ? "pulsing" : "")" title="@L.T("chrome.pageMap")" @onclick="PageMapClick">@ChromeIcon.PageMap()</button>
             <button class="btn add" title="@L.T("chrome.addWidget")" @onclick="AddWidgetClick">+ WIDGET</button>
         </div>
     </div>
@@ -78,6 +78,15 @@
 @if (tasksOpen)
 {
     <TasksWindow Owner="this" Current="selectedTask" OnClose="TasksClosed" />
+}
+@foreach (var note in floatingNotes)
+{
+    <TodoNoteWindow @key="note.Task.Id" Owner="this" Task="note.Task" Left="note.Left" Top="note.Top" Z="note.Z"
+                    OnClose="() => CloseTodoNote(note)" OnFront="() => BringNoteForward(note)" />
+}
+@if (notesHistoryFor is { } historyNote)
+{
+    <NotesHistory Owner="this" Current="historyNote" OnClose="CloseNotesHistory" />
 }
 @foreach (var dialog in dialogs)
 {
@@ -157,7 +166,7 @@
                 <button class="chrome-btn" title="@L.T(filled ? "widgets.canvasRestore" : "widgets.canvasFill")" @onclick="TimerFillClick">@(filled ? ChromeIcon.Restore() : ChromeIcon.Expand())</button>
                 <button class="chrome-btn" title="@L.T("timer.removeFromPage")" @onclick="RemoveTimerClick">@ChromeIcon.Close()</button>
             </div>
-            <div class="timer-surface @(surfacePulse ? "surface-in" : "")" style="background:@PhaseColor()" @onanimationend="() => surfacePulse = false">
+            <div class="timer-surface @(surfacePulse ? "surface-in" : "")" style="background:@PhaseColor()">
                 <div class="timer-phases">
                     @foreach (var (phase, label) in PhaseButtons())
                     {

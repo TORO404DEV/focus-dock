@@ -35,6 +35,48 @@
                     <p class="dialog-text">@Request.Label</p>
                     <button class="btn" @onclick="() => Request.Complete(0)">@L.T("common.ok")</button>
                     break;
+                case DialogKind.NoteColor:
+                    var preview = NoteSkin.For(Request.Value);
+                    <h2 class="dialog-heading">COLOR DEL POST-IT</h2>
+                    <div class="color-preview" style="@preview.Variables">
+                        <strong>@L.T("notes.skinPreview")</strong>
+                        <p>El texto, los botones y el marco del widget siguen al color.</p>
+                        <div>
+                            @foreach (var sample in new[] { "B", "I", "U" })
+                            {
+                                <span class="note-tool">@sample</span>
+                            }
+                            <small>@(preview.IsDark ? L.T("notes.skinDark") : L.T("notes.skinLight"))</small>
+                        </div>
+                    </div>
+                    <label class="hex-row">
+                        <span>HEX</span>
+                        <input class="field" maxlength="7" value="@Request.Value" @oninput="HexTyped" />
+                    </label>
+                    <div class="shade-grid">
+                        @foreach (var row in NoteSkin.Shades())
+                        {
+                            <div>
+                                @foreach (var value in row)
+                                {
+                                    var picked = value;
+                                    <button class="shade" style="background:@value" title="@value" @onclick="() => Request.Value = picked"></button>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="shade-presets">
+                        @foreach (var preset in NoteSkin.Palette)
+                        {
+                            var picked = preset.Hex;
+                            <button class="btn" style="background:@preset.Hex;color:#171916" @onclick="() => Request.Value = picked">@preset.Name.ToUpper(CultureInfo.CurrentCulture)</button>
+                        }
+                    </div>
+                    <div class="dialog-row">
+                        <button class="btn" @onclick="() => Request.Complete(0, Request.Value)">GUARDAR</button>
+                        <button class="btn" @onclick="Request.Cancel">CANCELAR</button>
+                    </div>
+                    break;
                 case DialogKind.ChooseWidget:
                     <h2 class="dialog-heading">@L.T("widgets.addTitle")</h2>
                     <p class="row-help" style="font-size:12px;margin:-8px 0 20px">@L.T("widgets.addHelp")</p>
@@ -69,6 +111,7 @@
     private string Size => Request.Kind switch
     {
         DialogKind.ChooseWidget => "width:780px;max-height:900px",
+        DialogKind.NoteColor => "width:620px",
         DialogKind.Alert => "width:520px",
         DialogKind.Prompt => "width:470px",
         _ => "width:480px"
@@ -94,6 +137,11 @@
         if (!firstRender) return;
         if (Request.Kind == DialogKind.Prompt) Owner.Browser.Focus("#" + inputId);
         else Owner.Browser.Focus(".dialog .btn:not([disabled])");
+    }
+
+    private void HexTyped(ChangeEventArgs e)
+    {
+        if (NoteSkin.TryParse(e.Value?.ToString(), out var typed)) Request.Value = NoteSkin.ToHex(typed);
     }
 
     /// <summary>The launcher's number keys, as on the desktop: 1–9, W for the dumbbells, 0 for the timer.</summary>

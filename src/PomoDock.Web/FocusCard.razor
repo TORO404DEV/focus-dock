@@ -1,0 +1,146 @@
+@* The focus widget. Today and the current streak always get the largest, clearest type;
+   the goal and the week progressively join them when the card has room. *@
+
+@{
+    var today = DateOnly.FromDateTime(DateTime.Now);
+    var daily = Reports.Daily(Owner.Store.Sessions(), TimeZoneInfo.Local);
+    double goal = Math.Max(1, Owner.Settings.DailyGoalMinutes);
+    double minutes = daily.GetValueOrDefault(today);
+    int streak = Reports.Streak(daily, today);
+    var week = HabitBook.WeekStart(today);
+    var days = Enumerable.Range(0, 7).Select(index => week.AddDays(index)).ToArray();
+    double weekTotal = days.Sum(day => daily.GetValueOrDefault(day));
+    double inset = Width < 300 || Height < 120 ? 7 : Width < 460 ? 10 : 14;
+    string rootStyle = Css($"padding:{Math.Max(5, inset - 3)}px {inset}px {inset}px");
+}
+@if (Height < 76)
+{
+    // Even at the minimum card height, both primary metrics keep an icon and readable type.
+    double fontCap = Math.Max(12, Math.Min(34, Height * .48));
+    double font = Math.Clamp(Math.Min(Width / 8.4, Height * .48), Math.Min(21, fontCap), fontCap);
+    double iconCap = Math.Max(10, Math.Min(28, font));
+    double icon = Math.Clamp(font * .8, Math.Min(20, iconCap), iconCap);
+    double tile = (Width - inset * 2 - 6) / 2;
+    <div class="focus-card compact" style="@rootStyle">
+        <div class="focus-headline" style="gap:6px">
+            @MetricTile(Hours(minutes), L.T("focus.today"), false, font, 10.5, icon, false, true, tile)
+            @MetricTile(streak.ToString(CultureInfo.InvariantCulture), L.T("focus.streak"), true, font, 10.5, icon, true, true, tile)
+        </div>
+    </div>
+}
+else
+{
+    // A week needs real vertical room. Showing it in a short card used to squeeze the
+    // primary numbers until both their values and captions were clipped.
+    bool showWeek = Height >= 218;
+    bool showFooter = Height >= 310;
+    double metricCap = Math.Max(12, Math.Min(96, Height * .2));
+    double metricFloor = Math.Min(27, metricCap);
+    double metricSize = Math.Clamp(Math.Min(Width * .12, Height * (showWeek ? .16 : .22)), metricFloor, metricCap);
+    double labelCap = Math.Max(8, Math.Min(16, metricSize * .5));
+    double labelSize = Math.Clamp(metricSize * .34, Math.Min(10.5, labelCap), labelCap);
+    double iconCap = Math.Max(12, Math.Min(64, metricSize));
+    double iconSize = Math.Clamp(metricSize * .9, Math.Min(26, iconCap), iconCap);
+    double tile = (Width - inset * 2 - 8) / 2;
+    double captionSize = Math.Clamp(labelSize - 1, 10, 12.5);
+    <div class="focus-card" style="@rootStyle">
+        <div class="focus-headline" style="gap:8px">
+            @MetricTile(Hours(minutes), L.T("focus.hoursToday"), false, metricSize, labelSize, iconSize, false, false, tile)
+            @MetricTile(streak.ToString(CultureInfo.InvariantCulture), streak == 1 ? L.T("focus.streakDay") : L.T("focus.streakDays"), true, metricSize, labelSize, iconSize, true, false, tile,
+                streak == 0 ? L.T("focus.streakEmpty") : L.T("focus.streakTip", streak))
+        </div>
+        <div style="@Css($"margin-top:{(Height < 120 ? 8 : 11)}px")">
+            <div class="meter" style="@Css($"height:{(Height >= 205 ? 11 : 8)}px")"><i style="@Css($"width:{Math.Clamp(minutes / goal, 0, 1) * 100:0.##}%")"></i></div>
+            <div class="focus-caption" style="@Css($"font-size:{captionSize}px")">
+                @(minutes >= goal ? L.T("focus.goalMet", Hours(minutes - goal)) : L.T("focus.goalLeft", Hours(goal - minutes), Hours(goal)))
+            </div>
+        </div>
+        @if (showWeek)
+        {
+            double peak = Math.Max(goal, days.Select(day => daily.GetValueOrDefault(day)).DefaultIfEmpty(0).Max());
+            double letterSize = Math.Clamp(labelSize - 1, 9.5, 12);
+            <div class="focus-week">
+                @for (int i = 0; i < days.Length; i++)
+                {
+                    var day = days[i];
+                    double value = daily.GetValueOrDefault(day);
+                    bool reached = value >= goal;
+                    double share = Math.Max(.06, Math.Min(1, value / peak));
+                    string tip = day > today
+                        ? L.T("focus.dayFuture", DayLetters[i], day.ToString("dd/MM", CultureInfo.InvariantCulture))
+                        : L.T("focus.dayFocus", DayLetters[i], day.ToString("dd/MM", CultureInfo.InvariantCulture), Hours(value));
+                    <div class="focus-day @(day > today ? "future" : "")" title="@tip">
+                        <div class="focus-bar">
+                            @if (value > 0)
+                            {
+                                <i style="@Css($"height:{share * 100:0.##}%;opacity:{(reached ? 1 : .58)}")"></i>
+                            }
+                        </div>
+                        <span class="@(day == today ? "today" : "")" style="@Css($"font-size:{letterSize}px")">@DayLetters[i]</span>
+                    </div>
+                }
+            </div>
+        }
+        @if (showFooter)
+        {
+            int counted = days.Count(day => day <= today && daily.GetValueOrDefault(day) > 0);
+            double footSize = Math.Clamp(labelSize - .5, 10, 12.5);
+            <div class="focus-footer" style="@Css($"font-size:{footSize}px")">
+                <strong>@L.T("focus.week", Hours(weekTotal))</strong>
+                <span title="@L.T("focus.averageTip")">@(counted == 0 ? L.T("focus.noDays") : L.T("focus.average", Hours(weekTotal / counted)))</span>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter] public double Width { get; set; }
+    [Parameter] public double Height { get; set; }
+
+    /// <summary>The weekday initials come from the language, so they are not always L M X J V S D.</summary>
+    private static string[] DayLetters =>
+    [
+        L.T("weekday.short.monday"), L.T("weekday.short.tuesday"), L.T("weekday.short.wednesday"),
+        L.T("weekday.short.thursday"), L.T("weekday.short.friday"), L.T("weekday.short.saturday"), L.T("weekday.short.sunday")
+    ];
+
+    private static string Css(FormattableString style) => FormattableString.Invariant(style);
+
+    /// <summary>
+    /// One headline number with its icon and caption. Like the desktop's Viewbox it only ever
+    /// scales down, so a value such as 10:25 stays whole in a narrow tile instead of losing digits.
+    /// </summary>
+    private static RenderFragment MetricTile(string value, string caption, bool flame, double numberSize, double labelSize, double iconSize, bool inverse, bool compact, double tileWidth, string? tip = null) => __builder =>
+    {
+        double pad = compact ? 6 : 9;
+        double room = Math.Max(10, tileWidth - pad * 2 - iconSize - (compact ? 6 : 9) - 2);
+        double fit = Math.Min(numberSize, room / Math.Max(1, value.Length * .56));
+        double labelRoom = Math.Max(10, tileWidth - pad * 2 - 2);
+        double labelFit = Math.Min(labelSize, labelRoom / Math.Max(1, caption.Length * .62));
+        <div class="metric-tile @(inverse ? "inverse" : "")" title="@tip" style="@Css($"padding:{(compact ? 4 : 7)}px {pad}px")">
+            <div class="metric-row">
+                <span class="metric-icon" style="@Css($"width:{iconSize}px;height:{iconSize}px;padding:{iconSize * .19}px;margin-right:{(compact ? 6 : 9)}px")">
+                    @(flame ? Flame : Clock)
+                </span>
+                <span class="metric-number" style="@Css($"font-size:{fit}px")">@value</span>
+            </div>
+            <div class="metric-caption" style="@Css($"font-size:{labelFit}px;margin-top:{(compact ? 2 : 5)}px")">@caption</div>
+        </div>
+    };
+
+    private static readonly MarkupString Clock = new(
+        "<svg viewBox=\"0 0 16 16\" aria-hidden=\"true\"><circle cx=\"8\" cy=\"8\" r=\"7\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"/>" +
+        "<rect x=\"7.1\" y=\"3.4\" width=\"1.8\" height=\"5.2\" fill=\"currentColor\"/>" +
+        "<rect x=\"7.6\" y=\"7.5\" width=\"5.5\" height=\"1.8\" fill=\"currentColor\" transform=\"rotate(24 8 8.4)\"/></svg>");
+
+    private static readonly MarkupString Flame = new(
+        "<svg viewBox=\"5 0.5 14 20.5\" aria-hidden=\"true\"><path fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.25\" stroke-linejoin=\"round\" fill-rule=\"evenodd\" " +
+        "d=\"M12,1 C13.2,5.2 18.5,7.1 18.5,13.1 C18.5,17.2 15.6,20.4 12,20.4 C8.1,20.4 5.4,17.4 5.4,13.6 C5.4,10.8 6.8,8.7 8.7,6.8 C8.7,9.8 10.1,11 11.1,11.7 C10.7,8.2 12.8,6.2 12,1 Z M12.1,12.1 C14.1,14 14.5,15.2 14.5,16.4 C14.5,18 13.4,19.1 12,19.1 C10.5,19.1 9.5,18 9.5,16.5 C9.5,15.3 10.2,14.2 12.1,12.1 Z\"/></svg>");
+
+    private static string Hours(double minutes)
+    {
+        int rounded = (int)Math.Round(Math.Max(0, minutes));
+        return $"{rounded / 60}:{rounded % 60:00}";
+    }
+}

@@ -3,7 +3,7 @@ using PomoDock.Core;
 namespace PomoDock.Web;
 
 /// <summary>What a dialog asks: pick one, type one, read one, or pick a widget.</summary>
-public enum DialogKind { Choose, Prompt, Alert, ChooseWidget }
+public enum DialogKind { Choose, Prompt, Alert, ChooseWidget, NoteColor }
 
 /// <summary>
 /// One open dialog. The desktop's dialogs block the thread until answered; in the browser the
@@ -57,6 +57,13 @@ public partial class MainWindow
 
     internal async Task Alert(string title, string message) =>
         await Ask(new DialogRequest { Kind = DialogKind.Alert, Title = title, Label = message });
+
+    /// <summary>The post-it colour picker: presets, a full shade grid, a hex field and a live preview.</summary>
+    internal async Task<string?> PickNoteColor(string current)
+    {
+        var answer = await Ask(new DialogRequest { Kind = DialogKind.NoteColor, Title = "COLOR DEL POST-IT", Value = NoteSkin.For(current).Hex });
+        return answer.Choice == 0 ? answer.Text : null;
+    }
 
     internal async Task<int> ChooseWidget() =>
         (await Ask(new DialogRequest { Kind = DialogKind.ChooseWidget, Title = L.T("widgets.addTitle") })).Choice;
