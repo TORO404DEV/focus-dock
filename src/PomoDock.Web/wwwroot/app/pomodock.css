@@ -434,6 +434,10 @@ body.is-gesturing, body.is-gesturing * { user-select: none !important; }
 .swatch-other.chosen { border-width: 3.5px; color: #171916; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .settings-actions .btn { font-size: 11px; padding: 9px 13px; margin: 0; }
+.agent-key .field { margin: 8px 0 0; font-size: 13px; }
+.memory-row { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 13px; }
+.memory-row span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.memory-row .btn { font-size: 8px; padding: 5px 9px; margin: 0; }
 
 /* ------------------------------------------------------------------ narrow screens */
 

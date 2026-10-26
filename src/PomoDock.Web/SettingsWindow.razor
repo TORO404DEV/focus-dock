@@ -30,6 +30,7 @@
                 {
                     case "sound": @Sound break;
                     case "look": @Look break;
+                    case "agent": @Agent break;
                     case "space": @Space break;
                     default: @Rhythm break;
                 }
@@ -71,7 +72,7 @@
     private static (string Key, string Label)[] Tabs =>
     [
         ("rhythm", L.T("settings.tabRhythm")), ("sound", L.T("settings.tabSound")),
-        ("look", L.T("settings.tabLook")), ("space", L.T("settings.tabSpace"))
+        ("look", L.T("settings.tabLook")), ("agent", L.T("settings.tabAgent")), ("space", L.T("settings.tabSpace"))
     ];
 
     protected override void OnInitialized()
@@ -207,6 +208,78 @@
         @Swatches(L.T("settings.colorLong"), "", settings.LongBreakColor, value => settings.LongBreakColor = value)
         @Swatches(L.T("settings.colorAccent"), L.T("settings.colorAccentHelp"), settings.AccentColor, value => settings.AccentColor = value)
     };
+
+    private string keyDraft = "";
+
+    /// <summary>The desktop's agent room: the key, the memory and what it holds, and how dictation is sent.</summary>
+    private RenderFragment Agent => __builder =>
+    {
+        var memory = new AgentMemory(Owner.Store);
+        var facts = memory.Book.Search("", 20);
+        @Lead(L.T("settings.agentLead"), L.T("web.agentSettingsHelp"))
+        <div class="row agent-key">
+            <div class="row-label">@L.T("settings.agentApiKey")</div>
+            <div class="row-help">@L.T("web.agentApiKeyHelp")</div>
+            <input class="field" type="password" autocomplete="off" spellcheck="false"
+                   placeholder="@(DeepSeekAgentModel.IsConfigured(Owner.Store) ? "••••••••••••" : L.T("settings.agentApiKeyPlaceholder"))"
+                   @bind="keyDraft" @bind:event="oninput" />
+            <div class="settings-actions">
+                <button class="btn" @onclick="SaveKey">@L.T("settings.agentApiKeySave")</button>
+                <button class="btn" @onclick="ClearKey">@L.T("settings.agentApiKeyClear")</button>
+            </div>
+        </div>
+        @Toggle(L.T("settings.agentMemory"), L.T("settings.agentMemoryHelp"), settings.AgentMemoryEnabled, value =>
+        {
+            settings.AgentMemoryEnabled = value;
+            memory.Book.Enabled = value;
+            memory.Save();
+        })
+        @Toggle(L.T("settings.agentSendVoice"), L.T("settings.agentSendVoiceHelp"), settings.AgentSendVoiceOnRelease, value => settings.AgentSendVoiceOnRelease = value)
+        @if (facts.Count == 0)
+        {
+            <p class="note">@L.T("settings.agentMemoryEmpty")</p>
+        }
+        @foreach (var item in facts)
+        {
+            var copy = item;
+            <div class="memory-row">
+                <span>@item.Content</span>
+                <button class="btn" @onclick="() => { memory.Book.Forget(copy.Content); memory.Save(); }">@L.T("settings.agentForget")</button>
+            </div>
+        }
+        <div class="settings-actions">
+            <button class="btn" @onclick="() => ExportMemory(memory)">@L.T("settings.agentExportMemory")</button>
+        </div>
+    };
+
+    /// <summary>No folder to write into: the browser downloads the file the desktop would save.</summary>
+    private void ExportMemory(AgentMemory memory)
+    {
+        Owner.Browser.Download("agent-memory.json", memory.ExportJson());
+        statusLine = "agent-memory.json";
+    }
+
+    private void SaveKey()
+    {
+        string raw = keyDraft.Trim();
+        if (raw.Length == 0)
+        {
+            statusLine = L.T("settings.agentApiKeyMissing");
+            return;
+        }
+        DeepSeekAgentModel.SaveKey(Owner.Store, raw);
+        keyDraft = "";
+        Owner.Agent.ResetSession();
+        statusLine = L.T("settings.agentApiKeySaved");
+    }
+
+    private void ClearKey()
+    {
+        DeepSeekAgentModel.SaveKey(Owner.Store, "");
+        keyDraft = "";
+        Owner.Agent.ResetSession();
+        statusLine = L.T("settings.agentApiKeyCleared");
+    }
 
     private RenderFragment Space => __builder =>
     {

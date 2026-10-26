@@ -1248,6 +1248,8 @@
   "web.storageFull": "El navegador no deja guardar (¿modo privado o almacenamiento lleno?). Exporta una copia.",
   "web.comingSoon": "Este widget llega pronto a PomoDock Web.",
   "web.agentKeyHint": "El chat del agente usa DeepSeek con tu propia key. Tus notas, hábitos y datos siguen en este navegador; la key se guarda solo aquí y no entra en las copias de seguridad. Pégala de platform.deepseek.com.",
+  "web.agentSettingsHelp": "El chat razona en DeepSeek. Tus datos y tu memoria siguen en este navegador.",
+  "web.agentApiKeyHelp": "Obligatoria para el chat. Se guarda solo en este navegador y no entra en las copias de seguridad.",
   "web.agentNoMic": "Este navegador no transcribe voz. Usa Chrome o Edge, o escribe el mensaje.",
   "web.agentMicFailed": "No pude escuchar el micrófono ({0}).",
   "web.titleIdle": "PomoDock Web",
