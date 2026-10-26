@@ -1,6 +1,8 @@
 @* The desktop's WidgetCard: a framed card with its kind and title, three header buttons, eight
    resize edges, and the body of whatever widget it holds. *@
 
+@implements IDisposable
+
 <div class="card @(Config.Collapsed ? "is-collapsed" : "") @(Arriving ? "arriving" : "")"
      data-id="@Config.Id" data-minw="@(Config.Kind == "agent" ? 260 : 220)" data-minh="@(Config.Collapsed ? 42 : Config.Kind == "agent" ? 280 : 90)"
      style="@CardStyle"
@@ -12,7 +14,7 @@
         <div class="card-actions">
             <button class="chrome-btn" title="@L.T(Config.CanvasFill ? "widgets.canvasRestore" : "widgets.canvasFill")" @onclick="ToggleCanvasFill">@(Config.CanvasFill ? ChromeIcon.Restore() : ChromeIcon.Expand())</button>
             <button class="chrome-btn" title="Contraer / expandir" @onclick="ToggleCollapsed">@ChromeIcon.Collapse()</button>
-            <button class="chrome-btn" title="@L.T("widgets.remove")" @onclick="() => Owner.RemoveCard(Config)">@ChromeIcon.Close()</button>
+            <button class="chrome-btn" title="@L.T("widgets.remove")" @onclick="Close">@ChromeIcon.Close()</button>
         </div>
     </div>
     <div class="card-body">
@@ -50,6 +52,9 @@
                 break;
             case "habits":
                 <HabitsBoard Owner="Owner" Config="Config" Width="BodyWidth" Height="BodyHeight" />
+                break;
+            case "agent":
+                <AgentPanel Owner="Owner" />
                 break;
             case "window":
                 <div class="card-placeholder">
@@ -252,6 +257,23 @@
     }
 
     private int reloads;
+
+    internal void ReloadWeb()
+    {
+        reloads++;
+        StateHasChanged();
+    }
+
+    /// <summary>The chat is not on a page: closing it hides it, as the desktop's ✕ on the agent does.</summary>
+    private void Close()
+    {
+        if (Config.Kind == "agent") Owner.HideAgentWidget();
+        else Owner.RemoveCard(Config);
+    }
+
+    protected override void OnInitialized() => Owner.Register(Config.Id, this);
+
+    public void Dispose() => Owner.Unregister(this);
 
     /// <summary>The birth date the calendar counts from, asked when the card is added and from its menu.</summary>
     internal async Task<bool> PromptMementoBirth()

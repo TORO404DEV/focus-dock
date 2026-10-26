@@ -18,5 +18,8 @@
     <Compile Include="..\PomoDock.App\WorkoutPrograms.cs" Link="Shared\WorkoutPrograms.cs" />
     <Compile Include="..\PomoDock.App\WorkoutCatalog.cs" Link="Shared\WorkoutCatalog.cs" />
     <EmbeddedResource Include="..\PomoDock.App\Assets\Workout\exercises.json" Link="Shared\exercises.json" />
+    <!-- The agent reads the same operating manual as the desktop's, so both answer by the same rules. -->
+    <Compile Include="..\PomoDock.App\AgentInstructions.cs" Link="Shared\AgentInstructions.cs" />
+    <EmbeddedResource Include="..\PomoDock.App\AgentRules.md" Link="Shared\AgentRules.md" />
   </ItemGroup>
 </Project>

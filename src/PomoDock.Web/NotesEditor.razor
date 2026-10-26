@@ -60,6 +60,7 @@
         UpdateStatus();
         // A note is in the history from the moment it exists, not only once it is edited.
         archive.Track(Config);
+        Owner.Register(Config.Id, this);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -122,6 +123,40 @@
         await OnSkin.InvokeAsync(skin);
     }
 
+    /// <summary>Agent path: a new paragraph at the end of the note, written down at once.</summary>
+    internal bool AgentAppend(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        blocks.Add(RichText.Paragraph(text.Trim()));
+        Owner.Browser.RichSet(editorId, RichText.ToHtml(blocks));
+        FlushNow();
+        return true;
+    }
+
+    /// <summary>Agent path: change post-it colour (preset key or #hex) and flush.</summary>
+    internal bool AgentSetColor(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        string color = value.Trim();
+        if (color.Equals("lavender", StringComparison.OrdinalIgnoreCase)) color = "lilac";
+        _ = SetColor(color);
+        FlushNow();
+        return true;
+    }
+
+    private void FlushNow()
+    {
+        saveTimer?.Cancel();
+        data.Checklists = RichText.Checklists(blocks);
+        data.DocumentXaml = RichText.ToXaml(blocks);
+        data.UpdatedUtc = DateTime.UtcNow;
+        Config.Value = System.Text.Json.JsonSerializer.Serialize(data);
+        Owner.SaveState();
+        archive.Track(Config);
+        UpdateStatus("GUARDADO");
+        StateHasChanged();
+    }
+
     private async Task PickColor()
     {
         var picked = await Owner.PickNoteColor(data.Color);
@@ -157,6 +192,7 @@
 
     public void Dispose()
     {
+        Owner.Unregister(this);
         if (saveTimer is not null && !saveTimer.IsCancellationRequested)
         {
             saveTimer.Cancel();

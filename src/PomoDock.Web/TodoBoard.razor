@@ -93,6 +93,7 @@
         filter = store.Adopt(Config);
         book = store.Book;
         store.Changed += OnChanged;
+        Owner.Register(Config.Id, this);
     }
 
     /// <summary>Another card or the calendar changed the list.</summary>
@@ -102,7 +103,11 @@
         _ = InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose() => store.Changed -= OnChanged;
+    public void Dispose()
+    {
+        store.Changed -= OnChanged;
+        Owner.Unregister(this);
+    }
 
     /// <summary>The filter belongs to the card, not to the list: two cards can look at different slices.</summary>
     private void SaveView()

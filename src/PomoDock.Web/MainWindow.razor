@@ -62,6 +62,13 @@
                 </div>
             }
         </div>
+        @if (AgentVisible && AgentConfig is { } agent)
+        {
+            @* Above every page and outside the carousel: the chat stays put while pages slide under it. *@
+            <div class="agent-layer widget-area">
+                <WidgetCard @key="agent.Id" Owner="this" Config="agent" Rect="AgentRect(agent)" Front="true" Arriving="arriving == agent.Id" />
+            </div>
+        }
         @if (pageMapOpen)
         {
             @PageMapOverlay

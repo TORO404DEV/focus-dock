@@ -36,6 +36,11 @@ internal static class ChromeIcon
         Bar(0.4, 14.1, 4.2, 1.5, 0) + Bar(0.4, 11.4, 1.5, 4.2, 0) +
         Bar(11.4, 14.1, 4.2, 1.5, 0) + Bar(14.1, 11.4, 1.5, 4.2, 0), 20);
 
+    /// <summary>Hold to talk: a capsule on its stand, the desktop's Segoe microphone redrawn.</summary>
+    public static MarkupString Mic() => Board(
+        FormattableString.Invariant($"<rect x=\"5.3\" y=\"0.9\" width=\"5.4\" height=\"9\" rx=\"2.7\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"/>") +
+        Stroke("M2.6,7.4 C2.6,11 5,12.8 8,12.8 C11,12.8 13.4,11 13.4,7.4", 1.6) + Bar(7.2, 12.6, 1.6, 2.4, 0) + Bar(4.8, 14.3, 6.4, 1.4, 0.4));
+
     /// <summary>Restore from canvas fill: two overlapping squares.</summary>
     public static MarkupString Restore() => Board(Box(4.2, 0.8, 10.2, 10.2) + Box(0.8, 4.6, 10.2, 10.2), 20);
 

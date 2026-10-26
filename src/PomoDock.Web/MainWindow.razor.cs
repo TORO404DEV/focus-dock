@@ -86,6 +86,8 @@ public partial class MainWindow : ComponentBase
             ShowUnreadNotificationModals();
             // Calendar reminders ring on their own clock: a cue that came due moments ago still rings.
             SweepReminders(DateTime.Now);
+            // The chat comes back where it was left, once the canvas has a size to place it in.
+            if (Settings.AgentWidgetVisible) ShowAgentWidget();
             StateHasChanged();
         }
         AfterRenderPages();
@@ -354,12 +356,6 @@ public partial class MainWindow : ComponentBase
         reportOpen = false;
         // An import or a corrected session changes the metrics on the page.
         StateHasChanged();
-    }
-
-    private async Task AgentClick()
-    {
-        Sounds.Button("click");
-        await Alert(L.T("agent.name").ToUpper(Strings.Culture), L.T("web.comingSoon"));
     }
 
     private void SettingsClick()

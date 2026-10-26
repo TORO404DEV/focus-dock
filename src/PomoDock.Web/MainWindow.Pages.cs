@@ -189,6 +189,8 @@ public partial class MainWindow
             config.Y = Math.Max(0, (canvasHeight - config.Height) / 2);
         }
         CurrentPage.Widgets.Add(config);
+        LastCreatedWidgetId = config.Id;
+        AgentCreatedWidgetThisTurn = true;
         // On top of everything else — the timer included — so it is never born hidden under one.
         front = config.Id;
         if (save)
@@ -265,7 +267,7 @@ public partial class MainWindow
             timer.DropCanvasFillIfBoundsMoved(canvasWidth, canvasHeight);
             CurrentPage.TimerPositionCustomized = true;
         }
-        else if (CurrentPage.Widgets.FirstOrDefault(widget => widget.Id == key) is { } config)
+        else if ((CurrentPage.Widgets.FirstOrDefault(widget => widget.Id == key) ?? (AgentConfig?.Id == key ? AgentConfig : null)) is { } config)
         {
             config.X = x; config.Y = y; config.Width = width;
             if (!config.Collapsed) config.Height = height;

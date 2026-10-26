@@ -230,6 +230,7 @@ else
         week = HabitBook.WeekStart(today);
         if (store.ImportLegacy(Config)) Owner.SaveState();
         store.Changed += OnChanged;
+        Owner.Register(Config.Id, this);
     }
 
     /// <summary>A new day arrives while the board is open: it follows if it was showing this week.</summary>
@@ -247,6 +248,7 @@ else
     public void Dispose()
     {
         store.Changed -= OnChanged;
+        Owner.Unregister(this);
         Owner.ClosePanel(this);
     }
 

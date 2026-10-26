@@ -801,4 +801,72 @@
       return state ? readBlocks(state.root) : [];
     }
   };
+
+  // ------------------------------------------------------------------ the agent's voice and ears
+
+  // The desktop speaks with a local voice model and transcribes with Whisper; the browser has its
+  // own speech synthesis and, in Chrome and Edge, its own recognition. Hold to talk, release to stop.
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let hearing = null;
+
+  pd.speech = {
+    canListen: () => !!Recognition,
+    listen(target, lang) {
+      if (!Recognition) return false;
+      if (hearing) { try { hearing.rec.abort(); } catch (e) { } }
+      const rec = new Recognition();
+      const state = hearing = { rec, target, heard: '', cancelled: false };
+      rec.lang = lang;
+      rec.interimResults = true;
+      rec.continuous = true;
+      rec.onresult = (event) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          if (result.isFinal) state.heard += result[0].transcript;
+          else interim += result[0].transcript;
+        }
+        target.invokeMethodAsync('MicHeard', (state.heard + interim).trim());
+      };
+      rec.onerror = (event) => {
+        if (event.error !== 'aborted' && event.error !== 'no-speech') target.invokeMethodAsync('MicFailed', event.error);
+      };
+      rec.onend = () => {
+        if (hearing === state) hearing = null;
+        target.invokeMethodAsync('MicEnded', state.cancelled ? '' : state.heard.trim());
+      };
+      try { rec.start(); } catch (e) { hearing = null; return false; }
+      return true;
+    },
+    stop() { if (hearing) hearing.rec.stop(); },
+    cancel() { if (hearing) { hearing.cancelled = true; hearing.rec.abort(); } },
+    say(target, text, lang, rate) {
+      if (!window.speechSynthesis) { target.invokeMethodAsync('SpokenEnd'); return; }
+      speechSynthesis.cancel();
+      const line = new SpeechSynthesisUtterance(text);
+      line.lang = lang;
+      line.rate = Math.min(2, Math.max(0.5, rate || 1));
+      const prefix = lang.slice(0, 2).toLowerCase();
+      const voice = speechSynthesis.getVoices().find((item) => (item.lang || '').toLowerCase().startsWith(prefix));
+      if (voice) line.voice = voice;
+      line.onend = line.onerror = () => target.invokeMethodAsync('SpokenEnd');
+      speechSynthesis.speak(line);
+    },
+    hush() { if (window.speechSynthesis) speechSynthesis.cancel(); }
+  };
+
+  // Enter sends and Shift+Enter breaks the line: the Enter that sends never lands in the box.
+  pd.enterSends = (selector) => {
+    const element = document.querySelector(selector);
+    if (!element) return;
+    element.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) event.preventDefault();
+    });
+  };
+
+  // The chat's feed follows the newest message, as the desktop's ScrollToEnd does.
+  pd.scrollEnd = (selector) => {
+    const element = document.querySelector(selector);
+    if (element) element.scrollTop = element.scrollHeight;
+  };
 })();

@@ -59,4 +59,15 @@ public sealed class Browser
     public void RichInsert(string id, string text) => js.InvokeVoid("pd.rich.insert", id, text);
     public void RichSet(string id, string html) => js.InvokeVoid("pd.rich.set", id, html);
     public List<RichBlock> RichRead(string id) => js.Invoke<List<RichBlock>>("pd.rich.read", id);
+
+    /// <summary>Speech recognition exists in Chrome and Edge; elsewhere the chat is typed.</summary>
+    public bool CanListen() => js.Invoke<bool>("pd.speech.canListen");
+    public bool Listen<T>(DotNetObjectReference<T> target, string lang) where T : class => js.Invoke<bool>("pd.speech.listen", target, lang);
+    public void ListenStop() => js.InvokeVoid("pd.speech.stop");
+    public void ListenCancel() => js.InvokeVoid("pd.speech.cancel");
+    public void Say<T>(DotNetObjectReference<T> target, string text, string lang, double rate) where T : class =>
+        js.InvokeVoid("pd.speech.say", target, text, lang, rate);
+    public void Hush() => js.InvokeVoid("pd.speech.hush");
+    public void ScrollEnd(string selector) => js.InvokeVoid("pd.scrollEnd", selector);
+    public void EnterSends(string selector) => js.InvokeVoid("pd.enterSends", selector);
 }

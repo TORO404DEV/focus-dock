@@ -91,6 +91,7 @@
         state = ReadState(Config.Value);
         agenda.Changed += OnAgendaChanged;
         Owner.Ticked += OnTick;
+        Owner.Register(Config.Id, this);
         scrollWeek = state.View == "week";
     }
 
@@ -98,6 +99,7 @@
     {
         agenda.Changed -= OnAgendaChanged;
         Owner.Ticked -= OnTick;
+        Owner.Unregister(this);
         Owner.ClosePanel(this);
     }
 

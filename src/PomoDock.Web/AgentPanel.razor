@@ -1,0 +1,680 @@
+@* The desktop's AgentWindow: title and icon tools, the message feed, the composer. Recent chats live
+   in an overlay. The agent and its chats belong to the window, so hiding the card keeps them. *@
+@implements IDisposable
+
+<div class="agent">
+    <div class="agent-bar">
+        <div class="agent-titles">
+            <b>@ThreadTitleText</b>
+            @if (status.Length > 0)
+            {
+                <small>@status</small>
+            }
+        </div>
+        <div class="agent-tools">
+            <button class="agent-icon @(historyOpen ? "on" : "")" title="@L.T("agent.history")" @onclick="ToggleHistory">☰</button>
+            <button class="agent-icon" title="@L.T("agent.newChat")" @onclick="NewChat">＋</button>
+            <button class="agent-icon @(voiceOn ? "on" : "")" title="@(voiceOn ? L.T("agent.voiceOn") : L.T("agent.voiceOff"))" @onclick="ToggleVoice">@(voiceOn ? "🔊︎" : "🔇︎")</button>
+        </div>
+    </div>
+
+    <div class="agent-stage">
+        <div class="agent-room">
+            @if (!configured)
+            {
+                <div class="agent-setup">
+                    <b>@L.T("agent.apiKeyTitle")</b>
+                    <p>@L.T("web.agentKeyHint")</p>
+                    <input class="field" type="password" autocomplete="off" spellcheck="false" placeholder="@L.T("agent.apiKeyPlaceholder")"
+                           @bind="apiKey" @bind:event="oninput" @onkeydown="KeyFieldKey" />
+                    <button class="btn ink" @onclick="SaveApiKey">@L.T("agent.saveApiKey")</button>
+                </div>
+            }
+            <div class="agent-feed" id="@feedId">
+                @if (Visible.Count == 0 && liveText is null && pendingPlan is null)
+                {
+                    <p class="agent-empty">@L.T("agent.emptyChat")</p>
+                }
+                @foreach (var message in Visible)
+                {
+                    if (message.Role == "error")
+                    {
+                        @ErrorCard(message)
+                    }
+                    else
+                    {
+                        @Bubble(message.Text, message.Role == "you", message.Receipts, message.At)
+                    }
+                }
+                @if (pendingPlan is { } plan)
+                {
+                    <div class="agent-plan">
+                        <small>@L.T("agent.understood")</small>
+                        <p>@plan.Understood</p>
+                        <small>@L.T("agent.plan")</small>
+                        @foreach (var step in plan.Steps)
+                        {
+                            <div class="agent-step">→  @(step.Label.Length > 0 ? step.Label : step.Tool)</div>
+                        }
+                        @if (plan.Changes.Length > 0)
+                        {
+                            <div class="agent-changes">@plan.Changes</div>
+                        }
+                        <div class="agent-actions">
+                            <button class="btn ink" @onclick="ExecutePending">@L.T("agent.executePlan")</button>
+                            <button class="btn" @onclick="() => EditPlan(plan)">@L.T("agent.editPlan")</button>
+                            <button class="btn" @onclick="CancelPlan">@L.T("agent.cancelPlan")</button>
+                        </div>
+                    </div>
+                }
+                @if (liveText is not null)
+                {
+                    @Bubble(liveText, false, null, DateTime.Now)
+                }
+            </div>
+        </div>
+        @if (historyOpen)
+        {
+            <div class="agent-history">
+                <small class="agent-history-head">@L.T("agent.threads")</small>
+                <input class="field" id="agent-history-search" placeholder="@L.T("agent.searchChats")" @bind="historyQuery" @bind:event="oninput" @onkeydown="HistoryKey" />
+                <div class="agent-threads">
+                    @{
+                        var items = Threads;
+                    }
+                    @if (items.Count == 0)
+                    {
+                        <p class="agent-empty">@(historyQuery.Trim().Length > 0 ? L.T("agent.noThreadMatches") : L.T("agent.noThreads"))</p>
+                    }
+                    @foreach (var item in items)
+                    {
+                        var id = item.Id;
+                        <div class="agent-thread @(id == chat.Id ? "on" : "")" @onclick="() => OpenChat(id)">
+                            <span><b>@ThreadTitle(item)</b><small>@ThreadWhen(item)</small></span>
+                            <button class="agent-forget" title="@L.T("common.delete")" @onclick="() => DeleteChat(id)" @onclick:stopPropagation>×</button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="agent-composer">
+        @if (recording)
+        {
+            <div class="agent-mic-strip">
+                <b>@L.T("agent.recording") @RecordingClock</b>
+                <span>@(heard.Length > 0 ? heard : L.T("agent.recordingHint"))</span>
+            </div>
+        }
+        <div class="agent-line">
+            <textarea id="@inputId" rows="1" placeholder="@L.T("agent.placeholder")" aria-label="@L.T("agent.placeholder")"
+                      @bind="input" @bind:event="oninput" @onkeydown="InputKey"></textarea>
+            <button class="agent-icon @(recording ? "on" : "")" title="@L.T("agent.holdToTalk")" disabled="@busy"
+                    @onpointerdown="MicDown" @onpointerup="MicUp" @onpointerleave="MicLeave">@ChromeIcon.Mic()</button>
+            <button class="agent-send @(busy ? "busy" : "")" title="@(busy ? L.T("agent.cancel") : L.T("agent.send"))" @onclick="SendClick">@(busy ? "■" : "➤")</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+
+    private readonly string feedId = "agent-feed-" + Guid.NewGuid().ToString("N");
+    private readonly string inputId = "agent-input-" + Guid.NewGuid().ToString("N");
+    private readonly Dictionary<AgentChatMessage, string> errorDetails = [];
+    private readonly HashSet<AgentChatMessage> openDetails = [];
+    private DotNetObjectReference<AgentPanel>? self;
+    private AgentConversations conversations = null!;
+    private AgentChat chat = null!;
+    private CancellationTokenSource? operation;
+    private AgentPlan? pendingPlan;
+    private string input = "", apiKey = "", status = "", historyQuery = "", heard = "";
+    private string? liveText;
+    private bool busy, historyOpen, voiceOn, configured, recording, scrollPending = true;
+    private DateTime recordingStarted;
+    private string? queuedVoice;
+
+    private PomoAgent Agent => Owner.Agent;
+    private static bool Spanish => Strings.Culture.TwoLetterISOLanguageName == "es";
+    private string Language => Spanish ? "es-ES" : "en-US";
+
+    protected override void OnInitialized()
+    {
+        conversations = Owner.AgentChats;
+        chat = conversations.LatestOrNew();
+        voiceOn = Owner.Settings.AgentVoiceEnabled;
+        configured = DeepSeekAgentModel.IsConfigured(Owner.Store);
+        RestoreChat();
+        Owner.Ticked += OnTick;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            self = DotNetObjectReference.Create(this);
+            Owner.Browser.EnterSends("#" + inputId);
+            Owner.Browser.Focus("#" + inputId);
+        }
+        if (scrollPending)
+        {
+            scrollPending = false;
+            Owner.Browser.ScrollEnd("#" + feedId);
+        }
+    }
+
+    public void Dispose()
+    {
+        Owner.Ticked -= OnTick;
+        // Closing mid-answer cancels it, as the desktop's RequestClose does once the agent is idle.
+        operation?.Cancel();
+        if (recording) Owner.Browser.ListenCancel();
+        Owner.Browser.Hush();
+        conversations.ForgetIfEmpty(chat);
+        conversations.Save();
+        self?.Dispose();
+    }
+
+    /// <summary>The recording clock and the "Pensando…" dots move with the window's second.</summary>
+    private void OnTick()
+    {
+        if (recording || (busy && IsWaitLive())) _ = InvokeAsync(() =>
+        {
+            if (busy && IsWaitLive()) liveText = PulseWait(L.T("agent.liveWait"));
+            StateHasChanged();
+        });
+    }
+
+    // ------------------------------------------------------------------ the feed
+
+    private List<AgentChatMessage> Visible => chat.Messages
+        .Where(message => !IsWelcome(message) && message.Plan is not { HasMutations: true })
+        .ToList();
+
+    private static bool IsWelcome(AgentChatMessage message) =>
+        message.Role != "you" && (message.Text == L.T("agent.welcome") || message.Text.Length == 0);
+
+    private void RestoreChat()
+    {
+        pendingPlan = null;
+        liveText = null;
+        errorDetails.Clear();
+        // A plan still waits for EJECUTAR only while nothing was said after it.
+        if (chat.Messages.LastOrDefault() is { Plan: { HasMutations: true } plan }) pendingPlan = plan;
+        scrollPending = true;
+    }
+
+    private RenderFragment Bubble(string message, bool mine, IReadOnlyList<AgentActionReceipt>? receipts, DateTime at) => __builder =>
+    {
+        bool grid = AgentPresent.LooksLikeGrid(message);
+        <div class="agent-bubble @(mine ? "mine" : "")">
+            <div class="agent-card">
+                <div class="agent-body @(grid ? "grid" : "")">@message</div>
+                <div class="agent-time">@at.ToString("HH:mm", Strings.Culture)</div>
+                @if (!mine && receipts is { Count: > 0 } && AgentReply.Visible(receipts).ToList() is { Count: > 0 } shown)
+                {
+                    <small class="agent-label">@L.T("agent.actions")</small>
+                    @foreach (var receipt in shown)
+                    {
+                        var copy = receipt;
+                        <div class="agent-receipt">
+                            <span>✓  @receipt.Summary</span>
+                            @if (receipt.CanUndo)
+                            {
+                                <button class="btn" @onclick="() => Undo(copy)">@L.T("agent.undo")</button>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    };
+
+    private RenderFragment ErrorCard(AgentChatMessage message) => __builder =>
+    {
+        <div class="agent-error">
+            <small class="agent-label">@L.T("agent.name")</small>
+            <p>@message.Text</p>
+            @if (errorDetails.TryGetValue(message, out var details))
+            {
+                @if (openDetails.Contains(message))
+                {
+                    <textarea readonly class="agent-details">@details</textarea>
+                }
+                <div class="agent-actions">
+                    <button class="btn" @onclick="() => ToggleDetails(message)">@L.T("agent.details")</button>
+                    <button class="btn" @onclick="Retry">@L.T("agent.retry")</button>
+                    <button class="btn" @onclick="() => Owner.Browser.Copy(details)">@L.T("agent.copyError")</button>
+                </div>
+            }
+        </div>
+    };
+
+    private void ToggleDetails(AgentChatMessage message)
+    {
+        if (!openDetails.Remove(message)) openDetails.Add(message);
+    }
+
+    private async Task Retry()
+    {
+        if (chat.Messages.LastOrDefault(m => m.Role == "you") is { } last)
+        {
+            input = last.Text;
+            await Run();
+        }
+    }
+
+    // ------------------------------------------------------------------ title, history, status
+
+    private string ThreadTitleText => chat.Messages.Count == 0 || string.IsNullOrWhiteSpace(chat.Title)
+        ? L.T("agent.newChatTitle")
+        : chat.Title;
+
+    private List<AgentChat> Threads
+    {
+        get
+        {
+            string query = historyQuery.Trim();
+            return conversations.Listed
+                .Where(item => item.Messages.Count > 0 || item.Id == chat.Id)
+                .Where(item => query.Length == 0 || ThreadTitle(item).Contains(query, StringComparison.CurrentCultureIgnoreCase))
+                .ToList();
+        }
+    }
+
+    private static string ThreadTitle(AgentChat item) =>
+        string.IsNullOrWhiteSpace(item.Title) ? L.T("agent.untitled") : item.Title;
+
+    private static string ThreadWhen(AgentChat item)
+    {
+        var local = item.UpdatedUtc.ToLocalTime();
+        var today = DateTime.Today;
+        if (local.Date == today) return local.ToString("HH:mm", Strings.Culture);
+        if (local.Date == today.AddDays(-1)) return L.T("agent.yesterday");
+        return local.ToString("d MMM", Strings.Culture);
+    }
+
+    private void ShowStatus(string? text)
+    {
+        bool hide = string.IsNullOrWhiteSpace(text)
+            || text == L.T("agent.ready")
+            || text.StartsWith(L.T("agent.ready"), StringComparison.Ordinal);
+        status = hide ? "" : text ?? "";
+    }
+
+    private void ToggleHistory()
+    {
+        historyOpen = !historyOpen;
+        if (historyOpen) _ = FocusSoon("#agent-history-search");
+        else _ = FocusSoon("#" + inputId);
+    }
+
+    private void HistoryKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { historyOpen = false; _ = FocusSoon("#" + inputId); }
+    }
+
+    private async Task FocusSoon(string selector)
+    {
+        await Task.Yield();
+        Owner.Browser.Focus(selector);
+    }
+
+    private void NewChat()
+    {
+        historyOpen = false;
+        conversations.ForgetIfEmpty(chat);
+        conversations.Save();
+        Agent.ResetSession();
+        chat = conversations.StartNew();
+        RestoreChat();
+        _ = FocusSoon("#" + inputId);
+    }
+
+    private void OpenChat(Guid id)
+    {
+        historyOpen = false;
+        if (id == chat.Id) return;
+        conversations.ForgetIfEmpty(chat);
+        Agent.ResetSession();
+        chat = conversations.Open(id);
+        RestoreChat();
+        _ = FocusSoon("#" + inputId);
+    }
+
+    private void DeleteChat(Guid id)
+    {
+        conversations.Delete(id);
+        Agent.ResetSession();
+        chat = conversations.LatestOrNew();
+        RestoreChat();
+    }
+
+    private void ToggleVoice()
+    {
+        voiceOn = !voiceOn;
+        Owner.Settings.AgentVoiceEnabled = voiceOn;
+        Owner.SaveState();
+        if (!voiceOn) Owner.Browser.Hush();
+    }
+
+    // ------------------------------------------------------------------ the key
+
+    private void KeyFieldKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") SaveApiKey();
+    }
+
+    private void SaveApiKey()
+    {
+        DeepSeekAgentModel.SaveKey(Owner.Store, apiKey);
+        apiKey = "";
+        Agent.ResetSession();
+        configured = DeepSeekAgentModel.IsConfigured(Owner.Store);
+        ShowStatus(configured ? L.T("agent.apiKeySaved") : L.T("agent.apiKeyMissing"));
+        if (configured) _ = FocusSoon("#" + inputId);
+    }
+
+    // ------------------------------------------------------------------ asking
+
+    private void InputKey(KeyboardEventArgs e)
+    {
+        // Enter sends, Shift+Enter breaks the line, as the desktop composer does; the page keeps
+        // the Enter out of the box, which Blazor cannot decide per keystroke.
+        if (e.Key == "Enter" && !e.ShiftKey) _ = Run();
+    }
+
+    private async Task SendClick()
+    {
+        if (busy) Cancel();
+        else await Run();
+    }
+
+    private void Remember(string role, string text, IEnumerable<AgentActionReceipt>? receipts = null, AgentPlan? plan = null)
+    {
+        chat.Add(role, text, receipts, plan);
+        conversations.Touch(chat);
+        scrollPending = true;
+    }
+
+    private async Task Run()
+    {
+        if (busy || recording) return;
+        var request = input.Trim();
+        if (request.Length == 0) return;
+        if (pendingPlan is not null && AgentIntent.IsPlanAffirmation(request))
+        {
+            input = "";
+            Remember("you", request);
+            await ExecutePending();
+            return;
+        }
+        if (pendingPlan is not null && AgentIntent.IsPlanRejection(request))
+        {
+            input = "";
+            Remember("you", request);
+            CancelPlan();
+            return;
+        }
+        configured = DeepSeekAgentModel.IsConfigured(Owner.Store);
+        if (!configured)
+        {
+            ShowStatus(L.T("agent.apiKeyMissing"));
+            return;
+        }
+        input = "";
+        pendingPlan = null;
+        Remember("you", request);
+        var activeOperation = new CancellationTokenSource(); operation = activeOperation; busy = true;
+        liveText = PulseWait(L.T("agent.liveWait"));
+        StateHasChanged();
+        var notices = new Progress<AgentNotice>(notice =>
+        {
+            // Progress posts its callbacks: one can land after the answer, and must not reopen the live bubble.
+            if (!ReferenceEquals(operation, activeOperation)) return;
+            ShowStatus(notice.Kind switch
+            {
+                AgentEventKind.Reading => notice.Text,
+                AgentEventKind.PlanReady => L.T("agent.planReady"),
+                AgentEventKind.Executing => notice.Text,
+                AgentEventKind.AnswerDelta => L.T("agent.writing"),
+                AgentEventKind.Done => null,
+                AgentEventKind.Failed => notice.Text,
+                _ => notice.Text.Length > 0 ? notice.Text : L.T("agent.liveWait")
+            });
+            if (notice.Kind == AgentEventKind.AnswerDelta && notice.Text.Trim().Length > 0)
+                liveText = notice.Text.Trim() + " ▍";
+            else if (notice.Kind == AgentEventKind.Interpreting && IsWaitLive())
+                liveText = PulseWait(notice.Text);
+            scrollPending = true;
+            StateHasChanged();
+        });
+        try
+        {
+            var result = await Agent.InterpretAsync(request, chat.Messages, notices, activeOperation.Token);
+            liveText = null;
+            if (result.NeedsApproval && result.Plan is { } plan)
+            {
+                // Never voice a "done" claim while the UI still waits for EJECUTAR.
+                plan.Message = AgentReply.Pending(plan, Spanish);
+                pendingPlan = plan;
+                ShowStatus(L.T("agent.needDecision"));
+                Remember("plan", plan.Message, plan: plan);
+                Speak(plan.Message);
+            }
+            else
+            {
+                string shown = result.Message;
+                bool writes = result.Receipts.Any(receipt => receipt.CanUndo);
+                if (writes) shown = AgentReply.After(result.Message, result.Receipts, Spanish);
+                Remember("agent", shown, writes ? result.Receipts : []);
+                ShowStatus(null);
+                if (!result.Silent) Speak(shown);
+            }
+        }
+        catch (OperationCanceledException) { liveText = null; ShowStatus(L.T("agent.cancelled")); }
+        catch (Exception ex)
+        {
+            liveText = null;
+            AddError(L.T("agent.error", ex.Message), ex.ToString());
+            ShowStatus(null);
+        }
+        finally
+        {
+            liveText = null;
+            if (ReferenceEquals(operation, activeOperation))
+            {
+                operation = null;
+                busy = false;
+            }
+            activeOperation.Dispose();
+            Owner.Refresh();
+            StateHasChanged();
+            _ = FocusSoon("#" + inputId);
+            if (!busy && queuedVoice is { Length: > 0 } next)
+            {
+                queuedVoice = null;
+                input = next;
+                _ = Run();
+            }
+        }
+    }
+
+    private async Task ExecutePending()
+    {
+        if (pendingPlan is null || busy) return;
+        var plan = pendingPlan; pendingPlan = null;
+        var activeOperation = new CancellationTokenSource(); operation = activeOperation; busy = true;
+        ShowStatus(L.T("agent.executing"));
+        try
+        {
+            var notices = new Progress<AgentNotice>(notice =>
+            {
+                if (!ReferenceEquals(operation, activeOperation)) return;
+                ShowStatus(notice.Text);
+                StateHasChanged();
+            });
+            var result = await Agent.ExecuteAsync(plan, notices, activeOperation.Token);
+            string spoken = AgentReply.After(result.Message, result.Receipts, Spanish);
+            Remember("agent", spoken, result.Receipts);
+            ShowStatus(null);
+            if (!result.Silent) Speak(spoken);
+        }
+        catch (OperationCanceledException) { ShowStatus(L.T("agent.cancelled")); }
+        catch (Exception ex) { AddError(L.T("agent.error", ex.Message), ex.ToString()); }
+        finally
+        {
+            if (ReferenceEquals(operation, activeOperation))
+            {
+                operation = null;
+                busy = false;
+            }
+            activeOperation.Dispose();
+            Owner.Refresh();
+            StateHasChanged();
+            _ = FocusSoon("#" + inputId);
+        }
+    }
+
+    private void EditPlan(AgentPlan plan)
+    {
+        input = plan.Message;
+        _ = FocusSoon("#" + inputId);
+    }
+
+    private void CancelPlan()
+    {
+        pendingPlan = null;
+        Remember("agent", L.T("agent.planCancelled"));
+        ShowStatus(null);
+    }
+
+    private async Task Undo(AgentActionReceipt receipt)
+    {
+        var undone = await Agent.UndoAsync(receipt, CancellationToken.None);
+        Remember("agent", undone.Message, undone.Receipts);
+        Owner.Refresh();
+    }
+
+    private void AddError(string message, string details)
+    {
+        Remember("error", message);
+        errorDetails[chat.Messages[^1]] = details;
+        Console.Error.WriteLine($"{DateTimeOffset.Now:O} agent-deepseek {details}");
+    }
+
+    private void Cancel()
+    {
+        Owner.Browser.Hush();
+        if (recording) { recording = false; Owner.Browser.ListenCancel(); }
+        operation?.Cancel();
+    }
+
+    private bool IsWaitLive()
+    {
+        if (liveText is null) return true;
+        string value = liveText.Replace(" ▍", "").Trim();
+        return value.Length == 0 || value == L.T("agent.thinking") || value.StartsWith(L.T("agent.liveWait").TrimEnd('…', '.'), StringComparison.Ordinal);
+    }
+
+    private static string PulseWait(string text)
+    {
+        string baseText = string.IsNullOrWhiteSpace(text) ? L.T("agent.liveWait") : text.Trim().TrimEnd('…', '.');
+        return baseText + new string('.', 1 + (Environment.TickCount / 350 % 3));
+    }
+
+    // ------------------------------------------------------------------ voice
+
+    private void Speak(string message)
+    {
+        string spoken = AgentSpeech.Speakable(message, Spanish);
+        if (!voiceOn || string.IsNullOrWhiteSpace(spoken) || self is null) return;
+        ShowStatus(L.T("agent.voiceSpeaking"));
+        Owner.Browser.Say(self, spoken, Language, Owner.Settings.AgentVoiceSpeed);
+    }
+
+    [JSInvokable]
+    public void SpokenEnd()
+    {
+        if (status == L.T("agent.voiceSpeaking")) ShowStatus(null);
+        StateHasChanged();
+    }
+
+    // ------------------------------------------------------------------ hold to talk
+
+    private string RecordingClock => (DateTime.Now - recordingStarted).ToString(@"m\:ss");
+
+    private void MicDown(PointerEventArgs e)
+    {
+        if (busy || recording || self is null) return;
+        if (!Owner.Browser.CanListen())
+        {
+            ShowStatus(L.T("web.agentNoMic"));
+            return;
+        }
+        Owner.Browser.Hush();
+        heard = "";
+        recordingStarted = DateTime.Now;
+        recording = Owner.Browser.Listen(self, Language);
+        if (!recording) ShowStatus(L.T("web.agentNoMic"));
+    }
+
+    private void MicUp(PointerEventArgs e)
+    {
+        if (!recording) return;
+        // A short tap does not record, as the desktop's hold-to-talk.
+        if ((DateTime.Now - recordingStarted).TotalMilliseconds < 280)
+        {
+            recording = false;
+            Owner.Browser.ListenCancel();
+            ShowStatus(L.T("agent.holdHint"));
+            return;
+        }
+        ShowStatus(L.T("agent.transcribing"));
+        Owner.Browser.ListenStop();
+    }
+
+    /// <summary>Dragging away from the button cancels, as on the desktop.</summary>
+    private void MicLeave(PointerEventArgs e)
+    {
+        if (!recording || e.Buttons == 0) return;
+        recording = false;
+        Owner.Browser.ListenCancel();
+        ShowStatus(null);
+    }
+
+    [JSInvokable]
+    public void MicHeard(string text)
+    {
+        heard = text;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void MicFailed(string error)
+    {
+        recording = false;
+        ShowStatus(L.T("web.agentMicFailed", error));
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task MicEnded(string text)
+    {
+        recording = false;
+        heard = "";
+        if (status == L.T("agent.transcribing")) ShowStatus(null);
+        if (text.Length > 0)
+        {
+            input = input.Trim().Length == 0 ? text : input.TrimEnd() + " " + text;
+            if (Owner.Settings.AgentSendVoiceOnRelease)
+            {
+                if (busy) queuedVoice = input;
+                else await Run();
+            }
+        }
+        StateHasChanged();
+        _ = FocusSoon("#" + inputId);
+    }
+}

@@ -152,7 +152,6 @@
     [Parameter] public double Width { get; set; }
     [Parameter] public double Height { get; set; }
 
-    private static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(8) };
     private FinanceStore store = null!;
     private readonly string inputId = "fin-" + Guid.NewGuid().ToString("N");
     private DateOnly cursor = DateOnly.FromDateTime(DateTime.Today);
@@ -175,6 +174,7 @@
         store = FinanceStore.For(Owner.Store);
         draftCode = store.Book.Currency;
         store.Changed += OnChanged;
+        Owner.Register(Config.Id, this);
         _ = RefreshRateAsync(false);
     }
 
@@ -183,6 +183,7 @@
     public void Dispose()
     {
         store.Changed -= OnChanged;
+        Owner.Unregister(this);
         Owner.ClosePanel(this);
     }
 
@@ -467,15 +468,74 @@
         fetchingRate = true;
         try
         {
-            // The desktop's frankfurter.app address now redirects without CORS headers; the browser needs the new host.
-            using var response = await http.GetAsync("https://api.frankfurter.dev/v1/latest?from=USD&to=MXN");
-            if (!response.IsSuccessStatusCode) return;
-            using var doc = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            if (doc.RootElement.TryGetProperty("rates", out var rates) && rates.TryGetProperty("MXN", out var mxn) && mxn.GetDecimal() is > 0 and var value)
-                store.SetRate(decimal.Round(value, 4, MidpointRounding.AwayFromZero), false);
+            if (await FinanceRates.FetchUsdToMxnAsync() is { } rate) store.SetRate(rate, false);
         }
-        catch (Exception) { }
         finally { fetchingRate = false; }
+    }
+
+    /// <summary>The agent's door to the view: span, tab and period, as the desktop board takes them.</summary>
+    internal bool ApplyView(string spanText, string tab, string to)
+    {
+        bool any = false;
+        string spanKey = spanText.Trim().ToLowerInvariant() switch
+        {
+            "week" or "semana" or "sem" => nameof(FinanceSpan.Week),
+            "month" or "mes" => nameof(FinanceSpan.Month),
+            "quarter" or "trimestre" or "q" => nameof(FinanceSpan.Quarter),
+            "year" or "año" or "ano" or "anual" => nameof(FinanceSpan.Year),
+            _ => ""
+        };
+        if (spanKey.Length > 0 && Enum.TryParse<FinanceSpan>(spanKey, true, out var nextSpan))
+        {
+            span = nextSpan;
+            any = true;
+        }
+        else if (spanText.Trim().Length > 0)
+            return false;
+
+        string tabKey = tab.Trim().ToLowerInvariant() switch
+        {
+            "moves" or "movimientos" or "gastos" or "entries" => "moves",
+            "fixed" or "fijos" => "fixed",
+            "subs" or "suscripciones" or "subscriptions" => "subs",
+            _ => ""
+        };
+        if (tabKey.Length > 0)
+        {
+            view = tabKey;
+            any = true;
+        }
+        else if (tab.Trim().Length > 0)
+            return false;
+
+        string dest = to.Trim().ToLowerInvariant();
+        if (dest is "today" or "hoy")
+        {
+            cursor = DateOnly.FromDateTime(DateTime.Today);
+            any = true;
+        }
+        else if (dest is "prev" or "previous" or "anterior" or "back" or "-1")
+        {
+            cursor = store.Book.Shift(span, cursor, -1);
+            any = true;
+        }
+        else if (dest is "next" or "siguiente" or "forward" or "+1")
+        {
+            cursor = store.Book.Shift(span, cursor, 1);
+            any = true;
+        }
+        else if (dest.Length > 0)
+        {
+            string stamp = to.Trim();
+            if (stamp.Length == 7) stamp += "-01";
+            if (!DateOnly.TryParseExact(stamp, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out cursor))
+                return false;
+            any = true;
+        }
+
+        if (!any) return false;
+        StateHasChanged();
+        return true;
     }
 
     // ---------------------------------------------------------------- edit
