@@ -1,0 +1,516 @@
+@* Mission desk: pick what to focus on first. Creating tasks and browsing projects stay secondary
+   so a long backlog does not bury the next action. *@
+
+<div class="backdrop">
+    <div class="dialog tasks" @onkeydown="Keys">
+        <div class="dialog-head">
+            <strong>@L.T("tasks.title")</strong>
+            <button class="chrome-btn" title="@L.T("common.close")" @onclick="() => Close()">×</button>
+        </div>
+        <div class="dialog-body tasks-body">
+            <div class="tasks-intro">
+                <div>
+                    <h2 class="dialog-heading" style="margin-bottom:2px">@L.T("tasks.heading")</h2>
+                    <div class="caption" style="font-size:12px;margin-bottom:4px">@(streak <= 0 ? L.T("tasks.scoreFresh") : L.T("tasks.scoreStreak", streak))</div>
+                    <div class="muted" style="font-size:11.5px">@L.T("tasks.hint")</div>
+                </div>
+                <button class="btn" style="padding:6px 11px;margin:0" title="@L.T("tasks.freeFocusTip")" @onclick="() => Choose(null)">
+                    @(Current is null ? L.T("tasks.freeFocusCurrent") : L.T("tasks.freeFocusChoose"))
+                </button>
+            </div>
+            @if (Current is { } mission)
+            {
+                <div class="mission">
+                    <div>
+                        <div class="mission-label">@L.T("tasks.continueLabel")</div>
+                        <div class="mission-title">@mission.Name</div>
+                        @if (mission.Project != NoProject)
+                        {
+                            <div class="mission-project">@ProjectLabel(mission.Project)</div>
+                        }
+                    </div>
+                    <button class="btn mission-go" title="@L.T("tasks.continueTip")" @onclick="() => Choose(mission)">@L.T("tasks.continue")</button>
+                </div>
+            }
+
+            <div class="tasks-bar">
+                <button class="btn ink" style="padding:7px 12px;margin-right:8px" @onclick="ToggleCreate">@L.T("tasks.createToggle")</button>
+                <button class="btn" style="padding:7px 10px;margin-right:8px" @onclick="CreateProject">@L.T("tasks.newProject")</button>
+                <select class="field select" title="@L.T("tasks.filterProjectTip")" value="@FilterValue" @onchange="FilterChanged">
+                    <option value="@AllValue">@Ui("TODAS", "ALL")</option>
+                    @foreach (var project in projects)
+                    {
+                        <option value="@project">@project</option>
+                    }
+                    @if (Owner.Settings.Tasks.Any(task => !task.Template && task.Project == NoProject))
+                    {
+                        <option value="@NoProject">@ProjectLabel(NoProject)</option>
+                    }
+                </select>
+                <input class="field search" placeholder="@Ui("Buscar…", "Search…")" aria-label="@Ui("Buscar tareas", "Search tasks")"
+                       title="@Ui("Buscar por tarea o proyecto", "Search by task or project")" @bind="query" @bind:event="oninput" id="tasks-search" />
+            </div>
+
+            @if (creating)
+            {
+                <div class="tasks-create">
+                    <div class="caption" style="margin:0 0 5px 1px">@L.T("tasks.newTask")</div>
+                    <div class="tasks-line">
+                        <input id="tasks-new" class="field" style="margin:0 8px 7px 0" placeholder="@L.T("tasks.newTaskPlaceholder")" aria-label="@L.T("tasks.newTaskName")"
+                               @bind="newName" @bind:event="oninput" @onkeydown="NewNameKey" />
+                        <button class="btn ink" style="padding:6px 14px;margin:0 0 7px" title="@L.T("common.add")" @onclick="Add">@L.T("tasks.addMission")</button>
+                    </div>
+                    @FieldLine(newProject, value => newProject = value, newEstimate, value => newEstimate = value)
+                </div>
+            }
+
+            @{
+                var frequent = Owner.Settings.Tasks.Where(task => task.Template).ToList();
+            }
+            @if (frequent.Count > 0)
+            {
+                <div class="caption" style="margin:9px 0 5px 1px">@L.T("tasks.frequent")</div>
+                <div class="chips scroll">
+                    @foreach (var template in frequent)
+                    {
+                        var chip = template;
+                        <span class="chip">
+                            <button class="quiet ink-text" title="@L.T("tasks.frequentAdd", chip.Name, chip.Project, Pomodoros(chip.Estimate))"
+                                    @onclick="() => Insert(new WorkTask { Name = chip.Name, Project = chip.Project, Estimate = chip.Estimate })">+ @chip.Name</button>
+                            <button class="quiet" title="@L.T("tasks.frequentRemove")" aria-label="@L.T("tasks.frequentRemoveName", chip.Name)"
+                                    @onclick="() => { Owner.Settings.Tasks.Remove(chip); Save(); }">×</button>
+                        </span>
+                    }
+                </div>
+            }
+
+            @{
+                var (pending, done, shown) = Lists();
+                bool browsing = query.Trim().Length > 0 || filter is not null || editing is not null;
+                var picks = !browsing && pending.Count > 0 ? pending.Where(task => Current is null || task.Id != Current.Id).Take(4).ToList() : [];
+            }
+            @if (picks.Count > 0)
+            {
+                <div class="caption" style="margin:4px 0 8px 1px">@L.T("tasks.pickNext")</div>
+                @foreach (var task in picks)
+                {
+                    var pick = task;
+                    <div class="pick" @onclick="() => Choose(pick)">
+                        <div>
+                            <div class="pick-name">@pick.Name</div>
+                            <div class="meta">
+                                @if (pick.Project != NoProject)
+                                {
+                                    <span class="tag">@pick.Project</span>
+                                }
+                                @Progress(finished.GetValueOrDefault(pick.Id), pick.Estimate)
+                            </div>
+                        </div>
+                        <button class="btn ink" style="padding:8px 14px;font-size:12px" title="@L.T("tasks.focusTip")" @onclick="() => Choose(pick)" @onclick:stopPropagation>@L.T("tasks.focus")</button>
+                    </div>
+                }
+            }
+
+            <div class="tasks-list scroll">
+                @if (pending.Count == 0)
+                {
+                    <p class="empty">
+                        @(query.Trim().Length > 0 ? Ui("SIN RESULTADOS", "NO MATCHES") : shown.Count > 0 ? L.T("tasks.nothingPending")
+                            : filter is null ? L.T("tasks.emptyAll") : L.T("tasks.emptyProject"))
+                    </p>
+                }
+                else
+                {
+                    <button class="quiet" style="margin:4px 0 6px -8px" @onclick="() => showCatalog = !showCatalog">
+                        @(showCatalog ? L.T("tasks.hideCatalog", pending.Count) : L.T("tasks.showCatalog", pending.Count))
+                    </button>
+                    @if (showCatalog || browsing)
+                    {
+                        foreach (var task in pending)
+                        {
+                            @(task == editing ? Editor(task) : Row(task))
+                        }
+                    }
+                }
+                @if (done.Count > 0)
+                {
+                    <button class="quiet" style="margin:12px 0 2px -8px" title="@(showDone ? L.T("tasks.hideDone") : L.T("tasks.showDone"))" @onclick="() => showDone = !showDone">
+                        @L.T("tasks.doneSection", showDone ? "▾" : "▸", done.Count)
+                    </button>
+                    @if (showDone)
+                    {
+                        foreach (var task in done)
+                        {
+                            @(task == editing ? Editor(task) : Row(task))
+                        }
+                    }
+                }
+            </div>
+
+            <div class="tasks-footer">
+                <span>@(filter is null ? L.T("tasks.pending", pending.Count) : $"{Short(ProjectLabel(filter)).ToUpper(Strings.Culture)} · {pending.Count:00}")</span>
+                <span class="muted">@L.T("tasks.keys")</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>Stored on every task and session since the first version, so it stays as it is.</summary>
+    private const string NoProject = "Sin proyecto";
+    private const string AllValue = "\u0001all";
+
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter] public WorkTask? Current { get; set; }
+    /// <summary>Raised once when the desk closes: whether the focus changed, and to what.</summary>
+    [Parameter] public EventCallback<(bool Changed, WorkTask? Task)> OnClose { get; set; }
+
+    /// <summary>Finished pomodoros per task, read once: none can finish while this is open.</summary>
+    private Dictionary<Guid, int> finished = [];
+    /// <summary>Most recent focus end per task — backfills recency for tasks saved before timestamps.</summary>
+    private Dictionary<Guid, DateTimeOffset> lastFocus = [];
+    private readonly Dictionary<Guid, int> listIndex = [];
+    private List<string> projects = [];
+    private int streak;
+
+    private string newName = "";
+    private string newProject = NoProject;
+    private int newEstimate = 1;
+    private string query = "";
+    /// <summary>The project the list is narrowed to, or null for all of them.</summary>
+    private string? filter;
+    private WorkTask? editing;
+    private string editName = "";
+    private string editProject = NoProject;
+    private int editEstimate = 1;
+    private bool showDone;
+    private bool creating;
+    private bool showCatalog;
+
+    protected override void OnInitialized()
+    {
+        var sessions = Owner.Store.Sessions();
+        finished = sessions
+            .Where(s => s.TaskId is not null && s.Phase == Phase.Focus && s.Outcome == Outcome.Completed)
+            .GroupBy(s => s.TaskId!.Value)
+            .ToDictionary(group => group.Key, group => group.Count());
+        lastFocus = sessions
+            .Where(s => s.TaskId is not null && s.Phase == Phase.Focus)
+            .GroupBy(s => s.TaskId!.Value)
+            .ToDictionary(group => group.Key, group => group.Max(session => session.Ended));
+        var daily = Reports.Daily(sessions, TimeZoneInfo.Local);
+        streak = Reports.Streak(daily, DateOnly.FromDateTime(DateTime.Now));
+        Render();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && Current is null) Owner.Browser.Focus("#tasks-search");
+    }
+
+    private string FilterValue => filter ?? AllValue;
+
+    private void FilterChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        Filter(value is null || value == AllValue ? null : value);
+    }
+
+    private void Render()
+    {
+        listIndex.Clear();
+        for (int i = 0; i < Owner.Settings.Tasks.Count; i++)
+            listIndex[Owner.Settings.Tasks[i].Id] = i;
+        projects = Projects();
+        if (filter is not null && filter != NoProject && !projects.Contains(filter)) filter = null;
+        if (newProject != NoProject && !projects.Contains(newProject)) newProject = NoProject;
+    }
+
+    private (List<WorkTask> Pending, List<WorkTask> Done, List<WorkTask> Shown) Lists()
+    {
+        string text = query.Trim();
+        var shown = Owner.Settings.Tasks.Where(task => !task.Template && (filter is null || task.Project == filter)
+            && (text.Length == 0 || task.Name.Contains(text, StringComparison.CurrentCultureIgnoreCase)
+                || ProjectLabel(task.Project).Contains(text, StringComparison.CurrentCultureIgnoreCase))).ToList();
+        var pending = shown.Where(task => !task.Done)
+            .OrderByDescending(task => Current?.Id == task.Id)
+            .ThenByDescending(Recency)
+            .ThenBy(task => listIndex.GetValueOrDefault(task.Id, int.MaxValue))
+            .ThenBy(task => task.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        var done = shown.Where(task => task.Done)
+            .OrderByDescending(Recency)
+            .ThenBy(task => listIndex.GetValueOrDefault(task.Id, int.MaxValue))
+            .ToList();
+        return (pending, done, shown);
+    }
+
+    // ------------------------------------------------------------------ pieces
+
+    /// <summary>One task: tick, name, project and pomodoros, then what you can do with it.</summary>
+    private RenderFragment Row(WorkTask task) => __builder =>
+    {
+        bool active = Current?.Id == task.Id;
+        <div class="task-row @(active ? "active" : "")">
+            <label class="tick" title="@(task.Done ? L.T("tasks.markPending") : L.T("tasks.markDone"))">
+                <input type="checkbox" checked="@task.Done" aria-label="@L.T("tasks.doneName", task.Name)" @onchange="e => { task.Done = e.Value is true; Save(); }" />
+                <span></span>
+            </label>
+            <div class="task-words @(task.Done ? "done" : "")" title="@L.T("tasks.doubleClickEdit")" @ondblclick="() => Edit(task)">
+                <div class="task-name">@task.Name</div>
+                <div class="meta">
+                    @if (filter is null && task.Project != NoProject)
+                    {
+                        <span class="tag">@task.Project</span>
+                    }
+                    @Progress(finished.GetValueOrDefault(task.Id), task.Estimate)
+                </div>
+            </div>
+            <div class="task-actions">
+                @if (active)
+                {
+                    <span class="badge" title="@L.T("tasks.currentTip")">@L.T("tasks.current")</span>
+                }
+                else if (!task.Done)
+                {
+                    <button class="btn ink" style="padding:5px 10px;font-size:11px" title="@L.T("tasks.focusTip")" @onclick="() => Choose(task)">@L.T("tasks.focus")</button>
+                }
+                <button class="quiet" style="width:39px;padding:5px 6px" title="@L.T("tasks.editTip")" aria-label="@L.T("common.edit")" @onclick="() => Edit(task)">•••</button>
+            </div>
+        </div>
+    };
+
+    /// <summary>The same task opened for editing, in its own place in the list.</summary>
+    private RenderFragment Editor(WorkTask task) => __builder =>
+    {
+        bool isFrequent = FrequentOf(task) is not null;
+        <div class="task-editor">
+            <div class="caption">@L.T("tasks.editTask")</div>
+            <input id="tasks-edit" class="field" style="margin:6px 0 8px" aria-label="@L.T("tasks.taskName")" @bind="editName" @bind:event="oninput"
+                   @onkeydown="e => EditKey(e, task)" />
+            @FieldLine(editProject, value => editProject = value, editEstimate, value => editEstimate = value)
+            <div class="editor-buttons">
+                <button class="btn ink" @onclick="() => Commit(task)">@L.T("common.save")</button>
+                <button class="btn" @onclick="() => editing = null">@L.T("common.cancel")</button>
+                <span style="flex:1"></span>
+                <button class="btn" title="@L.T("tasks.frequentTip")" style="margin:0" @onclick="() => ToggleFrequent(task)">@(isFrequent ? L.T("tasks.unmakeFrequent") : L.T("tasks.makeFrequent"))</button>
+                <button class="btn" title="@L.T("tasks.deleteTip")" style="margin:0 0 0 6px" @onclick="() => DeleteTask(task)">@L.T("common.delete")</button>
+            </div>
+        </div>
+    };
+
+    /// <summary>Project, pomodoros and nothing else, on one line. Shared by adding and editing.</summary>
+    private RenderFragment FieldLine(string project, Action<string> setProject, int estimate, Action<int> setEstimate) => __builder =>
+    {
+        <div class="field-line">
+            <select class="field select" title="@L.T("tasks.taskProject")" aria-label="@L.T("tasks.newTaskProject")" value="@project"
+                    @onchange="e => setProject(e.Value?.ToString() ?? NoProject)">
+                <option value="@NoProject">@ProjectLabel(NoProject)</option>
+                @foreach (var name in projects)
+                {
+                    <option value="@name">@name</option>
+                }
+            </select>
+            <span class="caption" style="margin:0 8px 0 12px">@L.T("tasks.pomodoros")</span>
+            <span class="counter" title="@L.T("tasks.estimateHelp")">
+                <button class="btn" aria-label="@L.T("counter.less")" @onclick="() => setEstimate(Math.Clamp(estimate - 1, 1, 999))">−</button>
+                <input inputmode="numeric" aria-label="@L.T("tasks.pomodoros")" value="@estimate"
+                       @onchange="e => setEstimate(int.TryParse(e.Value?.ToString(), out int typed) ? Math.Clamp(typed, 1, 999) : 1)" />
+                <button class="btn" aria-label="@L.T("counter.more")" @onclick="() => setEstimate(Math.Clamp(estimate + 1, 1, 999))">+</button>
+            </span>
+        </div>
+    };
+
+    /// <summary>A quiet progress meter keeps large histories readable without turning each row into a chart.</summary>
+    private static RenderFragment Progress(int done, int estimate) => __builder =>
+    {
+        string tip = done <= estimate ? L.T("tasks.progressOf", done, Pomodoros(estimate)) : L.T("tasks.progressOver", Pomodoros(done), estimate);
+        double share = Math.Min(1, done / (double)Math.Max(1, estimate));
+        <span class="progress" title="@tip">
+            <span class="progress-track"><i style="width:@(string.Create(CultureInfo.InvariantCulture, $"{share * 100:0.#}%"))"></i></span>
+            <span class="@(done > estimate ? "" : "muted")">@($"{done:00}/{estimate:00}")</span>
+        </span>
+    };
+
+    // ------------------------------------------------------------------ changes
+
+    private void ToggleCreate()
+    {
+        creating = !creating;
+        if (creating) Owner.Browser.Focus("#tasks-new");
+    }
+
+    private void NewNameKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") Add();
+    }
+
+    private void Add()
+    {
+        var text = newName.Trim();
+        if (text.Length == 0) { Owner.Browser.Focus("#tasks-new"); return; }
+        Insert(new WorkTask { Name = text, Project = newProject, Estimate = newEstimate });
+        newName = "";
+        Owner.Browser.Focus("#tasks-new");
+    }
+
+    /// <summary>New tasks go on top, and the list widens if the project on screen would hide them.</summary>
+    private void Insert(WorkTask task)
+    {
+        task.Touch();
+        Owner.Settings.Tasks.Insert(0, task);
+        if (filter is not null && filter != task.Project) filter = null;
+        Save();
+    }
+
+    private void Edit(WorkTask task)
+    {
+        editing = task;
+        editName = task.Name;
+        editProject = task.Project;
+        editEstimate = task.Estimate;
+        if (task.Done) showDone = true;
+        Render();
+        Owner.Browser.Focus("#tasks-edit");
+    }
+
+    private void EditKey(KeyboardEventArgs e, WorkTask task)
+    {
+        if (e.Key == "Enter") Commit(task);
+    }
+
+    private void Commit(WorkTask task)
+    {
+        var text = editName.Trim();
+        if (text.Length == 0) { Owner.Browser.Focus("#tasks-edit"); return; }
+        task.Name = text;
+        task.Project = editProject;
+        task.Estimate = editEstimate;
+        editing = null;
+        if (filter is not null && filter != task.Project) filter = null;
+        Save();
+    }
+
+    private async Task DeleteTask(WorkTask task)
+    {
+        if (await Owner.Choose(L.T("tasks.deleteTaskTitle"), [L.T("tasks.deleteTaskConfirm", Short(task.Name)), L.T("common.cancel")]) != 0) return;
+        Owner.Settings.Tasks.Remove(task);
+        editing = null;
+        Save();
+        StateHasChanged();
+    }
+
+    private void ToggleFrequent(WorkTask task)
+    {
+        if (FrequentOf(task) is { } existing) Owner.Settings.Tasks.Remove(existing);
+        else Owner.Settings.Tasks.Add(new WorkTask { Name = task.Name, Project = task.Project, Estimate = task.Estimate, Template = true });
+        Save();
+    }
+
+    private WorkTask? FrequentOf(WorkTask task) =>
+        Owner.Settings.Tasks.FirstOrDefault(other => other.Template && other.Name == task.Name && other.Project == task.Project);
+
+    /// <summary>Picking a project also makes it the one new tasks go into.</summary>
+    private void Filter(string? project)
+    {
+        filter = project;
+        editing = null;
+        Render();
+        if (project is not null) newProject = project;
+    }
+
+    private async Task CreateProject()
+    {
+        var name = await Owner.Prompt(L.T("tasks.newProjectTitle"), L.T("tasks.newProjectLabel"));
+        if (string.IsNullOrWhiteSpace(name) || !await Available(name)) return;
+        Owner.Settings.Projects.Add(name);
+        Owner.SaveState();
+        Filter(name);
+        StateHasChanged();
+    }
+
+    private async Task<bool> Available(string name)
+    {
+        if (name != NoProject && !Projects().Contains(name)) return true;
+        await Owner.Alert(L.T("tasks.nameTakenTitle"), L.T("tasks.nameTakenBody", name));
+        return false;
+    }
+
+    /// <summary>Choosing the focus you already have changes nothing, so it must not cut a running session.</summary>
+    private Task Choose(WorkTask? task)
+    {
+        if (task?.Id != Current?.Id)
+        {
+            task?.Touch();
+            return OnClose.InvokeAsync((true, task));
+        }
+        return Close();
+    }
+
+    private Task Close() => OnClose.InvokeAsync((false, null));
+
+    private void Keys(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape") return;
+        if (editing is not null) editing = null;
+        else if (creating) creating = false;
+        else _ = Close();
+    }
+
+    private void Save()
+    {
+        Owner.SaveState();
+        Render();
+    }
+
+    /// <summary>Most recently used projects first; brand-new empty projects stay near the top of the named list.</summary>
+    private List<string> Projects()
+    {
+        var named = Owner.Settings.Projects
+            .Concat(Owner.Settings.Tasks.Select(task => task.Project))
+            .Where(project => !string.IsNullOrWhiteSpace(project) && project != NoProject)
+            .Distinct()
+            .ToList();
+        return named
+            .OrderByDescending(ProjectRecency)
+            .ThenByDescending(project =>
+            {
+                int index = Owner.Settings.Projects.IndexOf(project);
+                return index < 0 ? int.MinValue : index;
+            })
+            .ThenBy(project => project, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    private DateTimeOffset Recency(WorkTask task)
+    {
+        if (task.LastUsedUtc is { } used) return used;
+        if (lastFocus.TryGetValue(task.Id, out var focused)) return focused;
+        if (task.CreatedUtc is { } created) return created;
+        // Older saves: keep list order (Insert puts newest at 0).
+        int index = listIndex.GetValueOrDefault(task.Id, int.MaxValue);
+        return DateTimeOffset.UnixEpoch.AddTicks(Math.Max(0, 1_000_000 - index));
+    }
+
+    private DateTimeOffset ProjectRecency(string project)
+    {
+        var stamps = Owner.Settings.Tasks
+            .Where(task => !task.Template && task.Project == project)
+            .Select(Recency)
+            .ToList();
+        return stamps.Count == 0 ? DateTimeOffset.MinValue : stamps.Max();
+    }
+
+    private static string Pomodoros(int count) => count == 1 ? L.T("tasks.pomodoroOne") : L.T("tasks.pomodoroMany", count);
+
+    private static string Short(string text) => text.Length <= 28 ? text : text[..27] + "…";
+
+    private static string Ui(string es, string en) => Strings.Culture.TwoLetterISOLanguageName == "es" ? es : en;
+
+    /// <summary>
+    /// Paints a project name. Everything but the "no project" placeholder is the user's own words,
+    /// which are never translated; that one value is stored in Spanish from the first version and
+    /// so is swapped for the current language only on its way to the screen.
+    /// </summary>
+    private static string ProjectLabel(string project) => project == NoProject ? L.T("common.noProject") : project;
+}

@@ -269,10 +269,22 @@ public partial class MainWindow : ComponentBase
         ToggleTimer();
     }
 
-    private async Task TasksClick()
+    private bool tasksOpen;
+
+    private void TasksClick() => tasksOpen = true;
+
+    private async Task TasksClosed((bool Changed, WorkTask? Task) result)
     {
-        Status(L.T("web.comingSoon"));
-        await Alert(L.T("chrome.tasks").ToUpper(Strings.Culture), L.T("web.comingSoon"));
+        tasksOpen = false;
+        if (result.Changed)
+        {
+            var (applied, status) = await TryApplyTaskSwitch(result.Task);
+            if (applied) Status(status);
+        }
+        // Deleted while selected → drop it; otherwise keep the remembered task.
+        if (selectedTask is not null && !Settings.Tasks.Any(task => task.Id == selectedTask.Id))
+            SetSelectedTask(null);
+        UpdateTimer(); SaveState();
     }
 
     /// <summary>
@@ -416,6 +428,8 @@ public partial class MainWindow : ComponentBase
             if (key == "Escape") { CloseSettings(); return true; }
             return false;
         }
+        // The desk handles its own Escape: it first closes an editor, then itself.
+        if (tasksOpen) return false;
         if (key == "Escape" && pageMapOpen) { HidePageMap(); return true; }
         if (key == "Escape" && notificationsOpen) { notificationsOpen = false; return true; }
         if (key == "F11") { Browser.ToggleFullscreen(); return true; }
