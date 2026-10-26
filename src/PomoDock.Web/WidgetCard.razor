@@ -36,6 +36,12 @@
             case "todo":
                 <TodoBoard Owner="Owner" Config="Config" />
                 break;
+            case "calendar":
+                <CalendarWidget Owner="Owner" Config="Config" Width="BodyWidth" Height="BodyHeight" />
+                break;
+            case "habits":
+                <HabitsBoard Owner="Owner" Config="Config" Width="BodyWidth" Height="BodyHeight" />
+                break;
             case "window":
                 <div class="card-placeholder">
                     <strong>@L.T("web.windowTitle")</strong>

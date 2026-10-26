@@ -1,0 +1,15 @@
+@* A piece of text that changes every second — the clock, the countdown — and redraws alone on
+   each tick, so the rest of the workspace is not rebuilt sixty times a minute. *@
+@implements IDisposable
+@Value()
+
+@code {
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter, EditorRequired] public Func<string> Value { get; set; } = null!;
+
+    protected override void OnInitialized() => Owner.Ticked += Changed;
+
+    private void Changed() => StateHasChanged();
+
+    public void Dispose() => Owner.Ticked -= Changed;
+}

@@ -1,0 +1,670 @@
+@* The calendar card: a month grid, an hour-by-hour week and a running agenda over the same
+   events. The events themselves live in storage, so two calendars on two pages always
+   show the same appointments and reminders keep ringing when the card is not on screen. *@
+@implements IDisposable
+
+@{
+    var now = DateTime.Now;
+    rendered = DateOnly.FromDateTime(now);
+    scale = Math.Clamp(Math.Min(Math.Max(1, Width - 8) / 400, Math.Max(1, Height - 6) / 520), 1, 3.2);
+    string draftHint = Hint();
+}
+<div class="calendar" style="@Css($"--s:{scale:0.###};--c:{Math.Min(scale, 1.7):0.###}")">
+    <div class="cal-toolbar">
+        <div class="cal-nav">
+            <button class="btn cal-small" title="Periodo anterior" @onclick="() => Move(-1)">‹</button>
+            <button class="btn cal-small" title="@L.T("calendar.nextPeriod")" @onclick="() => Move(1)">›</button>
+            <button class="btn cal-small" title="Volver a hoy" @onclick="GoToday">HOY</button>
+        </div>
+        <span class="cal-period">
+            @(state.View switch { "week" => WeekTitle(), "agenda" => L.T("calendar.agendaRange"), _ => AgendaVisuals.MonthLabel(cursor) })
+        </span>
+        <div class="cal-views">
+            @foreach (var (key, label, tip) in new[] { ("month", "MES", "Rejilla del mes"), ("week", "SEM", "Semana hora a hora"), ("agenda", "LISTA", "Todo lo que viene, en orden") })
+            {
+                var view = key;
+                <button class="btn cal-view @(state.View == key ? "ink" : "")" title="@tip" @onclick="() => ApplyView(view)">@label</button>
+            }
+            <button class="btn cal-view accent" style="margin-left:calc(var(--c) * 2px)" title="Crear un evento con todos los detalles" @onclick="() => Edit(null, selected)">+ EVENTO</button>
+        </div>
+    </div>
+    <div class="cal-summary">@Summary(now)</div>
+    <div class="cal-quick">
+        <input class="field" placeholder="@L.T("calendar.quickPlaceholder")" title="@L.T("calendar.quickTip")" aria-label="@L.T("calendar.quickName")"
+               @bind="quick" @bind:event="oninput" @onkeydown="QuickKey" />
+        <button class="btn cal-plus" title="@L.T("calendar.quickAddTip")" @onclick="Commit">+</button>
+        <button class="btn cal-more last" title="Abrir el formulario completo" @onclick="() => Edit(null, selected, quick.Trim())">⋯</button>
+    </div>
+    @if (draftHint.Length > 0)
+    {
+        <div class="cal-hint">@draftHint</div>
+    }
+    <div class="cal-surface">
+        @switch (state.View)
+        {
+            case "week": @BuildWeek(now) break;
+            case "agenda": @BuildAgenda(now) break;
+            default: @BuildMonth(now) break;
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>What this particular card remembers between sessions.</summary>
+    private sealed class CardState
+    {
+        public string View { get; set; } = "month";
+        public bool ShowDone { get; set; } = true;
+    }
+
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter, EditorRequired] public WidgetConfig Config { get; set; } = null!;
+    [Parameter] public double Width { get; set; }
+    [Parameter] public double Height { get; set; }
+
+    private AgendaStore agenda = null!;
+    private CardState state = new();
+    private DateOnly cursor = DateOnly.FromDateTime(DateTime.Now);
+    private DateOnly selected = DateOnly.FromDateTime(DateTime.Now);
+    /// <summary>False while the month panel shows what is coming up; true once a day was chosen.</summary>
+    private bool dayPicked;
+    private DateOnly rendered;
+    private string filter = "";
+    private string quick = "";
+    private double scale = 1;
+    private readonly string weekScroller = "cal-week-" + Guid.NewGuid().ToString("N");
+    private bool scrollWeek;
+
+    // Base metrics at scale 1. Every size in the card is derived from them, so the whole
+    // widget grows with the room it is given instead of staying small on a big monitor.
+    private double HourHeight => S(42);
+    private double Gutter => S(44);
+
+    /// <summary>Every size in the card passes through here before it reaches the page.</summary>
+    private double S(double value) => Math.Round(value * scale, 1);
+
+    private static string Css(FormattableString style) => FormattableString.Invariant(style);
+
+    protected override void OnInitialized()
+    {
+        agenda = AgendaStore.For(Owner.Store);
+        state = ReadState(Config.Value);
+        agenda.Changed += OnAgendaChanged;
+        Owner.Ticked += OnTick;
+        scrollWeek = state.View == "week";
+    }
+
+    public void Dispose()
+    {
+        agenda.Changed -= OnAgendaChanged;
+        Owner.Ticked -= OnTick;
+        Owner.ClosePanel(this);
+    }
+
+    private void OnAgendaChanged() => _ = InvokeAsync(StateHasChanged);
+
+    /// <summary>Keeps the clock honest every half minute: the now-line, the countdown, a new day.</summary>
+    private void OnTick()
+    {
+        if (Owner.Ticks % 30 == 0) StateHasChanged();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!scrollWeek || state.View != "week") return;
+        scrollWeek = false;
+        // Open on the working day rather than at midnight.
+        var now = DateTime.Now;
+        var start = AgendaEvent.WeekStart(cursor);
+        bool thisWeek = DateOnly.FromDateTime(now) >= start && DateOnly.FromDateTime(now) <= start.AddDays(6);
+        double focus = (thisWeek ? now.TimeOfDay.TotalHours - 1 : 7) * HourHeight;
+        Owner.Browser.ScrollTo("#" + weekScroller, Math.Max(0, focus));
+    }
+
+    // ---------------------------------------------------------------- state
+
+    private static CardState ReadState(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return new CardState();
+        try { return System.Text.Json.JsonSerializer.Deserialize<CardState>(payload) ?? new CardState(); }
+        catch (System.Text.Json.JsonException) { return new CardState(); }
+    }
+
+    private void SaveState()
+    {
+        Config.Value = System.Text.Json.JsonSerializer.Serialize(state);
+        Owner.SaveState();
+    }
+
+    private void Move(int direction)
+    {
+        cursor = state.View switch
+        {
+            "week" => cursor.AddDays(7 * direction),
+            "agenda" => cursor.AddDays(14 * direction),
+            _ => cursor.AddMonths(direction)
+        };
+        if (state.View != "month") selected = cursor;
+        else
+        {
+            // Leaving the month behind lets go of its day, so the panel never speaks of another month.
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            selected = cursor.Year == today.Year && cursor.Month == today.Month ? today : new DateOnly(cursor.Year, cursor.Month, 1);
+            dayPicked = false;
+        }
+        scrollWeek = state.View == "week";
+    }
+
+    private void GoToday()
+    {
+        cursor = selected = DateOnly.FromDateTime(DateTime.Now);
+        dayPicked = false;
+        scrollWeek = state.View == "week";
+    }
+
+    internal void ApplyView(string view)
+    {
+        state.View = view;
+        cursor = selected;
+        dayPicked = false;
+        scrollWeek = view == "week";
+        SaveState();
+    }
+
+    internal void ApplyShowDone(bool show)
+    {
+        state.ShowDone = show;
+        SaveState();
+        StateHasChanged();
+    }
+
+    // ---------------------------------------------------------------- quick add
+
+    private string Hint()
+    {
+        string text = quick.Trim();
+        if (text.Length == 0) return "";
+        var draft = AgendaQuickAdd.Parse(text, DateTime.Now);
+        if (draft is null) return L.T("calendar.needTitle");
+        var day = DateOnly.FromDateTime(draft.Start);
+        string when = draft.AllDay
+            ? draft.SpanDays > 1
+                ? L.T("calendar.spanAllDay", AgendaVisuals.DayLabel(day), AgendaVisuals.DayLabel(day.AddDays(draft.SpanDays - 1)))
+                : L.T("calendar.oneAllDay", AgendaVisuals.DayLabel(day))
+            : L.T("calendar.timed", AgendaVisuals.DayLabel(day), $"{draft.Start:HH:mm}", $"{draft.EndOn(day):HH:mm}");
+        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToLower(Strings.Culture)
+            + (draft.Until is { } until ? $" hasta {AgendaVisuals.DayLabel(until)}" : draft.Count > 0 ? $", {draft.Count} veces" : "");
+        string place = draft.Location.Length > 0 ? L.T("calendar.atPlace", draft.Location) : "";
+        // Only a reminder the reader changed is worth a word; the default one is implied.
+        int usual = draft.AllDay ? 0 : 10;
+        string alert = draft.Reminders.Count == 0 ? L.T("calendar.noAlert")
+            : draft.Reminders[0] != usual ? L.T("calendar.alertAt", Before(draft.Reminders[0])) : "";
+        return L.T("calendar.quickPreview", draft.Title, when, repeat, place, alert);
+    }
+
+    private static string Before(int minutes) =>
+        minutes % 1440 == 0 ? $"{minutes / 1440} d antes"
+        : minutes % 60 == 0 ? $"{minutes / 60} h antes"
+        : $"{minutes} min antes";
+
+    private void QuickKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") Commit();
+    }
+
+    private void Commit()
+    {
+        string text = quick.Trim();
+        if (text.Length == 0) return;
+        var draft = AgendaQuickAdd.Parse(text, DateTime.Now);
+        if (draft is null)
+        {
+            // Nothing but a date: the full form is the honest place to finish the entry.
+            Edit(null, selected, text);
+            return;
+        }
+        agenda.Add(draft);
+        quick = "";
+        var day = DateOnly.FromDateTime(draft.Start);
+        cursor = selected = day;
+        dayPicked = true;
+        Owner.Status(L.T("calendar.created", draft.Title, AgendaVisuals.DayLabel(day)));
+    }
+
+    private void Edit(AgendaEvent? item, DateOnly day, string draftTitle = "", TimeOnly? at = null)
+    {
+        Owner.ShowPanel(this, @<AgendaEditor Owner="Owner" Existing="item" Day="day" DraftTitle="draftTitle" At="at" OnDone="changed => EditDone(item, changed)" />);
+    }
+
+    private void EditDone(AgendaEvent? item, bool changed)
+    {
+        Owner.ClosePanel(this);
+        if (changed && item is null) quick = "";
+        StateHasChanged();
+    }
+
+    // ---------------------------------------------------------------- render
+
+    private string WeekTitle()
+    {
+        var start = AgendaEvent.WeekStart(cursor);
+        var end = start.AddDays(6);
+        return start.Month == end.Month
+            ? L.T("calendar.weekSameMonth", $"{start:dd}", $"{end:dd}", AgendaVisuals.MonthLabel(start))
+            : $"{AgendaVisuals.DayLabel(start)} – {AgendaVisuals.DayLabel(end)}";
+    }
+
+    private string Summary(DateTime now)
+    {
+        var counts = agenda.Book.Today(now);
+        var next = agenda.Book.Upcoming(now, 14).FirstOrDefault(item => !item.Done);
+        string head = counts.Total == 0 ? L.T("calendar.todayNoEvents") : L.T("calendar.todayCount", counts.Total.ToString("00", CultureInfo.InvariantCulture), counts.Done.ToString("00", CultureInfo.InvariantCulture));
+        if (next is null) return head;
+        var today = DateOnly.FromDateTime(now);
+        string relative = AgendaVisuals.Relative(next.Day, today);
+        string when;
+        if (next.AllDay) when = relative.Length > 0 ? relative : AgendaVisuals.DayLabel(next.Day);
+        else if (next.Day == today) when = AgendaVisuals.Countdown(next.Start, now);
+        else when = $"{AgendaVisuals.DayLabel(next.Day)} {next.Start:HH:mm}";
+        return L.T("calendar.upNext", head, when, next.Title.ToUpper(Strings.Culture));
+    }
+
+    // ---------------------------------------------------------------- month
+
+    private RenderFragment BuildMonth(DateTime now) => __builder =>
+    {
+        var today = DateOnly.FromDateTime(now);
+        var first = AgendaEvent.WeekStart(new DateOnly(cursor.Year, cursor.Month, 1));
+        var last = first.AddDays(41);
+        var byDay = agenda.Book.Between(first, last).GroupBy(item => item.Day).ToDictionary(group => group.Key, group => group.ToList());
+        // The panel takes a share of the card instead of a fixed strip, so a tall widget shows
+        // more of it. The month grid keeps the larger half: it is what this view is for.
+        double panelHeight = Math.Clamp(Height * 0.26, S(130), S(380));
+        // How many chips a cell can actually hold at this size; below one, the day uses dots.
+        double chrome = Math.Min(scale, 1.7);
+        double above = chrome * (32 + 8) + chrome * 9 * 1.4 + chrome * 6 + chrome * 32 + S(6) + S(9) * 1.4 + S(3);
+        double gridHeight = Math.Max(60, Height - above - panelHeight - S(8) - S(30));
+        double room = gridHeight / 6 - S(22);
+        int fits = (int)Math.Floor(room / S(15));
+        bool compact = fits < 1;
+        <div class="cal-month">
+            <div class="cal-weekdays">
+                @for (int index = 0; index < 7; index++)
+                {
+                    <span>@AgendaEvent.ShortDay(first.AddDays(index).DayOfWeek)</span>
+                }
+            </div>
+            <div class="cal-grid">
+                @for (int index = 0; index < 42; index++)
+                {
+                    var day = first.AddDays(index);
+                    bool outside = day.Month != cursor.Month;
+                    bool isToday = day == today;
+                    List<AgendaOccurrence> items = byDay.TryGetValue(day, out var found) ? found : [];
+                    int shown = compact ? 0 : Math.Min(fits, items.Count);
+                    var captured = day;
+                    <div class="cal-cell @(dayPicked && day == selected ? "picked" : "")" style="@(outside ? "opacity:.4" : "")"
+                         @onclick="() => PickDay(captured)" @ondblclick="() => { selected = captured; dayPicked = true; Edit(null, captured); }">
+                        <div class="cal-number">
+                            <b class="@(isToday ? "today" : "")">@day.Day.ToString("00")</b>
+                            @if (items.Count > 0)
+                            {
+                                <small>@items.Count.ToString("00")</small>
+                            }
+                        </div>
+                        @if (compact)
+                        {
+                            @* A short card cannot hold a single readable chip, so the day speaks in coloured dots. *@
+                            <div class="cal-dots">
+                                @foreach (var item in items.Take(5))
+                                {
+                                    <i style="@($"background:{AgendaVisuals.Solid(item.Event.Color)};opacity:{(item.Done ? ".35" : "1")}")"></i>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            foreach (var item in items.Take(shown))
+                            {
+                                @Chip(item)
+                            }
+                            @* The counter only appears when the leftover strip can hold it. *@
+                            if (items.Count > shown && room - shown * S(15) >= S(11))
+                            {
+                                <div class="cal-more-count">+@(items.Count - shown)</div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+            @(dayPicked ? BuildDayPanel(selected, now, panelHeight) : BuildComingUp(now, panelHeight))
+        </div>
+    };
+
+    private void PickDay(DateOnly day)
+    {
+        // Clicking the chosen day again lets go of it and brings back what is coming up.
+        dayPicked = !(dayPicked && day == selected);
+        selected = day;
+    }
+
+    private RenderFragment Chip(AgendaOccurrence item) => __builder =>
+    {
+        string label = item.AllDay || item.Continuation ? item.Title : $"{item.Start:HH:mm} {item.Title}";
+        <div class="cal-chip @(item.Done ? "done" : "")" style="@($"background:{AgendaVisuals.Wash(item.Event.Color)};border-left-color:{AgendaVisuals.Solid(item.Event.Color)}")"
+             title="@Tooltip(item)" @onclick="() => { selected = item.Day; dayPicked = true; Edit(item.Event, item.Series); }" @onclick:stopPropagation>@label</div>
+    };
+
+    private static string Tooltip(AgendaOccurrence item)
+    {
+        var lines = new List<string> { item.Title, $"{AgendaVisuals.LongDayLabel(item.Day)} · {item.TimeLabel()}" };
+        if (item.Event.Location.Length > 0) lines.Add(item.Event.Location);
+        if (item.Event.Repeat != RepeatKind.None) lines.Add(item.Event.RepeatLabel());
+        if (item.Event.Notes.Length > 0) lines.Add(item.Event.Notes);
+        return string.Join("\n", lines);
+    }
+
+    private RenderFragment BuildDayPanel(DateOnly day, DateTime now, double panelHeight) => __builder =>
+    {
+        var items = agenda.Book.OnDay(day);
+        string relative = AgendaVisuals.Relative(day, DateOnly.FromDateTime(now));
+        @PanelFrame((relative.Length > 0 ? relative + " · " : "") + AgendaVisuals.LongDayLabel(day), day, panelHeight, @<div style="margin-top:calc(var(--s) * 6px)">
+            @foreach (var item in items)
+            {
+                @Row(item, now)
+            }
+            @if (items.Count == 0)
+            {
+                <p class="cal-empty">@L.T("calendar.freeDay")</p>
+            }
+        </div>)
+    };
+
+    /// <summary>
+    /// What the month holds from today on — or the whole month when it is not this one. It is what
+    /// the panel shows until a day is picked, so September never talks about October.
+    /// </summary>
+    private RenderFragment BuildComingUp(DateTime now, double panelHeight) => __builder =>
+    {
+        var today = DateOnly.FromDateTime(now);
+        var start = new DateOnly(cursor.Year, cursor.Month, 1);
+        var end = start.AddMonths(1).AddDays(-1);
+        bool current = today >= start && today <= end;
+        var items = current ? agenda.Book.Upcoming(now, end.DayNumber - today.DayNumber) : agenda.Book.Between(start, end);
+        if (!state.ShowDone) items = items.Where(item => !item.Done).ToList();
+        // A multi-day entry is one line here, not one per day it covers.
+        var seen = new HashSet<(Guid, DateOnly)>();
+        items = items.Where(item => seen.Add((item.Event.Id, item.Series))).ToList();
+        string month = AgendaVisuals.MonthLabel(start);
+        string title = current ? L.T("calendar.upcomingTitle", month[..month.LastIndexOf(' ')]) : month;
+        string heading = items.Count > 0 ? L.T("calendar.panelCount", title, items.Count.ToString("00", CultureInfo.InvariantCulture)) : title;
+        @PanelFrame(heading, current ? today : start, panelHeight, @<div style="margin-top:calc(var(--s) * 2px)">
+            @{
+                DateOnly? lastDay = null;
+            }
+            @foreach (var item in items)
+            {
+                if (lastDay != item.Day)
+                {
+                    lastDay = item.Day;
+                    @DayHeading(item.Day, today, S(6))
+                }
+                @Row(item, now)
+            }
+            @if (items.Count == 0)
+            {
+                <p class="cal-empty">@(current ? L.T("calendar.restOfMonthFree") : L.T("calendar.monthFree"))</p>
+            }
+        </div>)
+    };
+
+    private RenderFragment PanelFrame(string title, DateOnly addOn, double panelHeight, RenderFragment list) => __builder =>
+    {
+        <div class="cal-panel">
+            <div class="cal-panel-head">
+                <span>@title</span>
+                <button class="btn cal-small last" @onclick="() => Edit(null, addOn)">@L.T("common.add")</button>
+            </div>
+            <div class="scroll" style="@Css($"max-height:{panelHeight}px")">@list</div>
+        </div>
+    };
+
+    /// <summary>The day line that groups rows in a list: "MAÑANA · VIERNES 11 DE SEPTIEMBRE".</summary>
+    private RenderFragment DayHeading(DateOnly day, DateOnly today, double top) => __builder =>
+    {
+        string relative = AgendaVisuals.Relative(day, today);
+        <div class="cal-day-heading @(day == today ? "today" : "")" style="@Css($"margin-top:{top}px")">@((relative.Length > 0 ? relative + " · " : "") + AgendaVisuals.LongDayLabel(day))</div>
+    };
+
+    // ---------------------------------------------------------------- week
+
+    private RenderFragment BuildWeek(DateTime now) => __builder =>
+    {
+        var today = DateOnly.FromDateTime(now);
+        var start = AgendaEvent.WeekStart(cursor);
+        var days = Enumerable.Range(0, 7).Select(start.AddDays).ToArray();
+        var byDay = agenda.Book.Between(start, start.AddDays(6)).GroupBy(item => item.Day).ToDictionary(group => group.Key, group => group.ToList());
+        string columns = Css($"grid-template-columns:{Gutter}px repeat(7,minmax(0,1fr))");
+        bool anyAllDay = days.Any(day => byDay.TryGetValue(day, out var list) && list.Any(item => item.AllDay));
+        <div class="cal-week">
+            <div class="cal-week-head" style="@columns">
+                <span></span>
+                @foreach (var day in days)
+                {
+                    var captured = day;
+                    <button class="cal-week-day @(day == today ? "today" : "")" @onclick="() => { selected = captured; dayPicked = true; cursor = captured; }"
+                            @ondblclick="() => OpenMonth(captured)">
+                        @($"{AgendaEvent.ShortDay(day.DayOfWeek)} {day.Day:00}")
+                    </button>
+                }
+            </div>
+            @if (anyAllDay)
+            {
+                @* All-day entries never fit an hour grid, so they get their own strip on top. *@
+                <div class="cal-week-allday" style="@columns">
+                    <span>@L.T("agenda.allDay")</span>
+                    @foreach (var day in days)
+                    {
+                        <div>
+                            @if (byDay.TryGetValue(day, out var dayItems))
+                            {
+                                foreach (var item in dayItems.Where(entry => entry.AllDay))
+                                {
+                                    @Chip(item)
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            <div id="@weekScroller" class="cal-week-scroll scroll">
+                <div class="cal-week-grid" style="@(columns + Css($";height:{24 * HourHeight}px"))">
+                    @* The hour labels are placed, not stacked: only absolute positions stay glued to the lines. *@
+                    <div class="cal-hours">
+                        @for (int hour = 0; hour < 24; hour++)
+                        {
+                            <span style="@Css($"top:{Math.Max(0, hour * HourHeight - S(5))}px")">@($"{hour:00}:00")</span>
+                        }
+                    </div>
+                    @foreach (var day in days)
+                    {
+                        var captured = day;
+                        List<AgendaOccurrence> onDay = byDay.TryGetValue(day, out var found) ? found : [];
+                        <div class="cal-column @(day == today ? "today" : "")" style="@Css($"background-size:100% {HourHeight}px")"
+                             @onclick="() => selected = captured" @ondblclick="e => NewAt(captured, e)">
+                            @foreach (var (item, lane, lanes) in Lanes(onDay.Where(item => !item.AllDay).ToList()))
+                            {
+                                @Block(item, lane, lanes)
+                            }
+                            @if (day == today)
+                            {
+                                <i class="cal-now" style="@Css($"top:{now.TimeOfDay.TotalMinutes / 60 * HourHeight}px")"></i>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    };
+
+    /// <summary>A double-click on a weekday heading goes back to that day in the month.</summary>
+    private void OpenMonth(DateOnly day)
+    {
+        selected = cursor = day;
+        dayPicked = true;
+        state.View = "month";
+        SaveState();
+    }
+
+    /// <summary>Double-clicking a slot opens a new event at that half hour, not at a default one.</summary>
+    private void NewAt(DateOnly day, MouseEventArgs e)
+    {
+        selected = day;
+        double minutes = Math.Clamp(Math.Round(e.OffsetY / HourHeight * 2) * 30, 0, 23 * 60 + 30);
+        Edit(null, day, "", TimeOnly.FromTimeSpan(TimeSpan.FromMinutes(minutes)));
+    }
+
+    /// <summary>
+    /// Places overlapping events side by side: each one takes the first free lane, and the day
+    /// splits into as many columns as the busiest moment needs.
+    /// </summary>
+    private static List<(AgendaOccurrence Item, int Lane, int Lanes)> Lanes(List<AgendaOccurrence> items)
+    {
+        var ordered = items.OrderBy(item => item.DayStartMinutes).ThenBy(item => item.DayEndMinutes).ToList();
+        var ends = new List<double>();
+        var placed = new List<(AgendaOccurrence Item, int Lane)>();
+        foreach (var item in ordered)
+        {
+            int lane = 0;
+            while (lane < ends.Count && ends[lane] > item.DayStartMinutes + 0.01) lane++;
+            if (lane == ends.Count) ends.Add(0);
+            ends[lane] = Math.Max(item.DayEndMinutes, item.DayStartMinutes + 20);
+            placed.Add((item, lane));
+        }
+        int total = Math.Max(1, ends.Count);
+        return placed.Select(entry => (entry.Item, entry.Lane, total)).ToList();
+    }
+
+    private RenderFragment Block(AgendaOccurrence item, int lane, int lanes) => __builder =>
+    {
+        double top = item.DayStartMinutes / 60 * HourHeight;
+        double height = Math.Max(S(18), (item.DayEndMinutes - item.DayStartMinutes) / 60 * HourHeight - S(2));
+        double width = 100.0 / lanes;
+        <div class="cal-block @(item.Done ? "done" : "")" title="@Tooltip(item)"
+             style="@Css($"top:{top}px;height:{height}px;left:calc({lane * width}% + 1px);width:calc({width}% - 2px);z-index:{10 + lane};background:{AgendaVisuals.Wash(item.Event.Color)};border-left-color:{AgendaVisuals.Solid(item.Event.Color)}")"
+             @onclick="() => Edit(item.Event, item.Series)" @onclick:stopPropagation @ondblclick:stopPropagation>
+            <b>@item.Title</b>
+            @if (height > S(34))
+            {
+                <small>@item.TimeLabel()</small>
+            }
+        </div>
+    };
+
+    // ---------------------------------------------------------------- agenda list
+
+    private RenderFragment BuildAgenda(DateTime now) => __builder =>
+    {
+        var today = DateOnly.FromDateTime(now);
+        var items = agenda.Book.Upcoming(now, 45);
+        if (filter.Length > 0)
+            items = items.Where(item => item.Title.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
+                || item.Event.Location.Contains(filter, StringComparison.CurrentCultureIgnoreCase)
+                || item.Event.Notes.Contains(filter, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        if (!state.ShowDone) items = items.Where(item => !item.Done).ToList();
+        DateOnly? header = null;
+        <div class="cal-agenda">
+            <div class="cal-agenda-tools">
+                <input class="field" placeholder="@L.T("calendar.searchPlaceholder")" title="@L.T("calendar.searchTip")" aria-label="Filtrar eventos"
+                       @bind="filter" @bind:event="oninput" @onkeyup="FilterKey" />
+                <button class="btn cal-small last" @onclick="() => { state.ShowDone = !state.ShowDone; SaveState(); }">@(state.ShowDone ? "OCULTAR HECHOS" : "VER HECHOS")</button>
+            </div>
+            <div class="cal-agenda-list scroll">
+                @foreach (var item in items)
+                {
+                    if (header != item.Day)
+                    {
+                        header = item.Day;
+                        @DayHeading(item.Day, today, S(10))
+                    }
+                    @Row(item, now)
+                }
+                @if (items.Count == 0)
+                {
+                    <p class="cal-empty" style="margin-top:calc(var(--s) * 16px)">@(filter.Length > 0 ? L.T("calendar.noMatch") : L.T("calendar.nothingSoon"))</p>
+                }
+            </div>
+        </div>
+    };
+
+    private void FilterKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") filter = "";
+    }
+
+    // ---------------------------------------------------------------- shared row
+
+    private RenderFragment Row(AgendaOccurrence item, DateTime now) => __builder =>
+    {
+        bool running = item.IsNow(now);
+        var meta = new List<string>();
+        if (running) meta.Add("EN CURSO");
+        // A countdown only helps while it is imminent; further out, the day and hour say more.
+        else if (!item.AllDay && item.Start > now && (item.Start - now).TotalHours < 4) meta.Add(AgendaVisuals.Countdown(item.Start, now));
+        if (item.Event.Location.Length > 0) meta.Add(item.Event.Location);
+        if (item.Event.Repeat != RepeatKind.None) meta.Add(item.Event.RepeatLabel());
+        if (item.Event.Reminders.Count > 0 && !item.Done) meta.Add("🔔 " + item.Event.ReminderLabel(item.Event.Reminders[0]));
+        <div class="cal-row @(running ? "running" : "")" style="@(item.Done || item.IsPast(now) ? "opacity:.62" : "")" title="@Tooltip(item)" @onclick="() => Edit(item.Event, item.Series)">
+            <i style="background:@AgendaVisuals.Solid(item.Event.Color)"></i>
+            <div class="cal-row-clock">
+                <b>@(item.AllDay ? "TODO" : item.Continuation ? "→" : item.Start.ToString("HH:mm"))</b>
+                <small>@(item.AllDay ? L.T("calendar.wholeDay") : AgendaVisuals.DurationLabel(Math.Max(5, (int)(item.DayEndMinutes - item.DayStartMinutes))))</small>
+            </div>
+            <div class="cal-row-text">
+                <b class="@(item.Done ? "done" : "")">@item.Title</b>
+                @if (meta.Count > 0)
+                {
+                    <small style="@(running ? $"color:{AgendaVisuals.Solid(item.Event.Color)}" : "")">@string.Join("  ·  ", meta)</small>
+                }
+            </div>
+            <div class="cal-row-actions">
+                <button class="cal-check @(item.Done ? "done" : "")" title="@(item.Done ? "Marcar como pendiente" : "Marcar como hecho")"
+                        @onclick="() => { item.Event.SetDone(item.Series, !item.Done); agenda.Save(); }" @onclick:stopPropagation>@(item.Done ? "✓" : "○")</button>
+                <button class="cal-drop" title="@(item.Event.Repeat == RepeatKind.None ? L.T("calendar.deleteEvent") : L.T("calendar.deleteOccurrence"))"
+                        @onclick="() => Drop(item)" @onclick:stopPropagation>×</button>
+            </div>
+        </div>
+    };
+
+    private void Drop(AgendaOccurrence item)
+    {
+        if (item.Event.Repeat == RepeatKind.None) agenda.Remove(item.Event);
+        else { item.Event.Cancel(item.Series); agenda.Save(); }
+        Owner.Status(L.T("calendar.deleted", item.Title));
+    }
+
+    internal bool ApplyNavigate(string to)
+    {
+        string key = to.Trim().ToLowerInvariant();
+        if (key is "today" or "hoy") { GoToday(); StateHasChanged(); return true; }
+        if (key is "prev" or "previous" or "anterior" or "-1" or "back") { Move(-1); StateHasChanged(); return true; }
+        if (key is "next" or "siguiente" or "+1" or "forward") { Move(1); StateHasChanged(); return true; }
+        if (System.Text.RegularExpressions.Regex.IsMatch(to.Trim(), @"^\d{4}-\d{2}$")
+            && DateOnly.TryParseExact(to.Trim() + "-01", "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var monthStart))
+        {
+            cursor = selected = monthStart;
+            dayPicked = false;
+            StateHasChanged();
+            return true;
+        }
+        if (DateOnly.TryParse(to, CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)
+            || DateOnly.TryParse(to, CultureInfo.CurrentCulture, DateTimeStyles.None, out day))
+        {
+            cursor = selected = day;
+            dayPicked = false;
+            StateHasChanged();
+            return true;
+        }
+        return false;
+    }
+}

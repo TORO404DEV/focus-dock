@@ -1,0 +1,316 @@
+@* The full event form: when it happens, how often it repeats, when it should ring and how it
+   looks. Editing always works on a copy, so cancelling a change leaves the agenda untouched. *@
+
+@{
+    var kind = (RepeatKind)repeatIndex;
+    var presets = allDay ? AllDayReminders : TimedReminders;
+    reminders.RemoveAll(minutes => !presets.Contains(minutes));
+}
+<div class="backdrop">
+    <div class="dialog agenda-editor">
+        <div class="dialog-head">
+            <strong>POMODOCK / @(creating ? "NUEVO EVENTO" : "EDITAR EVENTO")</strong>
+            <button class="chrome-btn" @onclick="() => Close(false)">×</button>
+        </div>
+        <div class="agenda-editor-body">
+            <div class="agenda-form scroll">
+                <h2 class="dialog-heading">@(creating ? "NUEVO EVENTO" : "EDITAR EVENTO")</h2>
+                <div class="form-label">@L.T("agendaEditor.titleLabel")</div>
+                <input id="agenda-title" class="field" style="font-size:16px;font-weight:700" title="@L.T("agendaEditor.titleHelp")" aria-label="@L.T("agendaEditor.titleName")"
+                       @bind="title" @bind:event="oninput" @onkeydown="Keys" />
+                <label class="form-check">
+                    <input type="checkbox" checked="@allDay" @onchange="e => allDay = e.Value is true" />
+                    <span></span> @L.T("agendaEditor.allDay")
+                </label>
+
+                <div class="form-label">FECHA</div>
+                <div class="form-row">
+                    <input class="field" style="width:130px" title="@L.T("agendaEditor.dateFormatHelp")" aria-label="Fecha del evento" @bind="date" @bind:event="oninput" />
+                    @foreach (var (label, shift) in new (string, int)[] { ("HOY", 0), ("+1 D", 1), ("+7 D", 7) })
+                    {
+                        int jump = shift;
+                        <button class="btn chip-btn" style="font-size:10px;padding:6px 9px;margin:0 5px 0 0" @onclick="() => Jump(jump)">@label</button>
+                    }
+                </div>
+
+                @if (!allDay)
+                {
+                    <div class="form-times">
+                        <div>
+                            <div class="form-label">INICIO</div>
+                            <input class="field" style="width:88px" title="@L.T("agendaEditor.startHelp")" aria-label="Hora de inicio" @bind="start" @bind:event="oninput" />
+                        </div>
+                        <div>
+                            <div class="form-label">FIN</div>
+                            <input class="field" style="width:88px" title="@L.T("agendaEditor.endHelp")" aria-label="Hora de fin" @bind="end" @bind:event="oninput" />
+                        </div>
+                        <span class="muted">@SpanLabel(start, end)</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="form-label">@L.T("agendaEditor.daysLabel")</div>
+                    <input class="field" style="width:88px" title="@L.T("agendaEditor.daysHelp")" aria-label="@L.T("agendaEditor.daysName")" @bind="dayCount" @bind:event="oninput" />
+                }
+
+                <div class="form-label">COLOR</div>
+                <div class="form-row">
+                    @foreach (var option in AgendaPalette.All)
+                    {
+                        bool active = option.Key == color;
+                        string key = option.Key;
+                        <button class="btn agenda-swatch @(active ? "chosen" : "")" style="background:@option.Hex" title="@option.Name" aria-label="@("Color " + option.Name)" @onclick="() => color = key">@(active ? "✓" : "")</button>
+                    }
+                </div>
+
+                <div class="form-label">@L.T("agendaEditor.repeatLabel")</div>
+                @* The list is read by index, so translating these never changes which RepeatKind is chosen. *@
+                <select class="field select" style="margin:4px 0 6px;width:100%" aria-label="@L.T("agendaEditor.repeatName")" value="@repeatIndex"
+                        @onchange="e => repeatIndex = int.TryParse(e.Value?.ToString(), out int picked) ? picked : 0">
+                    @{ var repeatNames = new[] { L.T("agendaEditor.repeatNone"), L.T("agendaEditor.repeatDaily"), L.T("agendaEditor.repeatWeekly"), L.T("agendaEditor.repeatMonthly"), L.T("agendaEditor.repeatYearly") }; }
+                    @for (int i = 0; i < repeatNames.Length; i++)
+                    {
+                        <option value="@i">@repeatNames[i]</option>
+                    }
+                </select>
+                @if (kind != RepeatKind.None)
+                {
+                    <div class="form-row">
+                        <span style="font-size:12px;margin-right:8px">Cada</span>
+                        <input class="field" style="width:62px;margin-right:8px" title="@L.T("agendaEditor.intervalHelp")" aria-label="@L.T("agendaEditor.intervalName")" @bind="interval" @bind:event="oninput" />
+                        <span style="font-size:12px">@(kind switch { RepeatKind.Daily => L.T("agendaEditor.unitDays"), RepeatKind.Weekly => "semana(s), en:", RepeatKind.Monthly => "mes(es)", _ => L.T("agendaEditor.unitYears") })</span>
+                    </div>
+                    @if (kind == RepeatKind.Weekly)
+                    {
+                        <div class="form-row">
+                            @foreach (var weekday in Week)
+                            {
+                                var picked = weekday;
+                                <button class="btn chip-btn @(weekdays.Contains(weekday) ? "ink" : "")" style="width:34px;font-size:10px;padding:6px 0;margin:0 5px 5px 0" aria-label="@weekday"
+                                        @onclick="() => ToggleWeekday(picked)">@AgendaEvent.ShortDay(weekday)</button>
+                            }
+                        </div>
+                    }
+                    <div class="form-row">
+                        <span style="font-size:12px;margin-right:8px">Hasta</span>
+                        <input class="field" style="width:130px" title="@L.T("agendaEditor.untilHelp")" aria-label="Repetir hasta" @bind="until" @bind:event="oninput" />
+                        <span class="muted" style="font-size:10px;margin-left:10px">@L.T("agendaEditor.untilNote")</span>
+                    </div>
+                }
+
+                <div class="form-label">RECORDATORIOS</div>
+                <div class="form-row wrap">
+                    @foreach (int minutes in presets)
+                    {
+                        int value = minutes;
+                        <button class="btn chip-btn @(reminders.Contains(minutes) ? "ink" : "")" style="font-size:10px;padding:6px 10px;margin:0 5px 5px 0"
+                                @onclick="() => ToggleReminder(value)">@ChipLabel(minutes, allDay)</button>
+                    }
+                </div>
+                <p class="muted" style="font-size:10px;margin:0 0 10px">@(reminders.Count == 0 ? L.T("agendaEditor.noReminders") : L.T("agendaEditor.withReminders"))</p>
+
+                <div class="form-label">LUGAR</div>
+                <input class="field" title="@L.T("agendaEditor.placeHelp")" aria-label="Lugar" @bind="place" @bind:event="oninput" />
+                <div class="form-label">NOTAS</div>
+                <textarea class="field" style="height:74px;resize:vertical" title="@L.T("agendaEditor.notesHelp")" aria-label="Notas" @bind="notes" @bind:event="oninput"></textarea>
+                <p class="agenda-preview">@(message.Length > 0 ? message : Preview(Draft(), allDay))</p>
+            </div>
+            <div class="agenda-footer">
+                @if (!creating)
+                {
+                    <button class="btn" style="font-size:11px;padding:9px 12px" @onclick="Remove">ELIMINAR</button>
+                }
+                <span style="flex:1"></span>
+                <button class="btn ink" style="font-size:12px;padding:9px 16px" @onclick="Save">GUARDAR</button>
+                <button class="btn last" style="font-size:12px;padding:9px 14px" @onclick="() => Close(false)">CANCELAR</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly string[] DateFormats = ["dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy", "dd/MM/yy", "d/M/yy"];
+    private static readonly string[] TimeFormats = ["HH:mm", "H:mm", "HH.mm", "H.mm", "HHmm"];
+    private static readonly int[] TimedReminders = [0, 5, 10, 15, 30, 60, 120, 1440];
+    private static readonly int[] AllDayReminders = [0, 1440, 2880, 10080];
+    private static readonly DayOfWeek[] Week =
+        [DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday];
+
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter] public AgendaEvent? Existing { get; set; }
+    [Parameter] public DateOnly Day { get; set; }
+    [Parameter] public string DraftTitle { get; set; } = "";
+    [Parameter] public TimeOnly? At { get; set; }
+    /// <summary>Raised once when the form closes: whether the agenda changed.</summary>
+    [Parameter] public EventCallback<bool> OnDone { get; set; }
+
+    private bool creating;
+    private AgendaEvent item = null!;
+    private string title = "", date = "", start = "", end = "", dayCount = "1", interval = "1", until = "", place = "", notes = "", color = "";
+    private bool allDay;
+    private int repeatIndex;
+    private List<DayOfWeek> weekdays = [];
+    private List<int> reminders = [];
+    private string message = "";
+
+    protected override void OnInitialized()
+    {
+        creating = Existing is null;
+        item = Existing?.Copy() ?? new AgendaEvent
+        {
+            Title = DraftTitle,
+            Start = Day.ToDateTime(At ?? new TimeOnly(NextHour(Day), 0)),
+            Minutes = 60
+        };
+        title = item.Title;
+        allDay = item.AllDay;
+        date = item.Start.ToString("dd/MM/yyyy", Strings.Culture);
+        start = item.Start.ToString("HH:mm", CultureInfo.InvariantCulture);
+        end = item.Start.AddMinutes(Math.Max(5, item.Minutes)).ToString("HH:mm", CultureInfo.InvariantCulture);
+        dayCount = Math.Max(1, item.Minutes / 1440).ToString(CultureInfo.InvariantCulture);
+        color = item.Color;
+        repeatIndex = (int)item.Repeat;
+        interval = item.Interval.ToString(CultureInfo.InvariantCulture);
+        weekdays = new List<DayOfWeek>(item.Days.Count > 0 ? item.Days : [item.Start.DayOfWeek]);
+        until = item.Until?.ToString("dd/MM/yyyy", Strings.Culture) ?? "";
+        reminders = new List<int>(item.Reminders);
+        place = item.Location;
+        notes = item.Notes;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) Owner.Browser.Focus("#agenda-title");
+    }
+
+    private void Keys(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") _ = Save();
+    }
+
+    private void Jump(int shift)
+    {
+        var current = shift == 0 ? DateOnly.FromDateTime(DateTime.Now) : (TryDate(date, out var parsed) ? parsed : DateOnly.FromDateTime(DateTime.Now)).AddDays(shift);
+        date = current.ToString("dd/MM/yyyy", Strings.Culture);
+    }
+
+    private void ToggleWeekday(DayOfWeek weekday)
+    {
+        if (!weekdays.Remove(weekday)) weekdays.Add(weekday);
+        if (weekdays.Count == 0) weekdays.Add(weekday);
+    }
+
+    private void ToggleReminder(int minutes)
+    {
+        if (!reminders.Remove(minutes)) reminders.Add(minutes);
+    }
+
+    /// <summary>Builds the event as the form currently reads it, without touching the agenda.</summary>
+    private AgendaEvent Draft()
+    {
+        var draft = item.Copy();
+        draft.Title = title.Trim();
+        draft.Location = place.Trim();
+        draft.Notes = notes.Trim();
+        draft.Color = color;
+        draft.AllDay = allDay;
+        var when = TryDate(date, out var parsedDate) ? parsedDate : DateOnly.FromDateTime(item.Start);
+        if (draft.AllDay)
+        {
+            draft.Start = when.ToDateTime(TimeOnly.MinValue);
+            int days = int.TryParse(dayCount.Trim(), out int value) ? Math.Clamp(value, 1, 90) : 1;
+            draft.Minutes = days * 1440;
+        }
+        else
+        {
+            var from = TryTime(start, out var parsedStart) ? parsedStart : TimeOnly.FromDateTime(item.Start);
+            var to = TryTime(end, out var parsedEnd) ? parsedEnd : from.AddMinutes(60);
+            int minutes = (int)(to - from).TotalMinutes;
+            if (minutes <= 0) minutes += 1440;
+            draft.Start = when.ToDateTime(from);
+            draft.Minutes = Math.Clamp(minutes, 5, 1440 * 14);
+        }
+        draft.Repeat = (RepeatKind)Math.Max(0, repeatIndex);
+        draft.Interval = int.TryParse(interval.Trim(), out int every) ? Math.Clamp(every, 1, 99) : 1;
+        draft.Days = draft.Repeat == RepeatKind.Weekly ? [.. weekdays] : [];
+        draft.Until = TryDate(until, out var lastDay) ? lastDay : null;
+        draft.Reminders = [.. reminders];
+        draft.Normalize();
+        return draft;
+    }
+
+    private async Task Save()
+    {
+        var draft = Draft();
+        if (draft.Title.Length == 0) { Owner.Browser.Focus("#agenda-title"); message = "PONLE UN NOMBRE AL EVENTO PARA GUARDARLO."; return; }
+        if (!TryDate(date, out _)) { message = L.T("agendaEditor.badDate"); return; }
+        if (!draft.AllDay && !TryTime(start, out _)) { message = L.T("agendaEditor.badTime"); return; }
+        var agenda = AgendaStore.For(Owner.Store);
+        if (creating) agenda.Add(draft); else agenda.Replace(draft);
+        await Close(true);
+    }
+
+    private async Task Remove()
+    {
+        var agenda = AgendaStore.For(Owner.Store);
+        if (Existing!.Repeat == RepeatKind.None)
+        {
+            if (await Owner.Choose("ELIMINAR EVENTO", ["Eliminar", "Cancelar"]) != 0) return;
+            agenda.Remove(Existing);
+        }
+        else
+        {
+            int choice = await Owner.Choose(L.T("agendaEditor.deleteRepeatTitle"), [L.T("agendaEditor.deleteThisDay"), L.T("agendaEditor.deleteSeries"), L.T("common.cancel")]);
+            if (choice == 0) { Existing.Cancel(Day); agenda.Save(); }
+            else if (choice == 1) agenda.Remove(Existing);
+            else return;
+        }
+        await Close(true);
+    }
+
+    private Task Close(bool changed) => OnDone.InvokeAsync(changed);
+
+    private static string ChipLabel(int minutes, bool allDay) => minutes switch
+    {
+        0 => allDay ? L.T("agendaEditor.reminderAllDay") : L.T("agendaEditor.reminderAtStart"),
+        < 60 => $"{minutes} MIN",
+        1440 => L.T("agendaEditor.reminderOneDay"),
+        2880 => L.T("agendaEditor.reminderTwoDays"),
+        10080 => "1 SEMANA",
+        _ => $"{minutes / 60} H"
+    };
+
+    private static string SpanLabel(string from, string to)
+    {
+        if (!TryTime(from, out var start) || !TryTime(to, out var end)) return "";
+        int minutes = (int)(end - start).TotalMinutes;
+        if (minutes <= 0) minutes += 1440;
+        return "· " + AgendaVisuals.DurationLabel(minutes);
+    }
+
+    private static string Preview(AgendaEvent draft, bool allDay)
+    {
+        if (draft.Title.Length == 0) return "";
+        var day = DateOnly.FromDateTime(draft.Start);
+        string when = allDay
+            ? L.T("agendaEditor.previewAllDay", AgendaVisuals.LongDayLabel(day))
+            : L.T("agendaEditor.previewTime", AgendaVisuals.LongDayLabel(day), $"{draft.Start:HH:mm}", $"{draft.EndOn(day):HH:mm}");
+        string repeat = draft.Repeat == RepeatKind.None ? "" : " · " + draft.RepeatLabel().ToUpper(Strings.Culture);
+        string alerts = draft.Reminders.Count == 0 ? L.T("agendaEditor.previewNoAlert") : " · " + draft.ReminderLabel(draft.Reminders[0]).ToUpper(Strings.Culture);
+        return when + repeat + alerts;
+    }
+
+    /// <summary>A new event opens on the next full hour, the way a diary is written.</summary>
+    private static int NextHour(DateOnly day)
+    {
+        var now = DateTime.Now;
+        if (day != DateOnly.FromDateTime(now)) return 9;
+        return Math.Clamp(now.Hour + 1, 0, 23);
+    }
+
+    private static bool TryDate(string text, out DateOnly value) =>
+        DateOnly.TryParseExact(text.Trim(), DateFormats, Strings.Culture, DateTimeStyles.None, out value);
+
+    private static bool TryTime(string text, out TimeOnly value) =>
+        TimeOnly.TryParseExact(text.Trim(), TimeFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out value);
+}

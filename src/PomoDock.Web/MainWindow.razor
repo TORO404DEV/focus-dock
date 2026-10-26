@@ -15,11 +15,11 @@
 
     <div class="header">
         <div class="header-clock">
-            <span class="header-date">@headerDate</span>
-            <span class="header-time">@headerTime</span>
+            <span class="header-date"><TickText Owner="this" Value="() => headerDate" /></span>
+            <span class="header-time"><TickText Owner="this" Value="() => headerTime" /></span>
             @if (headerTimer.Length > 0)
             {
-                <button class="header-timer @(Timer.Running ? "" : "paused")" title="@(Timer.Running ? L.T("chrome.headerTimerPause") : L.T("chrome.headerTimerResume"))" @onclick="HeaderTimerClick">@headerTimer</button>
+                <button class="header-timer @(Timer.Running ? "" : "paused")" title="@(Timer.Running ? L.T("chrome.headerTimerPause") : L.T("chrome.headerTimerResume"))" @onclick="HeaderTimerClick"><TickText Owner="this" Value="() => headerTimer" /></button>
             }
         </div>
         <div class="header-actions">
@@ -88,6 +88,10 @@
 {
     <NotesHistory Owner="this" Current="historyNote" OnClose="CloseNotesHistory" />
 }
+@foreach (var panel in panels)
+{
+    @panel.Body
+}
 @foreach (var dialog in dialogs)
 {
     <DialogView @key="dialog.Id" Request="dialog" Owner="this" />
@@ -98,9 +102,9 @@
         @foreach (var alert in alerts)
         {
             <div @key="alert.Id" class="alert-card">
-                <i></i>
+                <i style="background:@alert.Accent"></i>
                 <div>
-                    <div class="alert-lead">
+                    <div class="alert-lead" style="color:@alert.Accent">
                         <span>@alert.Lead</span>
                         <button class="chrome-btn" title="@L.T("agenda.dismiss")" @onclick="() => AcknowledgeAlert(alert, null)">×</button>
                     </div>
@@ -108,6 +112,10 @@
                     @if (alert.Detail.Length > 0)
                     {
                         <div class="alert-detail">@alert.Detail</div>
+                    }
+                    @if (alert.Place.Length > 0)
+                    {
+                        <div class="alert-place">◈  @alert.Place</div>
                     }
                     <div class="alert-actions">
                         @foreach (var action in alert.Actions)
@@ -174,7 +182,7 @@
                         <button class="btn @(active ? "ink" : "")" @onclick="() => PhaseClick(phase)">@label</button>
                     }
                 </div>
-                <div class="timer-clock"><span>@clockText</span></div>
+                <div class="timer-clock"><span><TickText Owner="this" Value="() => clockText" /></span></div>
                 <div class="timer-labels">
                     <span class="timer-phase-label">@phaseLabel</span>
                     <span class="timer-cycle">@cycleText</span>

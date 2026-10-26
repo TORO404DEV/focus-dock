@@ -84,6 +84,8 @@ public partial class MainWindow : ComponentBase
             MeasureCanvas();
             ResumeTimerIfNeeded();
             ShowUnreadNotificationModals();
+            // Calendar reminders ring on their own clock: a cue that came due moments ago still rings.
+            SweepReminders(DateTime.Now);
             StateHasChanged();
         }
         AfterRenderPages();
@@ -99,15 +101,27 @@ public partial class MainWindow : ComponentBase
         Status(L.T("status.running"));
     }
 
+    /// <summary>
+    /// Raised every second after the clock moved. Only the text that changes listens; a widget that
+    /// needs a slower beat (the calendar's now-line, a new day for the habits) counts ticks itself.
+    /// </summary>
+    public event Action? Ticked;
+
     [JSInvokable]
     public void Tick()
     {
         if (exiting) return;
+        bool wasRunning = Timer.Running, hadSession = Timer.Active is not null;
         Timer.Tick(DateTimeOffset.UtcNow, Monotonic);
         UpdateTimer();
         if (++ticks % 15 == 0) SaveState();
-        StateHasChanged();
+        if (ticks % 20 == 0) SweepReminders(DateTime.Now);
+        Ticked?.Invoke();
+        // A gap that paused the clock changes the buttons, not only the numbers.
+        if (wasRunning != Timer.Running || hadSession != (Timer.Active is not null)) StateHasChanged();
     }
+
+    internal int Ticks => ticks;
 
     /// <summary>The tab is going away: the clock stops where it is, as the desktop does on close.</summary>
     [JSInvokable]
@@ -430,6 +444,11 @@ public partial class MainWindow : ComponentBase
         if (dialogs.Count > 0)
         {
             if (key == "Escape") { dialogs[^1].Cancel(); return true; }
+            return false;
+        }
+        if (panels.Count > 0)
+        {
+            if (key == "Escape") { panels.RemoveAt(panels.Count - 1); return true; }
             return false;
         }
         if (settingsOpen)

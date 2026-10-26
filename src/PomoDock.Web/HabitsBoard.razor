@@ -1,0 +1,747 @@
+@* The habit tracker. It reads and writes the shared habit book, so history survives the
+   widget, and it re-lays itself out for every size the card can be dragged to: from a
+   single strip of squares to a full week grid with level, streaks and awards. *@
+@implements IDisposable
+
+@{
+    var current = Measure();
+    var book = store.Book;
+    var progress = book.Habits.ToDictionary(habit => habit.Id, habit => HabitProgress.For(habit, today));
+    var stats = HabitStats.Compute(book, progress, today);
+    var days = current.Week ? Enumerable.Range(0, 7).Select(index => week.AddDays(index)).ToArray() : new[] { today };
+    string track = TrackColumns(current, days.Length);
+}
+@if (current.Strip)
+{
+    // At postage-stamp sizes the board becomes one row of squares: today, nothing else.
+    bool single = Height < 76;
+    int size = (int)Math.Clamp(single ? Height - 12 : Height - 26, 14, 26);
+    <div class="habits strip @(single ? "single" : "")">
+        @if (!single)
+        {
+            <div class="habits-strip-head">
+                <span class="habits-summary" title="@L.T("habits.summaryTip", stats.Level, stats.Streak)">@($"{stats.DoneToday:00}/{stats.DueToday:00}")</span>
+                <span class="mono muted" style="font-size:9.5px">@(stats.Streak > 0 ? $"RACHA {stats.Streak}" : "—")</span>
+            </div>
+        }
+        <div class="habits-strip-row">
+            @if (single)
+            {
+                <span class="habits-summary" style="font-size:11px;margin-right:8px" title="@L.T("habits.summaryTip", stats.Level, stats.Streak)">@($"{stats.DoneToday:00}/{stats.DueToday:00}")</span>
+            }
+            <div class="habits-chips scroll">
+                @foreach (var habit in book.Active)
+                {
+                    var value = progress[habit.Id];
+                    var item = habit;
+                    string tip = L.T("habits.chipTip", habit.Name, value.DoneToday ? L.T("habits.doneToday") : L.T("habits.pending"), value.Streak);
+                    <button class="habit-chip @(value.DoneToday ? "done" : value.DueToday ? "due" : "")" title="@tip" aria-label="@tip"
+                            style="@Css($"width:{size}px;height:{size}px;font-size:{Math.Max(8, size * .46)}px")" @onclick="() => Toggle(item, today)">
+                        @(habit.Name.Length > 0 ? habit.Name[..1].ToUpper(CultureInfo.CurrentCulture) : "·")
+                    </button>
+                }
+                @if (!book.Active.Any())
+                {
+                    <span class="muted" style="font-size:9.5px">@L.T("habits.none")</span>
+                }
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="habits">
+        @if (celebrating is { } award)
+        {
+            <button class="habit-award" title="@award.Detail" @onclick="() => celebrating = null">
+                <b>◆</b> @L.T("habits.award", award.Name)
+            </button>
+        }
+        @if (current.Stats)
+        {
+            <div class="habit-stats">
+                <div class="habit-stats-head">
+                    <span><b class="mono">@($"{stats.DoneToday:00}/{stats.DueToday:00}")</b><small>HOY</small></span>
+                    <span class="habit-level">
+                        <b title="@L.T("habits.levelTip", stats.Xp, stats.ToNextLevel, stats.Level + 1)">@($"NIVEL {stats.Level:00}")</b>
+                        <small class="mono" title="@L.T("habits.streakTip", stats.BestStreak)">
+                            @(stats.Streak > 0 ? L.T("habits.streakDays", stats.Streak, stats.Streak == 1 ? L.T("habits.dayOne") : L.T("habits.dayMany")) : L.T("habits.noStreak"))
+                        </small>
+                    </span>
+                </div>
+                @* One block per habit due today: the day reads at a glance, even from across the room. *@
+                @{
+                    int slots = Math.Max(stats.DueToday, stats.DoneToday);
+                }
+                @if (slots is 0 or > 20)
+                {
+                    <div class="habit-meter" style="height:7px;margin-top:8px"><i style="@Css($"width:{Math.Clamp(stats.TodayShare, 0, 1) * 100:0.##}%")"></i></div>
+                }
+                else
+                {
+                    <div class="habit-blocks" title="@L.T("habits.todayTip", stats.DoneToday, stats.DueToday)">
+                        @for (int i = 0; i < slots; i++)
+                        {
+                            <i class="@(i < stats.DoneToday ? "on" : "")"></i>
+                        }
+                    </div>
+                }
+                @if (current.Level)
+                {
+                    <div class="habit-xp">
+                        <div class="habit-meter" style="height:4px" title="@($"{stats.LevelXp} / {stats.LevelSpan} XP del nivel {stats.Level}")"><i style="@Css($"width:{Math.Clamp(stats.LevelShare, 0, 1) * 100:0.##}%")"></i></div>
+                        <span class="mono muted">@L.T("habits.xpNote", stats.Xp, stats.ToNextLevel, (stats.Level + 1).ToString("00", CultureInfo.InvariantCulture))</span>
+                    </div>
+                }
+            </div>
+        }
+        @if (current.Nav)
+        {
+            var end = week.AddDays(6);
+            string range = week.Month == end.Month
+                ? L.T("habits.weekSameMonth", week.Day.ToString("00", CultureInfo.InvariantCulture), end.Day.ToString("00", CultureInfo.InvariantCulture), MonthNames[end.Month - 1])
+                : L.T("habits.weekSpan", week.Day.ToString("00", CultureInfo.InvariantCulture), MonthNames[week.Month - 1], end.Day.ToString("00", CultureInfo.InvariantCulture), MonthNames[end.Month - 1]);
+            var thisWeek = HabitBook.WeekStart(today);
+            <div class="habit-week">
+                <button class="habit-chip-btn" title="Semana anterior" @onclick="() => week = week.AddDays(-7)">‹</button>
+                <span class="mono">@range</span>
+                @if (week != thisWeek && current.Streak)
+                {
+                    <button class="habit-chip-btn" style="width:30px" title="Volver a la semana actual" @onclick="() => week = HabitBook.WeekStart(today)">HOY</button>
+                }
+                <button class="habit-chip-btn" title="@L.T("habits.nextWeek")" disabled="@(week >= thisWeek)" @onclick="() => week = week.AddDays(7)">›</button>
+            </div>
+        }
+        <div class="habit-track header" style="@track">
+            <span class="habit-col-title">@L.T("habits.habit")</span>
+            @for (int i = 0; i < days.Length; i++)
+            {
+                var day = days[i];
+                bool isToday = day == today;
+                <span class="habit-day @(isToday ? "today" : "")" title="@day.ToString("dddd dd/MM", CultureInfo.CurrentCulture)">
+                    <b style="@Css($"font-size:{(current.Week ? current.DayFont : 7.5)}px")">@(current.Week ? DayLetters[i] : "HOY")</b>
+                    @if (current.Week && current.Cell >= 20)
+                    {
+                        <small class="mono" style="@Css($"font-size:{current.DayFont - .5}px")">@day.Day.ToString("00", CultureInfo.InvariantCulture)</small>
+                    }
+                </span>
+            }
+            @if (current.Streak)
+            {
+                <span class="habit-col-title center">RACHA</span>
+            }
+            @if (current.Rate)
+            {
+                <span class="habit-col-title center">@L.T("habits.thirtyDays")</span>
+            }
+            @if (current.Menu)
+            {
+                <span></span>
+            }
+        </div>
+        <div class="habit-list scroll" style="scrollbar-gutter:stable">
+            @foreach (var habit in book.Active)
+            {
+                @HabitRow(habit, progress[habit.Id], current, days, track)
+            }
+            @if (!book.Active.Any())
+            {
+                bool archived = book.Archived.Any();
+                <div class="habit-empty" style="@Css($"margin-top:{(current.Stats ? 26 : 12)}px")">
+                    <strong>@(archived ? "TODO ARCHIVADO" : "EMPIEZA POR UNO")</strong>
+                    <p>@(archived ? L.T("habits.emptyArchived") : L.T("habits.emptyNew"))</p>
+                    @if (current.Stats && !archived)
+                    {
+                        <small>@L.T("habits.examples")</small>
+                    }
+                </div>
+            }
+        </div>
+        @if (current.Map && book.Active.Any())
+        {
+            @ConsistencyMap(book, current)
+        }
+        @if (current.Composer)
+        {
+            double height = current.Row >= 30 ? 32 : 28;
+            <div class="habit-composer">
+                <input class="field" style="@Css($"height:{height}px")" maxlength="80" placeholder="@L.T("habits.newPlaceholder")" aria-label="@L.T("habits.newName")"
+                       @bind="draft" @bind:event="oninput" @onkeydown="ComposerKey" />
+                <button class="btn last" style="@Css($"height:{height}px;padding:0 {(current.Streak ? 10 : 9)}px")" title="@L.T("habits.addTip")" @onclick="AddHabit">
+                    @(current.Streak ? L.T("habits.addLong") : "+")
+                </button>
+            </div>
+        }
+        @if (current.Footer && book.Habits.Count > 0)
+        {
+            <div class="habit-footer">
+                <div class="habit-awards">
+                    @foreach (var earned in stats.Awards.TakeLast(current.Hint ? 6 : 3))
+                    {
+                        <span title="@earned.Detail">◆ @earned.Name</span>
+                    }
+                    @if (stats.Awards.Count == 0)
+                    {
+                        <em>@L.T("habits.noAwards")</em>
+                    }
+                </div>
+                <div class="habit-total">
+                    <span class="mono">@L.T("habits.totalSummary", stats.Total, (stats.Rate * 100).ToString("0", CultureInfo.InvariantCulture))</span>
+                    @{
+                        int archivedCount = book.Archived.Count();
+                    }
+                    @if (archivedCount > 0)
+                    {
+                        <button class="habit-chip-btn" style="width:84px" title="@L.T("habits.archivedTip")" @onclick="ManageArchived">@L.T("habits.archivedChip", archivedCount)</button>
+                    }
+                </div>
+                @if (current.Hint)
+                {
+                    <p class="muted" style="font-size:8.5px;margin:6px 0 0">@L.T("habits.footerHint")</p>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>What fits at the current size. Two equal shapes always draw the same board.</summary>
+    private sealed record Shape(bool Strip, bool Stats, bool Level, bool Nav, bool Week, bool Streak, bool Rate,
+        bool Menu, bool Map, bool Composer, bool Footer, bool Hint, int Cell, int Row, double NameFont, double DayFont);
+
+    private static readonly string[] DayLetters = ["L", "M", "X", "J", "V", "S", "D"];
+    private static readonly string[] MonthNames = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter, EditorRequired] public WidgetConfig Config { get; set; } = null!;
+    [Parameter] public double Width { get; set; }
+    [Parameter] public double Height { get; set; }
+
+    private HabitStore store = null!;
+    private DateOnly today = DateOnly.FromDateTime(DateTime.Now);
+    private DateOnly week;
+    private HabitAward? celebrating;
+    private string draft = "";
+    private CancellationTokenSource? applause;
+
+    protected override void OnInitialized()
+    {
+        store = HabitStore.For(Owner.Store);
+        week = HabitBook.WeekStart(today);
+        if (store.ImportLegacy(Config)) Owner.SaveState();
+        store.Changed += OnChanged;
+    }
+
+    /// <summary>A new day arrives while the board is open: it follows if it was showing this week.</summary>
+    protected override void OnParametersSet()
+    {
+        var now = DateOnly.FromDateTime(DateTime.Now);
+        if (now == today) return;
+        bool following = week == HabitBook.WeekStart(today);
+        today = now;
+        if (following) week = HabitBook.WeekStart(today);
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        store.Changed -= OnChanged;
+        Owner.ClosePanel(this);
+    }
+
+    private static string Css(FormattableString style) => FormattableString.Invariant(style);
+
+    // ---------------------------------------------------------------- layout
+
+    private Shape Measure()
+    {
+        // The board sits inside a 10-px margin of the card body, as on the desktop.
+        double width = Math.Max(150, Width - 20);
+        double height = Math.Max(40, Height - 16);
+
+        bool strip = height < 120;
+        bool streak = width >= 286;
+        bool rate = width >= 470;
+        bool menu = width >= 352;
+        double reserved = (streak ? 34 : 0) + (rate ? 42 : 0) + (menu ? 26 : 0) + 12;
+        double nameRoom = Math.Clamp(width * .28, 56, 150);
+        int cell = (int)Math.Floor((width - reserved - nameRoom) / 7) - 2;
+        bool grid = cell >= 13;
+        cell = Math.Clamp(grid ? cell : 24, 13, width >= 720 ? 56 : width >= 460 ? 38 : 30);
+
+        bool stats = height >= 186;
+        return new Shape(
+            Strip: strip,
+            Stats: stats,
+            Level: stats && height >= 224 && width >= 210,
+            Nav: grid && height >= 260,
+            Week: grid,
+            Streak: streak,
+            Rate: rate,
+            Menu: menu,
+            Map: grid && height >= 430,
+            Composer: height >= 150,
+            Footer: height >= 330,
+            Hint: height >= 430,
+            Cell: cell,
+            Row: Math.Clamp(cell + 8, 22, 64),
+            NameFont: Math.Clamp(cell * .4 + 3.4, 10, 16),
+            DayFont: Math.Clamp(cell * .34 + 1, 7.5, 13));
+    }
+
+    /// <summary>The same columns for the header and every row, so they can never drift apart.</summary>
+    private static string TrackColumns(Shape current, int days)
+    {
+        var columns = new List<string> { "minmax(0,1fr)" };
+        for (int i = 0; i < days; i++) columns.Add($"{current.Cell + 2}px");
+        if (current.Streak) columns.Add("32px");
+        if (current.Rate) columns.Add("40px");
+        if (current.Menu) columns.Add("24px");
+        return "grid-template-columns:" + string.Join(" ", columns);
+    }
+
+    private RenderFragment HabitRow(Habit habit, HabitProgress value, Shape current, DateOnly[] days, string track) => __builder =>
+    {
+        string badge = current.Menu ? CadenceBadge(habit) ?? "" : "";
+        <div class="habit-row" style="@Css($"min-height:{current.Row}px")" @oncontextmenu="() => HabitMenu(habit)" @oncontextmenu:preventDefault>
+            <div class="habit-track" style="@(track + Css($";height:{current.Row}px"))">
+                @* A grid, not a stack: only a bounded cell lets a long name end in an ellipsis. *@
+                <button class="habit-name" title="@L.T("habits.nameTip", habit.Name, value.Streak, value.Best, (value.Rate * 100).ToString("0", CultureInfo.InvariantCulture))"
+                        @onclick="() => ShowDetail(habit)">
+                    <span style="@Css($"font-size:{current.NameFont}px")">@habit.Name</span>
+                    @if (badge.Length > 0)
+                    {
+                        <small class="mono" style="@Css($"font-size:{Math.Max(7.5, current.NameFont - 3)}px")">@badge</small>
+                    }
+                </button>
+                @foreach (var day in days)
+                {
+                    @DayCell(habit, day, current)
+                }
+                @if (current.Streak)
+                {
+                    <span class="habit-number @(value.Streak > 0 ? "" : "muted")" style="@Css($"font-size:{Math.Max(9, current.NameFont - 1)}px")"
+                          title="@(value.StreakInWeeks ? L.T("habits.weeklyStreakTip", value.Streak, habit.TimesPerWeek, value.Best) : L.T("habits.dayStreakTip", value.Streak, value.Best))">
+                        @(value.StreakInWeeks ? $"{value.Streak}s" : $"{value.Streak}")
+                    </span>
+                }
+                @if (current.Rate)
+                {
+                    <span class="habit-number light @(value.Rate >= .8 ? "" : "muted")" style="@Css($"font-size:{Math.Max(9, current.NameFont - 2)}px")" title="@L.T("habits.rateTip")">
+                        @($"{value.Rate * 100:0}%")
+                    </span>
+                }
+                @if (current.Menu)
+                {
+                    <button class="habit-menu" style="@Css($"height:{Math.Min(24, current.Row - 4)}px")" title="@L.T("habits.options")" @onclick="() => HabitMenu(habit)">⋯</button>
+                }
+            </div>
+        </div>
+    };
+
+    private RenderFragment DayCell(Habit habit, DateOnly day, Shape current) => __builder =>
+    {
+        int count = habit.Count(day);
+        bool done = count >= habit.Target;
+        bool future = day > today;
+        bool isToday = day == today;
+        bool due = habit.IsDue(day);
+        string state = future ? L.T("habits.stateFuture") : done ? L.T("habits.stateDone") : count > 0 ? $"{count}/{habit.Target}" : due ? L.T("habits.statePending") : L.T("habits.stateFree");
+        string tip = L.T("habits.cellTip", habit.Name, $"{day:dd/MM}", state) + (future ? "" : habit.Target > 1 ? L.T("habits.cellCountHint") : L.T("habits.cellMarkHint"));
+        double opacity = future ? .3 : !due && !done ? .55 : 1;
+        <span class="habit-cell-slot">
+            <button class="habit-cell @(done ? "done" : "") @(isToday ? "today" : "") @(due || done ? "due" : "")" disabled="@future"
+                    style="@Css($"width:{current.Cell}px;height:{current.Cell}px;opacity:{opacity}")" title="@tip" aria-label="@($"{habit.Name}, {day:dd/MM}, {state}")"
+                    @onclick="() => Toggle(habit, day)" @oncontextmenu="() => Lower(habit, day)" @oncontextmenu:preventDefault @oncontextmenu:stopPropagation>
+                @if (!done && count > 0)
+                {
+                    @Gauge(count, habit.Target, current.Cell - 6)
+                }
+                else if (!done && !due && !future)
+                {
+                    <span class="muted" style="@Css($"font-size:{Math.Max(8, current.Cell * .5)}px")">·</span>
+                }
+            </button>
+        </span>
+    };
+
+    /// <summary>A day in progress fills from the bottom, like a glass being filled.</summary>
+    private static RenderFragment Gauge(int count, int target, double size, double opacity = 1) => __builder =>
+    {
+        double side = Math.Max(2, size);
+        double fill = Math.Max(2, side * Math.Clamp(count / (double)Math.Max(1, target), 0, 1));
+        <span class="gauge" style="@Css($"width:{side}px;height:{side}px")"><i style="@Css($"height:{fill}px;opacity:{opacity}")"></i></span>
+    };
+
+    /// <summary>Every week of the last months as one block: how much of each day was really done.</summary>
+    private RenderFragment ConsistencyMap(HabitBook book, Shape current) => __builder =>
+    {
+        const int gap = 2;
+        int size = Math.Clamp(current.Cell - 8, 8, 13);
+        double available = Math.Max(150, Width - 20) - 24;
+        int weeks = Math.Clamp((int)(available / (size + gap)), 6, 32);
+        var habits = book.Active.ToList();
+        var done = habits.ToDictionary(habit => habit.Id, habit => habit.CompletedDays());
+        // Never draw weeks older than the habits themselves: empty boxes are not history.
+        var first = HabitBook.WeekStart(habits.Select(habit => habit.Epoch()).DefaultIfEmpty(today).Min());
+        int lived = (HabitBook.WeekStart(today).DayNumber - first.DayNumber) / 7 + 1;
+        weeks = Math.Clamp(Math.Min(weeks, lived), 4, 32);
+        var start = HabitBook.WeekStart(today).AddDays(-7 * (weeks - 1));
+        <div class="habit-map">
+            <div class="caption" style="font-size:8px">@L.T("habits.consistency", weeks)</div>
+            <div class="habit-map-body">
+                @for (int w = 0; w < weeks; w++)
+                {
+                    <div>
+                        @for (int d = 0; d < 7; d++)
+                        {
+                            var day = start.AddDays(7 * w + d);
+                            int dueCount = 0, made = 0;
+                            foreach (var habit in habits)
+                            {
+                                if (!habit.IsDue(day) || habit.Epoch() > day) continue;
+                                dueCount++;
+                                if (done[habit.Id].Contains(day)) made++;
+                            }
+                            double opacity = day > today ? .2 : dueCount == 0 ? .35 : 1;
+                            string tip = day > today ? "" : dueCount == 0 ? L.T("habits.nothingDue", $"{day:dd/MM}") : L.T("habits.dayProgress", $"{day:dd/MM}", made, dueCount);
+                            <i class="@(dueCount > 0 && made == dueCount ? "full" : "") @(day == today ? "today" : "")"
+                               style="@Css($"width:{size}px;height:{size}px;margin:0 {gap}px {gap}px 0;opacity:{opacity}")" title="@tip">
+                                @if (day <= today && dueCount > 0 && made > 0 && made < dueCount)
+                                {
+                                    @Gauge(made, dueCount, size - 3, .55)
+                                }
+                            </i>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    };
+
+    // ---------------------------------------------------------------- actions
+
+    private void ComposerKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") AddHabit();
+    }
+
+    private void AddHabit()
+    {
+        var name = draft.Trim();
+        if (name.Length == 0) { Owner.Status(L.T("habits.typeFirst")); return; }
+        if (store.Book.Active.Any(habit => string.Equals(habit.Name, name, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            Owner.Status(L.T("habits.alreadyTracked"));
+            return;
+        }
+        store.Add(name);
+        draft = "";
+        Commit();
+        Owner.Status(L.T("habits.added", name.ToUpper(Strings.Culture)));
+    }
+
+    private void Toggle(Habit habit, DateOnly day)
+    {
+        if (day > today) return;
+        int count = habit.Advance(day);
+        Owner.Sounds.Button(count >= habit.Target ? "start" : count == 0 ? "reset" : "skip");
+        Commit();
+    }
+
+    private void Lower(Habit habit, DateOnly day)
+    {
+        if (day > today) return;
+        habit.Advance(day, -1);
+        Commit();
+    }
+
+    /// <summary>Writes the book and unlocks whatever the change just earned.</summary>
+    private void Commit()
+    {
+        var book = store.Book;
+        var progress = book.Habits.ToDictionary(habit => habit.Id, habit => HabitProgress.For(habit, today));
+        var stats = HabitStats.Compute(book, progress, today);
+        var fresh = stats.Awards.FirstOrDefault(award => !book.Awards.Contains(award.Id));
+        foreach (var award in stats.Awards.Where(award => !book.Awards.Contains(award.Id))) book.Awards.Add(award.Id);
+        if (fresh is not null)
+        {
+            celebrating = fresh;
+            Applaud();
+            Owner.Sounds.Button("phase");
+            Owner.Status(L.T("habits.awardUnlocked", fresh.Name, fresh.Detail));
+        }
+        store.Save();
+    }
+
+    private async void Applaud()
+    {
+        applause?.Cancel();
+        var run = applause = new CancellationTokenSource();
+        try { await Task.Delay(TimeSpan.FromSeconds(8), run.Token); }
+        catch (TaskCanceledException) { return; }
+        celebrating = null;
+        StateHasChanged();
+    }
+
+    private async Task HabitMenu(Habit habit)
+    {
+        var options = new[]
+        {
+            "Renombrar",
+            L.T("habits.menuCadence", CadenceLabel(habit)),
+            L.T("habits.menuTarget", habit.Target, habit.Target == 1 ? L.T("habits.timeOne") : L.T("habits.timeMany")),
+            "Ver detalle y mapa",
+            "Subir",
+            "Bajar",
+            "Archivar",
+            "Eliminar"
+        };
+        switch (await Owner.Choose(L.T("habits.menuTitle", habit.Name.ToUpper(Strings.Culture)), options))
+        {
+            case 0:
+                var name = await Owner.Prompt(L.T("habits.renameTitle"), L.T("habits.renameLabel"), habit.Name);
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    var trimmed = name.Trim();
+                    habit.Name = trimmed.Length > 80 ? trimmed[..80] : trimmed;
+                    Commit();
+                }
+                break;
+            case 1:
+                EditCadence(habit);
+                break;
+            case 2:
+                var target = await Owner.Prompt(L.T("habits.targetTitle"), L.T("habits.targetLabel"), habit.Target.ToString(CultureInfo.InvariantCulture));
+                if (int.TryParse(target, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value))
+                {
+                    habit.Target = Math.Clamp(value, 1, 20);
+                    Commit();
+                }
+                break;
+            case 3: ShowDetail(habit); break;
+            case 4: if (store.Book.Move(habit, -1)) Commit(); break;
+            case 5: if (store.Book.Move(habit, 1)) Commit(); break;
+            case 6:
+                habit.Archived = true;
+                Commit();
+                Owner.Status(L.T("habits.archived"));
+                break;
+            case 7: await ConfirmDelete(habit); break;
+        }
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDelete(Habit habit)
+    {
+        var choice = await Owner.Choose(L.T("habits.deleteTitle"), [L.T("habits.archiveKeep"), L.T("common.deleteForever"), L.T("common.cancel")]);
+        if (choice == 0) { habit.Archived = true; Commit(); Owner.Status(L.T("habits.archived")); }
+        else if (choice == 1) { store.Book.Habits.Remove(habit); Commit(); Owner.Status(L.T("habits.deleted")); }
+    }
+
+    private async Task ManageArchived()
+    {
+        var archived = store.Book.Archived.ToList();
+        if (archived.Count == 0) return;
+        var names = archived.Select(habit => habit.Name).Append("Cancelar").ToArray();
+        int index = await Owner.Choose(L.T("habits.archivedTitle"), names);
+        if (index < 0 || index >= archived.Count) return;
+        var target = archived[index];
+        int action = await Owner.Choose(target.Name.ToUpper(Strings.Culture), [L.T("common.restore"), L.T("common.deleteForever"), L.T("common.cancel")]);
+        if (action == 0) { target.Archived = false; Commit(); Owner.Status(L.T("habits.restored")); }
+        else if (action == 1) { store.Book.Habits.Remove(target); Commit(); Owner.Status(L.T("habits.deleted")); }
+        StateHasChanged();
+    }
+
+    // ---------------------------------------------------------------- cadence
+
+    private HabitCadence editCadence;
+    private HashSet<DayOfWeek> editDays = [];
+    private int editTimes;
+
+    private static readonly DayOfWeek[] Week = [DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday];
+
+    private void EditCadence(Habit habit)
+    {
+        editCadence = habit.Cadence;
+        editDays = new HashSet<DayOfWeek>(habit.Days);
+        editTimes = habit.TimesPerWeek;
+        Owner.ShowPanel(this, CadencePanel(habit));
+    }
+
+    private void CadenceChanged(Habit habit) => Owner.ShowPanel(this, CadencePanel(habit));
+
+    private RenderFragment CadencePanel(Habit habit) => __builder =>
+    {
+        string explain = editCadence switch
+        {
+            HabitCadence.Selected => editDays.Count == 0 ? L.T("habits.cadencePickDay") : L.T("habits.cadenceSelectedHelp"),
+            HabitCadence.Weekly => L.T("habits.cadenceWeeklyHelp", editTimes, editTimes == 1 ? L.T("habits.dayOne").ToLower(Strings.Culture) : L.T("habits.dayMany").ToLower(Strings.Culture)),
+            _ => L.T("habits.cadenceDailyHelp")
+        };
+        <div class="backdrop">
+            <div class="dialog" style="width:520px">
+                <div class="dialog-head">
+                    <strong>POMODOCK / FRECUENCIA</strong>
+                    <button class="chrome-btn" @onclick="() => Owner.ClosePanel(this)">×</button>
+                </div>
+                <div class="dialog-body">
+                    <h2 class="dialog-heading">FRECUENCIA</h2>
+                    <p class="muted" style="font-size:11.5px;margin:0">@L.T("habits.cadenceHelp", habit.Name)</p>
+                    <div class="dialog-stack" style="margin:16px 0 8px">
+                        @foreach (var (mode, label) in new[] { (HabitCadence.Daily, L.T("habits.cadenceDaily")), (HabitCadence.Selected, L.T("habits.cadenceSelected")), (HabitCadence.Weekly, L.T("habits.cadenceWeekly")) })
+                        {
+                            var picked = mode;
+                            <button class="btn @(mode == editCadence ? "ink" : "")" style="justify-content:flex-start;margin:0 0 6px" @onclick="() => { editCadence = picked; CadenceChanged(habit); }">@label</button>
+                        }
+                    </div>
+                    @if (editCadence == HabitCadence.Selected)
+                    {
+                        <div class="cadence-days">
+                            @foreach (var day in Week)
+                            {
+                                var picked = day;
+                                <button class="btn @(editDays.Contains(day) ? "ink" : "")" @onclick="() => { if (!editDays.Add(picked)) editDays.Remove(picked); CadenceChanged(habit); }">@DayLetters[((int)day + 6) % 7]</button>
+                            }
+                        </div>
+                    }
+                    @if (editCadence == HabitCadence.Weekly)
+                    {
+                        <div class="cadence-times">
+                            <button class="btn" @onclick="() => { editTimes = Math.Max(1, editTimes - 1); CadenceChanged(habit); }">−</button>
+                            <b class="mono">@editTimes</b>
+                            <button class="btn" @onclick="() => { editTimes = Math.Min(7, editTimes + 1); CadenceChanged(habit); }">+</button>
+                        </div>
+                    }
+                    <p class="muted" style="font-size:11px;margin:2px 0 14px">@explain</p>
+                    <div class="dialog-row">
+                        <button class="btn" @onclick="() => SaveCadence(habit)">GUARDAR</button>
+                        <button class="btn" @onclick="() => Owner.ClosePanel(this)">CANCELAR</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    private void SaveCadence(Habit habit)
+    {
+        var cadence = editCadence;
+        if (cadence == HabitCadence.Selected && editDays.Count == 0) cadence = HabitCadence.Daily;
+        habit.Cadence = cadence;
+        habit.Days = editDays.ToList();
+        habit.TimesPerWeek = editTimes;
+        Owner.ClosePanel(this);
+        Commit();
+    }
+
+    // ---------------------------------------------------------------- detail
+
+    private void ShowDetail(Habit habit) => Owner.ShowPanel(this, DetailPanel(habit));
+
+    private RenderFragment DetailPanel(Habit habit) => __builder =>
+    {
+        var value = HabitProgress.For(habit, today);
+        <div class="backdrop">
+            <div class="dialog" style="width:640px">
+                <div class="dialog-head">
+                    <strong>POMODOCK / @L.T("habits.detailTitle")</strong>
+                    <button class="chrome-btn" @onclick="() => Owner.ClosePanel(this)">×</button>
+                </div>
+                <div class="dialog-body" style="padding:22px 26px">
+                    <h2 class="dialog-heading">@habit.Name.ToUpper(CultureInfo.CurrentCulture)</h2>
+                    <p class="muted" style="font-size:11.5px;margin:-10px 0 16px">@(CadenceLabel(habit) + (habit.Target > 1 ? L.T("habits.timesADay", habit.Target) : ""))</p>
+                    <div class="habit-tiles">
+                        @foreach (var (caption, text) in new[]
+                        {
+                            (value.StreakInWeeks ? L.T("habits.streakWeeks") : L.T("habits.streak"), value.Streak.ToString(CultureInfo.InvariantCulture)),
+                            (L.T("habits.best"), value.Best.ToString(CultureInfo.InvariantCulture)),
+                            (L.T("habits.days"), value.Total.ToString(CultureInfo.InvariantCulture)),
+                            (L.T("habits.thirtyDays"), L.T("habits.percent", (value.Rate * 100).ToString("0", CultureInfo.InvariantCulture)))
+                        })
+                        {
+                            <div><b class="mono">@text</b><small>@caption</small></div>
+                        }
+                    </div>
+                    @Heatmap(habit, 18)
+                    <p class="muted" style="font-size:10.5px;margin:16px 0 14px">@L.T("habits.xpDetail", value.Xp)</p>
+                    <button class="btn" @onclick="() => Owner.ClosePanel(this)">CERRAR</button>
+                </div>
+            </div>
+        </div>
+    };
+
+    /// <summary>A calendar of the last weeks, Monday on top, so gaps and runs are obvious.</summary>
+    private RenderFragment Heatmap(Habit habit, int weeks) => __builder =>
+    {
+        const int size = 15, gap = 3;
+        var start = HabitBook.WeekStart(today).AddDays(-7 * (weeks - 1));
+        int lastMonth = -1;
+        <div class="heatmap scroll">
+            <div class="heatmap-months">
+                <span></span>
+                @for (int w = 0; w < weeks; w++)
+                {
+                    var monday = start.AddDays(7 * w);
+                    bool show = monday.Month != lastMonth;
+                    lastMonth = monday.Month;
+                    <span style="@Css($"width:{size + gap}px")">@(show ? MonthNames[monday.Month - 1] : "")</span>
+                }
+            </div>
+            <div class="heatmap-body">
+                <div class="heatmap-letters">
+                    @foreach (var letter in DayLetters)
+                    {
+                        <span style="@Css($"height:{size + gap}px")">@letter</span>
+                    }
+                </div>
+                @for (int w = 0; w < weeks; w++)
+                {
+                    <div>
+                        @for (int d = 0; d < 7; d++)
+                        {
+                            var day = start.AddDays(7 * w + d);
+                            bool future = day > today;
+                            bool done = habit.IsComplete(day);
+                            int count = habit.Count(day);
+                            double opacity = future ? .25 : !habit.IsDue(day) && !done ? .5 : 1;
+                            string tip = L.T("habits.mapTip", $"{day:dd/MM/yyyy}", future ? L.T("habits.stateFuture") : done ? L.T("habits.stateDone") : count > 0 ? $"{count}/{habit.Target}" : habit.IsDue(day) ? L.T("habits.stateUnmarked") : L.T("habits.stateFree"));
+                            <button class="heat-cell @(done ? "done" : "") @(habit.IsDue(day) ? "due" : "") @(day == today ? "today" : "")" disabled="@future" title="@tip"
+                                    style="@Css($"width:{size}px;height:{size}px;margin:0 {gap}px {gap}px 0;opacity:{opacity}")"
+                                    @onclick="() => { habit.SetCount(day, done ? 0 : habit.Target); Commit(); Owner.ShowPanel(this, DetailPanel(habit)); }">
+                                @if (!done && count > 0)
+                                {
+                                    @Gauge(count, habit.Target, size - 5)
+                                }
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    };
+
+    private static string CadenceLabel(Habit habit) => habit.Cadence switch
+    {
+        HabitCadence.Selected => L.T("habits.cadenceSelectedLabel", string.Join(" ", habit.Days.Select(day => DayLetters[((int)day + 6) % 7]))),
+        HabitCadence.Weekly => $"{habit.TimesPerWeek} veces por semana",
+        _ => L.T("habits.cadenceDailyLabel")
+    };
+
+    private static string? CadenceBadge(Habit habit) => habit.Cadence switch
+    {
+        HabitCadence.Selected => string.Concat(habit.Days.Select(day => DayLetters[((int)day + 6) % 7])),
+        HabitCadence.Weekly => $"{habit.TimesPerWeek}/SEM",
+        _ => habit.Target > 1 ? $"×{habit.Target}" : null
+    };
+
+    internal bool ApplyNavigate(string to)
+    {
+        string key = to.Trim().ToLowerInvariant();
+        today = DateOnly.FromDateTime(DateTime.Now);
+        if (key is "today" or "hoy" or "esta" or "this") { week = HabitBook.WeekStart(today); StateHasChanged(); return true; }
+        if (key is "prev" or "previous" or "anterior" or "back" or "-1") { week = week.AddDays(-7); StateHasChanged(); return true; }
+        if (key is "next" or "siguiente" or "forward" or "+1") { week = week.AddDays(7); StateHasChanged(); return true; }
+        return false;
+    }
+}

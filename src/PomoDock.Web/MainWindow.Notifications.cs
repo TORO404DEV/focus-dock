@@ -5,8 +5,12 @@ namespace PomoDock.Web;
 /// <summary>A button on an alert card. Primary is the inked one.</summary>
 internal sealed record AlertAction(string Label, Action Run, bool Primary = false);
 
-/// <summary>One centered, sticky card per unread notification. It waits until the user acts.</summary>
-internal sealed record AlertCard(Guid Id, string Lead, string Title, string Detail, IReadOnlyList<AlertAction> Actions);
+/// <summary>
+/// One centered, sticky card per unread notification. It waits until the user acts. A reminder
+/// card wears its event's colour and names the place; a timer card is ink.
+/// </summary>
+internal sealed record AlertCard(Guid Id, string Lead, string Title, string Detail, IReadOnlyList<AlertAction> Actions,
+    string Accent = "var(--ink)", string Place = "", string CueKey = "");
 
 public partial class MainWindow
 {
@@ -149,6 +153,11 @@ public partial class MainWindow
     {
         foreach (var note in notifications.History.Items.Where(item => !item.Read).Reverse())
         {
+            if (note.Kind != "timer" && ResolveReminderCue(note) is { } live)
+            {
+                PresentReminder(note, live, DateTime.Now);
+                continue;
+            }
             string detail = note.DeliveredLocal.ToString("ddd dd MMM · HH:mm", Strings.Culture).ToUpper(Strings.Culture);
             PresentAlert(new AlertCard(note.Id, L.T("notifications.pendingLead"), note.Title, detail,
                 [new AlertAction(L.T("agenda.toastDone"), () => { }, true)]));

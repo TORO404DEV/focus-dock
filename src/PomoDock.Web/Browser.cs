@@ -46,6 +46,7 @@ public sealed class Browser
     public void Download(string name, string text) => js.InvokeVoid("pd.download", name, text);
     public void Open(string url) => js.InvokeVoid("pd.open", url);
     public void Copy(string text) => js.InvokeVoid("pd.copy", text);
+    public void ScrollTo(string selector, double top) => js.InvokeVoid("pd.scrollTo", selector, top);
     /// <summary>The To Do row a dragged task would land before, among rows of the same done state.</summary>
     public Guid? TaskUnder(double x, double y, string group) =>
         Guid.TryParse(js.Invoke<string?>("pd.taskUnder", x, y, group), out var id) ? id : null;

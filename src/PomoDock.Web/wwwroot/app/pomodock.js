@@ -454,6 +454,10 @@
 
   pd.open = (url) => { window.open(url, '_blank', 'noopener'); };
 
+  pd.scrollTo = (selector, top) => {
+    requestAnimationFrame(() => { const element = document.querySelector(selector); if (element) element.scrollTop = top; });
+  };
+
   pd.copy = (text) => {
     if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => { });
   };
