@@ -14,7 +14,7 @@ secondary display. Local-first. MIT.
 [![MIT](https://img.shields.io/github/license/TORO404DEV/focus-dock?color=171916)](LICENSE)
 [![Build](https://github.com/TORO404DEV/focus-dock/actions/workflows/ci.yml/badge.svg)](https://github.com/TORO404DEV/focus-dock/actions/workflows/ci.yml)
 
-[Website](https://pomodock.com) · [Releases](https://github.com/TORO404DEV/focus-dock/releases) · [★ Star](https://github.com/TORO404DEV/focus-dock)
+[Open in the browser](https://pomodock.com) · [Website](https://pomodock.com/en/) · [Releases](https://github.com/TORO404DEV/focus-dock/releases) · [★ Star](https://github.com/TORO404DEV/focus-dock)
 
 </div>
 
@@ -64,6 +64,20 @@ dotnet build PomoDock.sln -c Release
 
 Then open **PomoDock** from the Start menu.
 
+### In the browser
+
+[pomodock.com](https://pomodock.com) opens **PomoDock Web**: the same workspace,
+no install and no account. It is a Blazor WebAssembly build of the same
+`PomoDock.Core`, so the timer, the widgets, the backup format and the agent's
+rules are the desktop's own. Data stays in that browser (`localStorage`); export
+a backup from Settings › Space to move it. The agent calls DeepSeek straight
+from the page with your own key. What needs Windows itself—embedding other
+apps' windows, always-on listening, Whisper dictation—stays in the desktop app.
+
+```powershell
+.\scripts\build-web.ps1   # publishes into website/ (see website/README.md)
+```
+
 ## Start fast
 
 1. Move the window to your secondary / vertical monitor.
@@ -86,6 +100,8 @@ PC.
 ## Stack
 
 WPF on .NET 8 · SQLite · WebView2 · Win32 embedding · synthesized audio · Whisper dictation · DeepSeek for agent chat (optional)
+
+Web: Blazor WebAssembly on the same Core · localStorage · Web Audio · Web Speech
 
 ## Contributing
 
