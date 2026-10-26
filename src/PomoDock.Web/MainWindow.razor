@@ -75,6 +75,10 @@
 {
     <SettingsWindow Owner="this" OnClose="CloseSettings" />
 }
+@if (reportOpen)
+{
+    <ReportWindow Owner="this" OnClose="CloseReport" />
+}
 @if (tasksOpen)
 {
     <TasksWindow Owner="this" Current="selectedTask" OnClose="TasksClosed" />

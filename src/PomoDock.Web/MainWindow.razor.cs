@@ -345,9 +345,15 @@ public partial class MainWindow : ComponentBase
         return (true, L.T("status.contextMoved"));
     }
 
-    private async Task ReportClick()
+    private bool reportOpen;
+
+    private void ReportClick() => reportOpen = true;
+
+    private void CloseReport()
     {
-        await Alert(L.T("chrome.report").Split('·')[0].Trim(), L.T("web.comingSoon"));
+        reportOpen = false;
+        // An import or a corrected session changes the metrics on the page.
+        StateHasChanged();
     }
 
     private async Task AgentClick()
@@ -458,6 +464,11 @@ public partial class MainWindow : ComponentBase
         }
         // The desk handles its own Escape: it first closes an editor, then itself.
         if (tasksOpen) return false;
+        if (reportOpen)
+        {
+            if (key == "Escape") { reportOpen = false; return true; }
+            return false;
+        }
         if (key == "Escape" && pageMapOpen) { HidePageMap(); return true; }
         if (key == "Escape" && notificationsOpen) { notificationsOpen = false; return true; }
         if (key == "F11") { Browser.ToggleFullscreen(); return true; }

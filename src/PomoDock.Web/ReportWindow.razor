@@ -1,0 +1,612 @@
+@* The focus report: one period at a time, its hours on an inverted band, the rhythm of the work,
+   the projects it went to, and every session in the detail tab. *@
+
+<div class="backdrop shade" @onclick="Close">
+    <div class="dialog report" @onclick:stopPropagation>
+        <div class="dialog-head">
+            <strong>@L.T("report.modalTitle")</strong>
+            <button class="chrome-btn" title="@L.T("report.close")" @onclick="Close">×</button>
+        </div>
+        <div class="report-body">
+            <div class="report-top">
+                <div class="report-title">
+                    <div>
+                        <h2>@L.T("report.title")</h2>
+                        <small class="mono muted">@L.T("report.tagline")</small>
+                    </div>
+                    <div class="report-actions">
+                        <label class="btn" title="@L.T("report.importTip")">@L.T("report.import")<InputFile accept=".csv,.tsv,.json" style="display:none" OnChange="Import" /></label>
+                        <button class="btn" title="@L.T("report.csvTip")" @onclick="ExportCsv">@L.T("report.csv")</button>
+                        <button class="btn last" title="@L.T("report.backupTip")" @onclick="ExportJson">@L.T("report.backup")</button>
+                    </div>
+                </div>
+                <div class="report-nav">
+                    <div class="report-tabs">
+                        <button class="btn @(tab == ReportTab.Summary ? "ink" : "")" @onclick="() => tab = ReportTab.Summary">@L.T("report.tabSummary")</button>
+                        <button class="btn @(tab == ReportTab.Detail ? "ink" : "")" @onclick="() => tab = ReportTab.Detail">@L.T("report.tabDetail")</button>
+                    </div>
+                    <div class="report-periods">
+                        <button class="btn @(period == PeriodMode.Week ? "ink" : "")" @onclick="() => ChangePeriod(PeriodMode.Week)">@L.T("report.week")</button>
+                        <button class="btn @(period == PeriodMode.Month ? "ink" : "")" @onclick="() => ChangePeriod(PeriodMode.Month)">@L.T("report.month")</button>
+                        <button class="btn last @(period == PeriodMode.Year ? "ink" : "")" @onclick="() => ChangePeriod(PeriodMode.Year)">@L.T("report.year")</button>
+                    </div>
+                </div>
+                @if (status.Length > 0)
+                {
+                    <p class="report-status">@status</p>
+                }
+            </div>
+            <div class="report-content scroll">
+                @if (tab == ReportTab.Summary)
+                {
+                    @Summary
+                }
+                else
+                {
+                    @Detail
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private enum ReportTab { Summary, Detail }
+    private enum PeriodMode { Week, Month, Year }
+
+    private static readonly string[] MonthLabels = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+    /// <summary>Sunday first, matching <see cref="DayOfWeek"/>, and named by the chosen language.</summary>
+    private static string[] DayLabels =>
+    [
+        L.T("report.dayShort.sunday"), L.T("report.dayShort.monday"), L.T("report.dayShort.tuesday"),
+        L.T("report.dayShort.wednesday"), L.T("report.dayShort.thursday"), L.T("report.dayShort.friday"),
+        L.T("report.dayShort.saturday")
+    ];
+    private static readonly string[] SeriesPalette = ["#E85D5D", "#F2B84B", "#65C466", "#4E86D9", "#A86BDD", "#E07A38"];
+
+    [Parameter, EditorRequired] public MainWindow Owner { get; set; } = null!;
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private List<Session> sessions = [];
+    private List<Session> exportSessions = [];
+    private ReportTab tab = ReportTab.Summary;
+    private PeriodMode period = PeriodMode.Year;
+    private DateOnly anchor = DateOnly.FromDateTime(DateTime.Today);
+    private string query = "";
+    private string projectFilter = "";
+    private string status = "";
+    private int hover = -1;
+
+    protected override void OnInitialized() => ReloadData();
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private void ReloadData() =>
+        sessions = Owner.Store.Sessions().Where(s => s.Phase == Phase.Focus).OrderByDescending(s => s.Started).ToList();
+
+    private void ChangePeriod(PeriodMode mode)
+    {
+        period = mode;
+        anchor = DateOnly.FromDateTime(DateTime.Today);
+    }
+
+    private static string Css(FormattableString style) => FormattableString.Invariant(style);
+
+    // ---------------------------------------------------------------- summary
+
+    private RenderFragment Summary => __builder =>
+    {
+        // Everything on this page answers for the chosen period, so the period is picked first and
+        // every number below is computed from the sessions inside it. Only the rank stays lifetime.
+        var range = Range();
+        var periodSessions = sessions.Where(s => Reports.MinutesIn(s, range.Start, range.End, TimeZoneInfo.Local) > 0).ToList();
+        var allDaily = Reports.Daily(sessions, TimeZoneInfo.Local);
+        var daily = Reports.Daily(periodSessions, TimeZoneInfo.Local)
+            .Where(pair => pair.Key >= range.Start && pair.Key <= range.End)
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var totalMinutes = daily.Sum(pair => pair.Value);
+        var data = BuildChart(range.Start, range.End);
+        exportSessions = data.Sessions;
+        @PeriodNavigator(range)
+        @Hero(totalMinutes, PeriodLabel(range))
+        @StatStrip(daily, allDaily, periodSessions, today, totalMinutes)
+        @Rhythm(daily, periodSessions)
+        @Section(L.T("report.focusHours"), L.T("report.focusHoursDetail"))
+        <div class="report-chart">
+            @if (data.TotalMinutes <= 0)
+            {
+                <div class="report-empty">
+                    <b class="mono">@L.T("report.noPeriodData")</b>
+                    <small>@L.T("report.noPeriodHint")</small>
+                </div>
+            }
+            else
+            {
+                @StackedBars(data)
+            }
+        </div>
+        <div class="report-range">
+            <span><b class="mono">@FormatDuration(data.TotalMinutes)</b><small>@L.T("report.periodTotal")</small></span>
+            <span class="mono muted">@($"{data.Sessions.Count.ToString("N0", Strings.Culture)} {L.T("report.statSessions")}")</span>
+        </div>
+        @Section(L.T("report.projects"), L.T("report.projectsDetail"))
+        @if (data.ProjectTotals.Count == 0)
+        {
+            <p>@L.T("report.noActivity")</p>
+        }
+        @foreach (var item in data.ProjectTotals)
+        {
+            @ProjectRow(item.Name, item.Minutes, data.TotalMinutes, data.Colors.GetValueOrDefault(item.SeriesName, "var(--muted)"))
+        }
+        var apps = AppUsage.CombineSessions(periodSessions);
+        @Section(L.T("report.apps"), L.T("report.appsDetail"))
+        @if (apps.Count == 0)
+        {
+            <p class="muted" style="font-size:12px;margin:4px 0 8px">@L.T("report.appsEmpty")</p>
+        }
+        else
+        {
+            double appTotal = Math.Max(0.001, apps.Sum(item => item.Seconds / 60));
+            foreach (var item in apps.Take(12))
+            {
+                @ProjectRow(item.Label, item.Seconds / 60, appTotal, "var(--muted)")
+            }
+        }
+    };
+
+    /// <summary>
+    /// The one number worth a screenshot: every hour of real focus, on an inverted band, with the
+    /// rank it earned and how far the next one is. Everything below it is context for this.
+    /// </summary>
+    private RenderFragment Hero(double totalMinutes, string periodLabel) => __builder =>
+    {
+        var rank = FocusProfile.Of(sessions);
+        int hours = (int)(totalMinutes / 60), minutes = (int)Math.Round(totalMinutes % 60);
+        <div class="report-hero">
+            <small class="mono">@L.T("report.heroLeadPeriod", periodLabel)</small>
+            <b class="mono">@L.T("report.heroHours", hours.ToString("N0", Strings.Culture), minutes.ToString("00", CultureInfo.InvariantCulture))</b>
+            @if (totalMinutes <= 0)
+            {
+                <p>@L.T("report.heroEmpty")</p>
+            }
+            else
+            {
+                <div class="report-rank">
+                    <span>
+                        <em class="mono">@L.T("report.heroRank", rank.Level.ToString("00", CultureInfo.InvariantCulture), rank.Name)</em>
+                        <small class="mono">@L.T("report.heroLifetime", Spelled(FocusProfile.Hours(sessions) * 60))</small>
+                    </span>
+                    <small class="mono">@(rank.IsHighest ? L.T("report.heroTop") : L.T("report.heroNext", rank.ToNext.ToString("0.#", Strings.Culture), FocusProfile.NextName(rank)))</small>
+                </div>
+                @* At the top rank there is nothing left to fill, so the bar is drawn complete on purpose. *@
+                <div class="report-rank-track"><i style="@Css($"width:{rank.Share * 100:0.##}%")"></i></div>
+            }
+        </div>
+    };
+
+    /// <summary>
+    /// Four numbers that say whether the habit is holding, all of them about the chosen period.
+    /// The running streak is the exception: it is only meaningful counted to today.
+    /// </summary>
+    private RenderFragment StatStrip(Dictionary<DateOnly, double> daily, Dictionary<DateOnly, double> allDaily, List<Session> periodSessions, DateOnly today, double totalMinutes) => __builder =>
+    {
+        int daysWithFocus = daily.Count(pair => pair.Value > 0);
+        int activeDays = Math.Max(1, daysWithFocus);
+        var outcomes = Reports.Outcomes(periodSessions);
+        int totalSessions = outcomes.Completed + outcomes.Partial;
+        <div class="report-tiles">
+            @Tile(Reports.Streak(allDaily, today).ToString("N0", Strings.Culture), L.T("report.statStreak"), L.T("report.statStreakUnit"), true)
+            @Tile(Reports.BestStreak(daily).ToString("N0", Strings.Culture), L.T("report.statBestStreak"), L.T("report.statStreakUnit"), false)
+            @Tile(daysWithFocus.ToString("N0", Strings.Culture), L.T("report.statDays"), "", false)
+            @Tile(daysWithFocus == 0 ? "—" : Spelled(totalMinutes / activeDays), L.T("report.statAverage"),
+                totalSessions > 0 ? L.T("report.statCompleted", (outcomes.Completed * 100 / Math.Max(1, totalSessions)).ToString("0", CultureInfo.InvariantCulture)) : "", false)
+        </div>
+    };
+
+    private static RenderFragment Tile(string value, string label, string detail, bool accent) => __builder =>
+    {
+        <div class="report-tile @(accent ? "accent" : "")">
+            <b class="mono">@value</b>
+            <small>@label</small>
+            @if (detail.Length > 0)
+            {
+                <em class="mono">@detail</em>
+            }
+        </div>
+    };
+
+    /// <summary>
+    /// When the work actually happens. Two small profiles — the hours of the day and the days of
+    /// the week — plus the peak of each, which is the part people quote about themselves.
+    /// </summary>
+    private RenderFragment Rhythm(Dictionary<DateOnly, double> daily, List<Session> periodSessions) => __builder =>
+    {
+        var hours = Reports.ByHour(periodSessions, TimeZoneInfo.Local);
+        var week = Reports.ByWeekday(daily);
+        var best = Reports.BestDay(daily);
+        // Monday first: the weekday array is Sunday-first to match DayOfWeek.
+        var ordered = Enumerable.Range(0, 7).Select(index => week[(index + 1) % 7]).ToArray();
+        int peakHour = Array.IndexOf(hours, hours.Max());
+        int peakDay = Array.IndexOf(week, week.Max());
+        @Section(L.T("report.rhythm"), L.T("report.rhythmDetail"))
+        <div class="report-rhythm">
+            <div>
+                <div class="report-mini">@L.T("report.byHour")</div>
+                @Profile(hours, index => index % 6 == 0 ? $"{index:00}" : "", 54)
+                <div class="report-mini">@L.T("report.byWeekday")</div>
+                @Profile(ordered, index => DayLabels[(index + 1) % 7], 46)
+            </div>
+            <div>
+                @Callout(L.T("report.peakHour"), hours.Max() > 0 ? L.T("report.peakHourValue", peakHour.ToString("00", CultureInfo.InvariantCulture)) : "—")
+                @Callout(L.T("report.peakDay"), week.Max() > 0 ? DayLabels[peakDay] : "—")
+                @* Spelled out rather than hh:mm: "12/02 · 03:39" reads as a clock time, not as three hours. *@
+                @Callout(L.T("report.bestDay"), best.Minutes > 0 ? L.T("report.bestDayValue", best.Day.ToString("dd/MM", CultureInfo.InvariantCulture), Spelled(best.Minutes)) : "—")
+            </div>
+        </div>
+    };
+
+    private static RenderFragment Callout(string label, string value) => __builder =>
+    {
+        <div class="report-callout"><small>@label</small><b class="mono">@value</b></div>
+    };
+
+    /// <summary>
+    /// A small profile of one series. The tallest bar is full ink, the rest sit back, so the shape
+    /// reads at a glance instead of being studied.
+    /// </summary>
+    private static RenderFragment Profile(double[] values, Func<int, string> label, double barHeight) => __builder =>
+    {
+        double max = values.DefaultIfEmpty(0).Max();
+        int peak = Array.IndexOf(values, max);
+        int count = Math.Max(1, values.Length);
+        double cell = 100.0 / count;
+        double width = cell * .74;
+        <svg class="report-profile" viewBox="@Css($"0 0 100 {barHeight + 13}")" preserveAspectRatio="none" style="@Css($"height:{barHeight + 13}px")">
+            @for (int index = 0; index < values.Length; index++)
+            {
+                double x = index * cell + (cell - width) / 2;
+                <rect x="@Css($"{x}")" y="0" width="@Css($"{width}")" height="@Css($"{barHeight}")" class="track" />
+                if (max > 0 && values[index] > 0)
+                {
+                    double height = Math.Max(1.5, barHeight * values[index] / max);
+                    <rect x="@Css($"{x}")" y="@Css($"{barHeight - height}")" width="@Css($"{width}")" height="@Css($"{height}")" class="@(index == peak ? "peak" : "bar")" />
+                }
+            }
+        </svg>
+        <div class="report-profile-labels" style="@($"grid-template-columns:repeat({count},minmax(0,1fr))")">
+            @for (int index = 0; index < values.Length; index++)
+            {
+                <span>@label(index)</span>
+            }
+        </div>
+    };
+
+    private sealed record ReportBucket(string Label, Dictionary<string, double> Values);
+    private sealed record ProjectTotal(string Name, double Minutes, string SeriesName);
+    private sealed record ChartData(List<ReportBucket> Buckets, Dictionary<string, string> Colors, List<ProjectTotal> ProjectTotals, List<Session> Sessions, double TotalMinutes);
+
+    /// <summary>Hours per bucket, stacked by project, with the bucket's breakdown on hover.</summary>
+    private RenderFragment StackedBars(ChartData data) => __builder =>
+    {
+        double rawMax = data.Buckets.Select(bucket => bucket.Values.Values.Sum()).DefaultIfEmpty(0).Max() / 60;
+        double maxHours = NiceMaximum(rawMax);
+        int count = Math.Max(1, data.Buckets.Count);
+        int every = count <= 12 ? 1 : Math.Max(1, (int)Math.Ceiling(count / 12.0));
+        <div class="report-bars" @onmouseleave="() => hover = -1">
+            <div class="report-axis">
+                <span>H</span>
+                @for (int line = 4; line >= 0; line--)
+                {
+                    double value = maxHours * line / 4;
+                    <span>@value.ToString(value < 10 ? "0.#" : "0", CultureInfo.CurrentCulture)</span>
+                }
+            </div>
+            <div class="report-plot">
+                @for (int line = 0; line <= 4; line++)
+                {
+                    <i class="report-gridline" style="@Css($"bottom:{line * 25}%")"></i>
+                }
+                @for (int index = 0; index < data.Buckets.Count; index++)
+                {
+                    var bucket = data.Buckets[index];
+                    int captured = index;
+                    <div class="report-bucket" @onmouseenter="() => hover = bucket.Values.Values.Sum() > .001 ? captured : -1">
+                        <div class="report-stack">
+                            @foreach (var entry in bucket.Values.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+                            {
+                                if (!data.Colors.TryGetValue(entry.Key, out var color)) continue;
+                                <i style="@Css($"height:{entry.Value / 60 / maxHours * 100}%;background:{color}")"></i>
+                            }
+                        </div>
+                        <span>@((index % every == 0 || index == data.Buckets.Count - 1) ? bucket.Label.Replace('\n', ' ') : "")</span>
+                        @if (hover == index)
+                        {
+                            var total = bucket.Values.Values.Sum();
+                            <div class="report-hover mono @(index > count / 2 ? "left" : "")">
+                                <b>@L.T("report.bucketTotal", bucket.Label.Replace('\n', ' '), FormatDuration(total))</b>
+                                @foreach (var pair in bucket.Values.OrderByDescending(pair => pair.Value))
+                                {
+                                    <span>@($"{pair.Key}  {FormatDuration(pair.Value)}")</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    };
+
+    private static double NiceMaximum(double value)
+    {
+        if (value <= 0) return 1;
+        double exponent = Math.Pow(10, Math.Floor(Math.Log10(value)));
+        double fraction = value / exponent;
+        double nice = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+        return nice * exponent;
+    }
+
+    /// <summary>
+    /// One project, drawn as the share it actually took. The bar is the row's own background rather
+    /// than a swatch beside it, so the ranking is legible as a shape before a single number is read.
+    /// </summary>
+    private static RenderFragment ProjectRow(string name, double minutes, double total, string color) => __builder =>
+    {
+        double share = total > 0 ? minutes / total : 0;
+        <div class="report-project">
+            <i class="fill" style="@Css($"width:{share * 100:0.##}%;background:{color}")"></i>
+            <i class="edge" style="background:@color"></i>
+            <b>@name</b>
+            <span class="mono">@FormatDuration(minutes)</span>
+            <span class="mono share">@L.T("report.share", (share * 100).ToString("0", CultureInfo.InvariantCulture))</span>
+        </div>
+    };
+
+    private static RenderFragment Section(string title, string subtitle) => __builder =>
+    {
+        <div class="report-section"><b>@title</b><small class="mono muted">@subtitle</small></div>
+    };
+
+    private RenderFragment PeriodNavigator((DateOnly Start, DateOnly End) range) => __builder =>
+    {
+        <div class="report-period">
+            <button class="btn" style="width:52px" @onclick="() => Shift(-1)">←</button>
+            <b class="mono">@PeriodLabel(range)</b>
+            <button class="btn last" style="width:52px" disabled="@(NextRangeStart() > DateOnly.FromDateTime(DateTime.Today))" @onclick="() => Shift(1)">→</button>
+        </div>
+    };
+
+    private void Shift(int direction) =>
+        anchor = period switch { PeriodMode.Week => anchor.AddDays(7 * direction), PeriodMode.Month => anchor.AddMonths(direction), _ => anchor.AddYears(direction) };
+
+    // ---------------------------------------------------------------- detail
+
+    private RenderFragment Detail => __builder =>
+    {
+        var range = Range();
+        var candidates = sessions.Where(s => Reports.MinutesIn(s, range.Start, range.End, TimeZoneInfo.Local) > 0).ToList();
+        var allProjects = L.T("report.allProjects");
+        var projects = candidates.Select(ProjectName).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(value => value).ToList();
+        string text = query.Trim();
+        var visible = candidates.Where(s =>
+            (projectFilter.Length == 0 || string.Equals(ProjectName(s), projectFilter, StringComparison.OrdinalIgnoreCase)) &&
+            (text.Length == 0 || $"{s.Project} {s.Task} {s.Note} {AppUsage.Summarize(s.Apps ?? [], 8)}".Contains(text, StringComparison.OrdinalIgnoreCase)))
+            .OrderByDescending(s => s.Started).ToList();
+        exportSessions = visible;
+        var minutes = visible.Sum(s => Reports.MinutesIn(s, range.Start, range.End, TimeZoneInfo.Local));
+        @Section(L.T("report.detailTitle"), L.T("report.detailSubtitle"))
+        @PeriodNavigator(range)
+        <div class="report-filters">
+            <input class="field" title="@L.T("report.searchTip")" aria-label="@L.T("report.searchName")" @bind="query" @bind:event="oninput" />
+            <select class="field select" value="@projectFilter" @onchange="e => projectFilter = e.Value?.ToString() ?? string.Empty">
+                <option value="">@allProjects</option>
+                @foreach (var name in projects)
+                {
+                    <option value="@name">@name</option>
+                }
+            </select>
+        </div>
+        <p class="mono muted" style="font-size:10px;margin:0 0 10px">@L.T("report.sessionsMeta", visible.Count.ToString("N0", Strings.Culture), FormatDuration(minutes), PeriodLabel(range))</p>
+        @if (visible.Count == 0)
+        {
+            <p style="margin:18px 0">@L.T("report.noMatches")</p>
+        }
+        DateOnly? previousDay = null;
+        foreach (var session in visible.Take(500))
+        {
+            var day = LocalDate(session.Started);
+            if (day != previousDay)
+            {
+                <div class="report-day mono" style="@($"margin-top:{(previousDay is null ? 4 : 16)}px")">@($"{DayLabels[(int)day.DayOfWeek]}  {day:dd/MM/yyyy}")</div>
+                previousDay = day;
+            }
+            var item = session;
+            <div class="report-session">
+                <b class="mono">@session.Started.LocalDateTime.ToString("HH:mm")</b>
+                <div>
+                    <strong>@session.Task</strong>
+                    <small>@ProjectName(session)</small>
+                    @if (session.Apps is { Count: > 0 })
+                    {
+                        <small>@AppUsage.Summarize(session.Apps, 5)</small>
+                    }
+                </div>
+                <span class="mono">@FormatDuration(Reports.MinutesIn(session, range.Start, range.End, TimeZoneInfo.Local))</span>
+                <button class="btn last" style="padding:5px 8px;font-size:10px" title="@L.T("report.editSession")" @onclick="() => Edit(item)">@L.T("common.edit")</button>
+            </div>
+        }
+        if (visible.Count > 500)
+        {
+            <p class="muted" style="font-size:11px;margin:10px 0">@L.T("report.capped")</p>
+        }
+    };
+
+    // ---------------------------------------------------------------- data
+
+    private ChartData BuildChart(DateOnly start, DateOnly end)
+    {
+        var selectedSessions = sessions.Where(s => Reports.MinutesIn(s, start, end, TimeZoneInfo.Local) > 0).ToList();
+        var dailyByProject = sessions.GroupBy(ProjectName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => Reports.Daily(group, TimeZoneInfo.Local), StringComparer.OrdinalIgnoreCase);
+        var totals = dailyByProject.Select(pair => new ProjectTotal(pair.Key, Sum(pair.Value, start, end), pair.Key))
+            .Where(item => item.Minutes > .001).OrderByDescending(item => item.Minutes).ToList();
+        var primary = totals.Take(SeriesPalette.Length).Select(item => item.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var colors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        int colorIndex = 0;
+        foreach (var name in totals.Select(item => item.Name).Where(primary.Contains)) colors[name] = SeriesPalette[colorIndex++];
+        if (totals.Any(item => !primary.Contains(item.Name))) colors[OtherProjects] = "#73766C";
+
+        var projectTotals = totals.Select(item => primary.Contains(item.Name) ? item : item with { SeriesName = OtherProjects }).ToList();
+        var buckets = new List<ReportBucket>();
+        if (period == PeriodMode.Week)
+            for (var day = start; day <= end; day = day.AddDays(1)) buckets.Add(Bucket($"{DayLabels[(int)day.DayOfWeek]}\n{day:dd}", day, day));
+        else if (period == PeriodMode.Month)
+            for (var day = start; day <= end; day = day.AddDays(1)) buckets.Add(Bucket(day.Day.ToString(CultureInfo.InvariantCulture), day, day));
+        else
+            for (int month = 1; month <= 12; month++)
+            {
+                var first = new DateOnly(anchor.Year, month, 1);
+                buckets.Add(Bucket(MonthLabels[month - 1], first, new DateOnly(anchor.Year, month, DateTime.DaysInMonth(anchor.Year, month))));
+            }
+        return new ChartData(buckets, colors, projectTotals, selectedSessions, projectTotals.Sum(item => item.Minutes));
+
+        ReportBucket Bucket(string label, DateOnly from, DateOnly to)
+        {
+            var values = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in dailyByProject)
+            {
+                var minutes = Sum(pair.Value, from, to);
+                if (minutes <= .001) continue;
+                var key = primary.Contains(pair.Key) ? pair.Key : OtherProjects;
+                values[key] = values.GetValueOrDefault(key) + minutes;
+            }
+            return new ReportBucket(label, values);
+        }
+    }
+
+    private static double Sum(Dictionary<DateOnly, double> daily, DateOnly start, DateOnly end) => daily.Where(pair => pair.Key >= start && pair.Key <= end).Sum(pair => pair.Value);
+
+    private (DateOnly Start, DateOnly End) Range()
+    {
+        if (period == PeriodMode.Month)
+        {
+            var start = new DateOnly(anchor.Year, anchor.Month, 1);
+            return (start, new DateOnly(anchor.Year, anchor.Month, DateTime.DaysInMonth(anchor.Year, anchor.Month)));
+        }
+        if (period == PeriodMode.Year) return (new DateOnly(anchor.Year, 1, 1), new DateOnly(anchor.Year, 12, 31));
+        int offset = ((int)anchor.DayOfWeek + 6) % 7;
+        var monday = anchor.AddDays(-offset);
+        return (monday, monday.AddDays(6));
+    }
+
+    private DateOnly NextRangeStart()
+    {
+        var range = Range();
+        return period switch { PeriodMode.Week => range.Start.AddDays(7), PeriodMode.Month => range.Start.AddMonths(1), _ => range.Start.AddYears(1) };
+    }
+
+    private string PeriodLabel((DateOnly Start, DateOnly End) range) => period switch
+    {
+        PeriodMode.Week when range.Start.Month == range.End.Month => $"{range.Start:dd}–{range.End:dd} {MonthLabels[range.Start.Month - 1]} {range.End:yyyy}",
+        PeriodMode.Week => $"{range.Start:dd} {MonthLabels[range.Start.Month - 1]} – {range.End:dd} {MonthLabels[range.End.Month - 1]} {range.End:yyyy}",
+        PeriodMode.Month => $"{MonthLabels[range.Start.Month - 1]} {range.Start:yyyy}",
+        _ => range.Start.Year.ToString(CultureInfo.InvariantCulture)
+    };
+
+    /// <summary>The bucket every project past the palette falls into, named in the current language.</summary>
+    private static string OtherProjects => L.T("report.otherProjects");
+    private static string ProjectName(Session session) => string.IsNullOrWhiteSpace(session.Project) ? L.T("common.noProject") : session.Project.Trim();
+    private static DateOnly LocalDate(DateTimeOffset value) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(value, TimeZoneInfo.Local).DateTime);
+
+    /// <summary>A duration in words rather than hh:mm, for the places a clock reading would mislead.</summary>
+    private static string Spelled(double minutes)
+    {
+        int total = Math.Max(0, (int)Math.Round(minutes));
+        return total < 60
+            ? L.T("common.minutesShort", total)
+            : total % 60 == 0 ? L.T("common.hoursShort", total / 60) : L.T("common.hoursMinutes", total / 60, total % 60);
+    }
+
+    private static string FormatDuration(double minutes)
+    {
+        int total = Math.Max(0, (int)Math.Round(minutes));
+        return $"{total / 60:00}:{total % 60:00}";
+    }
+
+    // ---------------------------------------------------------------- actions
+
+    private async Task Edit(Session session)
+    {
+        var projectName = await Owner.Prompt(L.T("report.classifyTitle"), L.T("report.classifyProject"), session.Project);
+        if (projectName is null) return;
+        var taskName = await Owner.Prompt(L.T("report.classifyTitle"), L.T("report.classifyTask"), session.Task);
+        if (taskName is null) return;
+        var minutes = await Owner.Prompt(L.T("report.fixDurationTitle"), L.T("report.fixDurationLabel"), (session.Seconds / 60).ToString("0.###", CultureInfo.CurrentCulture));
+        if (minutes is null) return;
+        if (!double.TryParse(minutes, NumberStyles.Float, CultureInfo.CurrentCulture, out var value) || !double.IsFinite(value) || value <= 0 || value > 1440)
+        {
+            await Owner.Alert(L.T("report.badDurationTitle"), L.T("report.badDurationBody"));
+            return;
+        }
+        session.Project = string.IsNullOrWhiteSpace(projectName) ? "Sin proyecto" : projectName;
+        session.Task = string.IsNullOrWhiteSpace(taskName) ? "Enfoque libre" : taskName;
+        if (Math.Abs(value * 60 - session.Seconds) > .1)
+        {
+            session.OriginalSeconds ??= session.Seconds;
+            session.Segments = [new(session.Ended.AddMinutes(-value), session.Ended)];
+            session.Started = session.Segments[0].Start;
+            session.Note = L.T("report.correctedNote");
+        }
+        session.TaskId = Owner.Settings.Tasks.FirstOrDefault(task => task.Name == session.Task && task.Project == session.Project && !task.Template)?.Id;
+        Owner.Store.Save(session);
+        ReloadData();
+        StateHasChanged();
+    }
+
+    private void ExportCsv()
+    {
+        Owner.Browser.Download($"pomodock-{DateTime.Today:yyyy-MM-dd}.csv", WebStore.ExportCsv(exportSessions), "text/csv");
+        status = L.T("report.csvExported", exportSessions.Count.ToString("N0", Strings.Culture));
+    }
+
+    private void ExportJson()
+    {
+        Owner.SaveState();
+        Owner.Browser.Download($"pomodock-backup-{DateTime.Today:yyyy-MM-dd}.json", Owner.Store.ExportJson(Owner.Settings), "application/json");
+        status = L.T("report.backupExported");
+    }
+
+    private async Task Import(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            using var stream = e.File.OpenReadStream(32 * 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            string text = await reader.ReadToEndAsync();
+            if (e.File.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                // Habits and events go through their live stores: writing the rows directly would
+                // be overwritten by the copy every open widget keeps in memory.
+                var backup = WebStore.ReadBackup(text);
+                int count = Owner.Store.ImportSessions(backup);
+                int habits = HabitStore.For(Owner.Store).Merge(backup.Habits);
+                int events = AgendaStore.For(Owner.Store).Merge(backup.Agenda);
+                int notes = NoteArchiveStore.For(Owner.Store).Merge(backup.Notes);
+                int finance = FinanceStore.For(Owner.Store).Merge(backup.Finance);
+                status = L.T("report.imported", count.ToString("N0", Strings.Culture), habits.ToString("N0", Strings.Culture), events.ToString("N0", Strings.Culture), notes.ToString("N0", Strings.Culture), finance.ToString("N0", Strings.Culture));
+            }
+            else
+            {
+                bool settingsChanged = false;
+                var result = Owner.Store.Hold(() => PomofocusCsv.Import(text, Owner.Store.Sessions().Select(s => s.Id), Owner.Store.Save, Owner.Settings, out settingsChanged));
+                if (settingsChanged) Owner.SaveState();
+                status = L.T("report.importedPomofocus", result.Imported.ToString("N0", Strings.Culture), result.Skipped.ToString("N0", Strings.Culture), result.Invalid.ToString("N0", Strings.Culture));
+            }
+            ReloadData();
+        }
+        catch (Exception ex) when (ex is InvalidDataException or System.Text.Json.JsonException or IOException or FormatException)
+        {
+            await Owner.Alert(L.T("report.importFailedTitle"), L.T("report.importFailedBody", ex.Message));
+        }
+    }
+}

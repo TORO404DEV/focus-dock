@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using PomoDock.Core;
 
@@ -44,7 +45,29 @@ public sealed class WebStore
         var all = LoadSessions();
         int index = all.FindIndex(item => item.Id == session.Id);
         if (index >= 0) all[index] = session; else all.Add(session);
+        if (holding > 0) { pending = true; return; }
         Write(SessionsKey, all);
+    }
+
+    private int holding;
+    private bool pending;
+
+    /// <summary>
+    /// Runs a bulk change — an import of a few thousand sessions — and writes the sessions once at
+    /// the end. The desktop's database takes one row at a time; one JSON row cannot.
+    /// </summary>
+    public T Hold<T>(Func<T> change)
+    {
+        holding++;
+        try { return change(); }
+        finally
+        {
+            if (--holding == 0 && pending)
+            {
+                pending = false;
+                Write(SessionsKey, LoadSessions());
+            }
+        }
     }
 
     public List<Session> Sessions() => LoadSessions().OrderByDescending(s => s.Started).ToList();
@@ -86,6 +109,22 @@ public sealed class WebStore
     {
         try { return Read<T>(key); }
         catch (JsonException) { return null; }
+    }
+
+    /// <summary>The sessions as a spreadsheet, with the desktop's columns and formula guard.</summary>
+    public static string ExportCsv(IEnumerable<Session> sessions)
+    {
+        static string Cell(string s)
+        {
+            // Prevent spreadsheet formula execution in user-supplied names.
+            if (s.TrimStart().StartsWith('=') || s.TrimStart().StartsWith('+') || s.TrimStart().StartsWith('-') || s.TrimStart().StartsWith('@')) s = "'" + s;
+            return "\"" + s.Replace("\"", "\"\"") + "\"";
+        }
+        var lines = new List<string> { "id,start_utc,end_utc,phase,outcome,project,task,minutes,planned_minutes,pauses,note,apps" };
+        lines.AddRange(sessions.Select(s => string.Join(",", s.Id, s.Started.ToString("O"), s.Ended.ToString("O"), s.Phase, s.Outcome, Cell(s.Project), Cell(s.Task), (s.Seconds / 60).ToString("F3", CultureInfo.InvariantCulture), (s.PlannedSeconds / 60).ToString("F2", CultureInfo.InvariantCulture), s.Pauses, Cell(s.Note), Cell(AppUsage.Summarize(s.Apps ?? [], 8)))));
+        // A byte-order mark so a spreadsheet opens the accents right, as the desktop file does.
+        const string Bom = "\uFEFF", Line = "\r\n";
+        return Bom + string.Join(Line, lines) + Line;
     }
 
     public static BackupData ReadBackup(string json)

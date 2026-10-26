@@ -60,7 +60,7 @@
                                 @foreach (var value in row)
                                 {
                                     var picked = value;
-                                    <button class="shade" style="background:@value" title="@value" @onclick="() => Request.Value = picked"></button>
+                                    <button class="shade-cell" style="background:@value" title="@value" @onclick="() => Request.Value = picked"></button>
                                 }
                             </div>
                         }

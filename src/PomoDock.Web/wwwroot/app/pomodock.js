@@ -443,9 +443,9 @@
     });
   };
 
-  pd.download = (name, text) => {
+  pd.download = (name, text, type) => {
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    link.href = URL.createObjectURL(new Blob([text], { type: type || 'application/json' }));
     link.download = name;
     document.body.appendChild(link);
     link.click();

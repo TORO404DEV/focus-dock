@@ -80,7 +80,7 @@ public partial class MainWindow
     /// A dialog owns the workspace while it is visible. Keep every navigation entry point
     /// behind the same gate so swipe, keyboard and the page map behave alike.
     /// </summary>
-    private bool IsWorkspaceNavigationBlocked => dialogs.Count > 0 || panels.Count > 0 || settingsOpen || tasksOpen || notificationsOpen;
+    private bool IsWorkspaceNavigationBlocked => dialogs.Count > 0 || panels.Count > 0 || settingsOpen || tasksOpen || reportOpen || notificationsOpen;
 
     private void InitializeWorkspacePages()
     {

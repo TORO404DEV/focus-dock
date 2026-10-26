@@ -43,7 +43,7 @@ public sealed class Browser
     public void AskNotifications() => js.InvokeVoid("pd.askNotifications");
     public bool PageHidden() => js.Invoke<bool>("pd.hidden");
     public void Focus(string selector) => js.InvokeVoid("pd.focus", selector);
-    public void Download(string name, string text) => js.InvokeVoid("pd.download", name, text);
+    public void Download(string name, string text, string type = "application/json") => js.InvokeVoid("pd.download", name, text, type);
     public void Open(string url) => js.InvokeVoid("pd.open", url);
     public void Copy(string text) => js.InvokeVoid("pd.copy", text);
     public void ScrollTo(string selector, double top) => js.InvokeVoid("pd.scrollTo", selector, top);

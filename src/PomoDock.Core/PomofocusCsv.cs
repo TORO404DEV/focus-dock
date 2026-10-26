@@ -14,7 +14,19 @@ public static class PomofocusCsv
     public static CsvImportResult Import(Store store, Settings settings, string path)
     {
         if (!File.Exists(path)) throw new FileNotFoundException(L.T("csv.missing"), path);
-        var text = File.ReadAllText(path);
+        var result = Import(File.ReadAllText(path), store.Sessions().Select(s => s.Id), store.Save, settings, out bool settingsChanged);
+        if (settingsChanged) store.Write("settings", settings);
+        return result;
+    }
+
+    /// <summary>
+    /// The import itself, on the file's text: every new row goes to <paramref name="save"/>, and
+    /// projects and tasks it names are added to <paramref name="settings"/>. The desktop writes to
+    /// its database here; the web build writes to the browser.
+    /// </summary>
+    public static CsvImportResult Import(string text, IEnumerable<Guid> existing, Action<Session> save, Settings settings, out bool settingsChanged)
+    {
+        settingsChanged = false;
         if (string.IsNullOrWhiteSpace(text)) throw new InvalidDataException(L.T("csv.empty"));
         var delimiter = DetectDelimiter(text);
         var records = ParseRecords(text, delimiter).Where(r => r.Any(v => !string.IsNullOrWhiteSpace(v))).ToList();
@@ -29,9 +41,8 @@ public static class PomofocusCsv
         int endIndex = RequiredColumn(header, "endtime");
         int maxIndex = new[] { dateIndex, projectIndex, taskIndex, hoursIndex, startIndex, endIndex }.Max();
 
-        var known = store.Sessions().Select(s => s.Id).ToHashSet();
+        var known = existing.ToHashSet();
         int imported = 0, skipped = 0, invalid = 0;
-        bool settingsChanged = false;
         for (int rowIndex = 1; rowIndex < records.Count; rowIndex++)
         {
             var row = records[rowIndex];
@@ -115,13 +126,12 @@ public static class PomofocusCsv
                     Segments = segments,
                     Note = inferredTime ? "Importado desde Pomofocus CSV. Horario inferido porque faltaba una marca de tiempo." : "Importado desde Pomofocus CSV."
                 };
-                store.Save(session); known.Add(id); imported++;
+                save(session); known.Add(id); imported++;
             }
             catch (FormatException) { invalid++; }
             catch (InvalidDataException) { invalid++; }
             catch (ArgumentException) { invalid++; }
         }
-        if (settingsChanged) store.Write("settings", settings);
         return new CsvImportResult(imported, skipped, invalid);
     }
 
