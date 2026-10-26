@@ -97,7 +97,7 @@ internal static class Dialogs
     }
     public static int ChooseWidget(MainWindow owner)
     {
-        var window = Window(owner, L.T("widgets.addTitle"), 780, 820); window.MinWidth = 640; window.MinHeight = 680;
+        var window = Window(owner, L.T("widgets.addTitle"), 780, 900); window.MinWidth = 640; window.MinHeight = 720;
         var root = new Grid { Margin = new Thickness(28, 22, 28, 24) }; root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); window.Content = root;
         var intro = new StackPanel(); intro.Children.Add(Heading(L.T("widgets.addTitle"))); intro.Children.Add(new TextBlock { Text = L.T("widgets.addHelp"), FontSize = 12, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, -8, 0, 20) }); Grid.SetRow(intro, 0); root.Children.Add(intro);
         var guide = new TextBlock { Text = L.T("widgets.addGuide"), FontFamily = new FontFamily("Consolas"), FontSize = 10, Foreground = (Brush)Application.Current.Resources["Muted"], Margin = new Thickness(0, 0, 0, 8) }; Grid.SetRow(guide, 1); root.Children.Add(guide);
@@ -113,6 +113,7 @@ internal static class Dialogs
             ("▦", L.T("widgets.calendarTitle"), L.T("widgets.calendarHelp"), "7"),
             ("◈", L.T("widgets.financeTitle"), L.T("widgets.financeHelp"), "8"),
             ("†", L.T("widgets.mementoTitle"), L.T("widgets.mementoHelp"), "9"),
+            ("⇌", L.T("widgets.workoutTitle"), L.T("widgets.workoutHelp"), "W"),
             ("◷", L.T("widgets.timerTitle"), L.T("widgets.timerHelp"), "0")
         };
         int selected = -1;
@@ -137,7 +138,8 @@ internal static class Dialogs
         {
             int key = e.Key is >= Key.D1 and <= Key.D9 ? (int)e.Key - (int)Key.D1
                 : e.Key is >= Key.NumPad1 and <= Key.NumPad9 ? (int)e.Key - (int)Key.NumPad1
-                : e.Key is Key.D0 or Key.NumPad0 ? 9
+                : e.Key is Key.D0 or Key.NumPad0 ? entries.Length - 1
+                : e.Key == Key.W ? 9
                 : -1;
             if (key < 0 || key >= entries.Length) return;
             selected = key;

@@ -25,15 +25,33 @@ public sealed class TodoTask
     public int Order { get; set; }
     /// <summary>Time of day for a timed task. Null means any time on the due day.</summary>
     public TimeOnly? At { get; set; }
+    /// <summary>Post-it colour for the row and its note window. Empty keeps the theme look.</summary>
+    public string Color { get; set; } = "";
+    /// <summary>Rich text of the note. Empty means the title is plain text.</summary>
+    public string DocumentXaml { get; set; } = "";
     /// <summary>The calendar entry that carries this task, so it shows there and rings.</summary>
     public Guid? EventId { get; set; }
 
     public void Normalize()
     {
         Title = (Title ?? "").Trim();
+        Color = (Color ?? "").Trim();
+        DocumentXaml ??= "";
         if (Due is null) At = null;
         if (!Done) DoneUtc = null;
         else DoneUtc ??= DateTime.UtcNow;
+    }
+
+    /// <summary>True when this task was painted as a post-it from its note.</summary>
+    public bool HasNoteColor => Color.Length > 0;
+
+    /// <summary>The first line, for the list; the note window holds the rest.</summary>
+    public string ListLabel()
+    {
+        string text = Title.Replace('\r', '\n');
+        int cut = text.IndexOf('\n');
+        string line = (cut < 0 ? text : text[..cut]).Trim();
+        return line.Length > 0 ? line : Title;
     }
 
     public bool IsOverdue(DateOnly today) => !Done && Due is { } due && due < today;
@@ -147,6 +165,26 @@ public sealed class TodoBook
         int index = siblings.IndexOf(task), next = index + direction;
         if (index < 0 || next < 0 || next >= siblings.Count) return false;
         (siblings[index].Order, siblings[next].Order) = (siblings[next].Order, siblings[index].Order);
+        return true;
+    }
+
+    /// <summary>
+    /// Drops a task at <paramref name="index"/> among the visible rows of its own half
+    /// (pending or finished). Hidden tasks in other filters keep their relative order.
+    /// </summary>
+    public bool PlaceVisible(TodoTask task, int index, IReadOnlyList<TodoTask> visible)
+    {
+        var shown = visible.Where(item => item.Done == task.Done).ToList();
+        if (!shown.Contains(task)) return false;
+        shown.Remove(task);
+        index = Math.Clamp(index, 0, shown.Count);
+        shown.Insert(index, task);
+        var hidden = Ordered().Where(item => item.Done == task.Done && shown.All(row => row.Id != item.Id)).ToList();
+        var group = shown.Concat(hidden).ToList();
+        var others = Ordered().Where(item => item.Done != task.Done).ToList();
+        var sequence = task.Done ? others.Concat(group) : group.Concat(others);
+        int order = 0;
+        foreach (var item in sequence) item.Order = order++;
         return true;
     }
 

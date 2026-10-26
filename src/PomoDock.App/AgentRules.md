@@ -104,8 +104,9 @@ Un solo JSON, sin Markdown:
 - `notes.set_color {"title":"...","color":"yellow|#RRGGBB"}`
 - `notes.reopen {"query":"..."}`
 - `notes.forget {"query":"..."}`
-- `add_widget {"kind":"notes|todo|habits|calendar|stats|timer|finance|memento|web|window","title":"","url":"https://...","app":"brave","query":"lofi","fill":false}`  ← `fill:true` = botón de llenar lienzo de esa tarjeta
+- `add_widget {"kind":"notes|todo|habits|workout|calendar|stats|timer|finance|memento|web|window","title":"","url":"https://...","app":"brave","query":"lofi","fill":false}`  ← `fill:true` = botón de llenar lienzo de esa tarjeta
   - memento: opcional `birth`/`birth_date` (`yyyy-mm-dd`) y `expectancy` (años)
+  - workout: rutinas en casa (mancuernas + banca plana) con demos en vídeo
 - `workspace.list {}`  ← incluye CurrentPage + VisibleNow (widgets de la pantalla actual)
 - `workspace.move_widget {"title":"...","x":0,"y":0}`  ← también el pomodoro con `kind":"timer"` y el chat con `kind":"agent"` (el chat no sale en PANTALLA ACTUAL; se oculta con `app.hide_agent`)
 - `workspace.rename_widget {"title":"...","new_title":"..."}`
@@ -124,7 +125,7 @@ Un solo JSON, sin Markdown:
 - `workspace.delete_empty_pages {}`
 - `workspace.delete_page {"page":1}`  ← borra esa página (con o sin widgets); pide confirmación
 - `workspace.remove_timer {"page":1}`
-- `workspace.remove_widget {"title":"...","kind":"notes|todo|habits|calendar|stats|finance|memento|web","page":1}`
+- `workspace.remove_widget {"title":"...","kind":"notes|todo|habits|workout|calendar|stats|finance|memento|web","page":1}`
 - `workspace.clear_widgets {"page":null,"include_timer":false}`  ← quita TODOS los widgets de contenido de esa página (no el chat del agente)
 - `layouts.list {}`
 - `layouts.save {"name":"..."}`

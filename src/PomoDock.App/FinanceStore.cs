@@ -75,6 +75,29 @@ internal sealed class FinanceStore
         Save();
     }
 
+    public void UpdateEntry(MoneyEntry entry, MoneyFlow flow, decimal amount, string title, DateOnly date, string category, string currency)
+    {
+        entry.Flow = flow;
+        entry.Amount = amount;
+        entry.Title = title;
+        entry.Date = date;
+        entry.Category = category;
+        entry.Currency = MoneyFx.Normalize(currency, Book.Currency);
+        entry.Normalize();
+        Save();
+    }
+
+    public void UpdateRecurring(RecurringMoney item, decimal amount, string title, string category, string currency, int day)
+    {
+        item.Amount = amount;
+        item.Title = title;
+        item.Category = category;
+        item.Currency = MoneyFx.Normalize(currency, Book.Currency);
+        item.DayOfMonth = day;
+        item.Normalize();
+        Save();
+    }
+
     public void Archive(RecurringMoney item)
     {
         item.Archived = true;

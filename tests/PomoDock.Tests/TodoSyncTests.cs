@@ -68,6 +68,14 @@ internal static class TodoSyncTests
             assert(english.Task.Title == "Stretch" && english.Task.At == new TimeOnly(12, 15),
                 $"también entiende la forma inglesa: '{english.Task.Title}' a {english.Task.At}");
             assert(english.Draft!.Reminders.Single() == 0, "la forma inglesa también avisa a la hora pedida");
+
+            var compact = TodoBook.Read("Sacar la basura 6h", Now)!;
+            assert(compact.Task.At == new TimeOnly(18, 0) && compact.Task.Due == new DateOnly(2026, 9, 9),
+                "6h es dentro de seis horas, no las 06:00");
+            assert(compact.Draft!.Reminders.Single() == 0, "6h avisa a esa hora, no diez minutos antes");
+            var fromDialog = TodoBook.Read("tarea 6horas", new DateTime(2026, 9, 15, 16, 0, 0))!;
+            assert(fromDialog.Task.Due == new DateOnly(2026, 9, 15) && fromDialog.Task.At == new TimeOnly(22, 0),
+                "elegir fecha «6horas» el martes a las 16 queda a las 22:00 del mismo día");
         });
 
         test("what the calendar does comes back to the task", () =>

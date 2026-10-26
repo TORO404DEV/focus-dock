@@ -1,0 +1,1825 @@
+{
+  "source": "harshvishu/free-exercise-db-with-videos",
+  "license": "MIT",
+  "note": "Home kit: mancuernas + banca plana sin respaldo. Sin inclinado/declinado ni máquina.",
+  "equipmentProfile": "dumbbells_flat_bench",
+  "exercises": [
+    {
+      "id": "0361",
+      "name": "Dumbbell Alternating Shoulder Press",
+      "bodyPart": "shoulders",
+      "target": "deltoids",
+      "secondaryMuscles": [
+        "triceps",
+        "upper chest",
+        "trapezius"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": true,
+      "shortDescription": "A shoulder press using dumbbells, pressing one arm at a time to target the deltoids and stabilizers.",
+      "steps": [
+        "Hold dumbbells at shoulder level, palms facing forward.",
+        "Brace your core and press one dumbbell overhead until arm is fully extended.",
+        "Lower to shoulder height as you press the opposite dumbbell overhead.",
+        "Continue alternating arms with each rep.",
+        "Maintain upright posture and avoid arching back."
+      ],
+      "formCues": [
+        "No arching",
+        "Core tight",
+        "Elbow under wrist",
+        "Smooth transition"
+      ],
+      "commonMistakes": [
+        "Leaning to side",
+        "Pressing both at once",
+        "Shrugging shoulders"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-alternate-shoulder-press.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-alternate-shoulder-press.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-alternate-shoulder-press.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-alternate-shoulder-press.jpg"
+      }
+    },
+    {
+      "id": "2137",
+      "name": "Dumbbell Arnold Press",
+      "bodyPart": "shoulders",
+      "target": "delts",
+      "secondaryMuscles": [
+        "triceps",
+        "upper chest"
+      ],
+      "difficulty": "intermediate",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A seated dumbbell shoulder press that rotates from palms-in at the bottom to palms-forward overhead.",
+      "steps": [
+        "Sit tall on a bench with back support and plant your feet on the floor.",
+        "Hold a dumbbell in each hand in front of your shoulders with palms facing you and elbows bent.",
+        "Brace your midline and press the dumbbells upward while rotating your palms outward.",
+        "Finish overhead with arms straight and palms facing forward.",
+        "Lower the dumbbells under control while rotating your palms back toward you.",
+        "Return to the start with dumbbells in front of your shoulders and repeat."
+      ],
+      "formCues": [
+        "Press and rotate smoothly",
+        "Keep ribs down",
+        "Wrists stacked over elbows",
+        "Finish biceps by ears"
+      ],
+      "commonMistakes": [
+        "Arching the lower back as the dumbbells go overhead",
+        "Letting the elbows flare straight out at the bottom",
+        "Pressing the dumbbells up without rotating the hands",
+        "Lowering the dumbbells too fast and losing control"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-arnold-press.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-arnold-press.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-arnold-press.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-arnold-press.jpg"
+      }
+    },
+    {
+      "id": "0364",
+      "name": "Dumbbell Behind-the-Back Wrist Curl",
+      "bodyPart": "lower arms",
+      "target": "forearms",
+      "secondaryMuscles": [
+        "flexor carpi radialis",
+        "flexor carpi ulnaris"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A forearm isolation exercise curling a dumbbell behind the back to emphasize forearm flexors.",
+      "steps": [
+        "Stand with dumbbell held behind your back, arm straight, palm facing backward.",
+        "Allow the dumbbell to roll down your fingers slightly.",
+        "Flex your wrist to curl the dumbbell up.",
+        "Squeeze at the top of the movement.",
+        "Lower the weight back down slowly."
+      ],
+      "formCues": [
+        "Wrist only",
+        "Don’t swing arm",
+        "Full wrist flexion",
+        "Controlled lowering"
+      ],
+      "commonMistakes": [
+        "Using arm instead of wrist",
+        "Incomplete range",
+        "Jerking movement"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-behind-back-wrist-curl.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-behind-back-wrist-curl.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-behind-back-wrist-curl.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-behind-back-wrist-curl.jpg"
+      }
+    },
+    {
+      "id": "0293",
+      "name": "Dumbbell Bent-Over Row",
+      "bodyPart": "back",
+      "target": "lats",
+      "secondaryMuscles": [
+        "rhomboids",
+        "trapezius",
+        "posterior deltoids",
+        "biceps brachii"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A rowing movement that targets the back muscles while bracing the core in a bent-over position.",
+      "steps": [
+        "Stand with feet shoulder-width apart holding dumbbells.",
+        "Hinge at hips, keeping back flat and chest up.",
+        "Let arms hang straight down, palms facing each other.",
+        "Pull dumbbells to your sides, elbows close to body.",
+        "Lower the weights under control to starting position."
+      ],
+      "formCues": [
+        "Flat back",
+        "Lead with elbows",
+        "Engage core",
+        "Squeeze shoulder blades"
+      ],
+      "commonMistakes": [
+        "Rounding the back",
+        "Jerking the weights",
+        "Not fully extending arms",
+        "Using biceps too much"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-bent-over-row.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-bent-over-row.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-bent-over-row.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-bent-over-row.jpg"
+      }
+    },
+    {
+      "id": "0294",
+      "name": "Dumbbell Biceps Curl",
+      "bodyPart": "upper arms",
+      "target": "biceps",
+      "secondaryMuscles": [
+        "forearms"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A standing arm exercise where you curl dumbbells from your sides to your shoulders to train the biceps.",
+      "steps": [
+        "Stand tall with a dumbbell in each hand, arms at your sides, and palms facing forward.",
+        "Brace your torso and keep your elbows close to your ribs.",
+        "Curl both dumbbells up toward your shoulders without letting your upper arms swing forward.",
+        "Pause briefly at the top and squeeze your biceps.",
+        "Lower the dumbbells back down under control until your arms are straight."
+      ],
+      "formCues": [
+        "Elbows pinned to sides",
+        "Curl, don't swing",
+        "Squeeze at the top",
+        "Lower with control"
+      ],
+      "commonMistakes": [
+        "Swinging the torso to start the curl",
+        "Letting the elbows drift forward as the weights rise",
+        "Using partial range and not lowering fully",
+        "Bending the wrists back instead of keeping them neutral"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-biceps-curl.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-biceps-curl.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-biceps-curl.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-biceps-curl.jpg"
+      }
+    },
+    {
+      "id": "0296",
+      "name": "Dumbbell Close-Grip Press",
+      "bodyPart": "upper arms",
+      "target": "triceps",
+      "secondaryMuscles": [
+        "pectoralis major",
+        "anterior deltoids"
+      ],
+      "difficulty": "intermediate",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A pressing movement with dumbbells held close together to emphasize triceps activation.",
+      "steps": [
+        "Lie flat on a bench with a dumbbell in each hand.",
+        "Hold dumbbells together above chest, palms in.",
+        "Lower dumbbells toward sternum, elbows tight to torso.",
+        "Pause when elbows reach 90 degrees.",
+        "Press dumbbells back up by extending arms."
+      ],
+      "formCues": [
+        "Keep elbows close",
+        "Touch dumbbells together",
+        "Press through palms",
+        "Own the descent"
+      ],
+      "commonMistakes": [
+        "Flaring elbows out",
+        "Letting dumbbells drift apart",
+        "Arching back excessively",
+        "Lowering weights too far"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-close-grip-press.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-close-grip-press.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-close-grip-press.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-close-grip-press.jpg"
+      }
+    },
+    {
+      "id": "0297",
+      "name": "Dumbbell Concentration Curl",
+      "bodyPart": "upper arms",
+      "target": "biceps",
+      "secondaryMuscles": [
+        "forearms"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": true,
+      "shortDescription": "A seated single-arm biceps curl with the upper arm braced against the inner thigh to isolate the biceps.",
+      "steps": [
+        "Sit on a bench with your feet flat and knees apart, holding a dumbbell in one hand.",
+        "Lean forward slightly and brace the back of your upper arm against the inside of your same-side thigh near the knee.",
+        "Let your arm hang straight down with your palm facing up and your wrist neutral.",
+        "Curl the dumbbell toward your same-side shoulder without moving your upper arm.",
+        "Squeeze your biceps at the top when your forearm is nearly vertical.",
+        "Lower the dumbbell slowly until your elbow is fully extended, then repeat and switch sides."
+      ],
+      "formCues": [
+        "Keep elbow glued to thigh",
+        "Curl only at the elbow",
+        "Palm stays facing up",
+        "Lower with control"
+      ],
+      "commonMistakes": [
+        "Lifting the elbow off the thigh during the curl",
+        "Swinging the torso to help raise the dumbbell",
+        "Cutting the rep short and not fully lowering",
+        "Bending the wrist back instead of keeping it neutral"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-concentration-curl.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-concentration-curl.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-concentration-curl.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-concentration-curl.jpg"
+      }
+    },
+    {
+      "id": "0298",
+      "name": "Dumbbell Cross Body Hammer Curl",
+      "bodyPart": "upper arms",
+      "target": "biceps",
+      "secondaryMuscles": [
+        "forearms"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": true,
+      "shortDescription": "A dumbbell curl variation where each hand travels across the body to the opposite shoulder with a neutral grip.",
+      "steps": [
+        "Stand tall holding a dumbbell in each hand at your sides with your palms facing inward.",
+        "Brace your torso and keep your elbows pinned close to your ribs.",
+        "Curl one dumbbell diagonally across your body toward the opposite shoulder without swinging.",
+        "Pause briefly near shoulder height while keeping your wrist straight and palm facing inward.",
+        "Lower the dumbbell back to your side under control.",
+        "Repeat on the other arm, alternating sides."
+      ],
+      "formCues": [
+        "Elbows stay tucked",
+        "Curl across, not straight up",
+        "Keep wrists neutral",
+        "Don't swing the weight"
+      ],
+      "commonMistakes": [
+        "Swinging the torso or leaning back to lift the dumbbell",
+        "Letting the elbow drift forward away from the ribs",
+        "Twisting the wrist so the palm turns up at the top",
+        "Dropping the dumbbell quickly instead of lowering with control"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-cross-body-hammer-curl.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-cross-body-hammer-curl.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-cross-body-hammer-curl.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-cross-body-hammer-curl.jpg"
+      }
+    },
+    {
+      "id": "0300",
+      "name": "Dumbbell Deadlift",
+      "bodyPart": "upper legs",
+      "target": "glutes",
+      "secondaryMuscles": [
+        "hamstrings",
+        "lower back"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A hip-hinge lift with two dumbbells that trains the glutes, hamstrings, and lower back while lifting from standing to lockout.",
+      "steps": [
+        "Stand tall with your feet hip- to shoulder-width apart, holding a dumbbell in each hand in front of your thighs.",
+        "Brace your midsection, pull your shoulders back, and keep your arms straight.",
+        "Push your hips back and bend your knees slightly as you slide the dumbbells down close to your legs.",
+        "Lower until the dumbbells reach around mid-shin or just below your knees while keeping your back flat.",
+        "Drive through your feet and push your hips forward to stand back up with the dumbbells at your thighs.",
+        "Finish tall with your hips and knees straight, then repeat the hinge."
+      ],
+      "formCues": [
+        "Hips back first",
+        "Keep dumbbells close",
+        "Chest proud",
+        "Stand tall at top"
+      ],
+      "commonMistakes": [
+        "Rounding the lower back as the dumbbells lower",
+        "Letting the dumbbells drift far in front of the legs",
+        "Squatting straight down instead of hinging the hips back",
+        "Locking the knees rigid or overbending them"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-deadlift.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-deadlift.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-deadlift.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-deadlift.jpg"
+      }
+    },
+    {
+      "id": "0308",
+      "name": "Dumbbell Fly",
+      "bodyPart": "chest",
+      "target": "pectorals",
+      "secondaryMuscles": [
+        "shoulders"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A lying chest isolation exercise where you open the arms wide with dumbbells, then bring them together in an arc over the chest.",
+      "steps": [
+        "Lie flat on a bench holding a dumbbell in each hand, and plant your feet on the floor.",
+        "Press the dumbbells above your chest with your palms facing each other and soften your elbows slightly.",
+        "Lower both arms out to the sides in a wide arc until your elbows reach about chest level.",
+        "Pause briefly at the bottom while keeping the same elbow bend.",
+        "Squeeze your chest and bring the dumbbells back together over your chest along the same arc."
+      ],
+      "formCues": [
+        "Hug a wide barrel",
+        "Keep elbows softly bent",
+        "Lower with control",
+        "Squeeze chest at the top"
+      ],
+      "commonMistakes": [
+        "Bending and straightening the elbows like a press",
+        "Lowering the dumbbells too far below chest level",
+        "Bringing the dumbbells together by shrugging the shoulders forward",
+        "Dropping the arms quickly instead of controlling the arc"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-fly.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-fly.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-fly.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-fly.jpg"
+      }
+    },
+    {
+      "id": "0310",
+      "name": "Dumbbell Front Raise",
+      "bodyPart": "shoulders",
+      "target": "delts",
+      "secondaryMuscles": [
+        "biceps",
+        "trapezius"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A shoulder isolation exercise where you lift dumbbells straight forward from your thighs to shoulder height.",
+      "steps": [
+        "Stand tall with a dumbbell in each hand at your thighs, palms facing your legs.",
+        "Brace your torso and keep a soft bend in your elbows.",
+        "Raise both dumbbells straight in front of you until your hands reach about shoulder height.",
+        "Pause briefly without shrugging your shoulders.",
+        "Lower the dumbbells back to your thighs with control.",
+        "Repeat from a still, upright stance."
+      ],
+      "formCues": [
+        "Lift to shoulder height",
+        "Keep ribs down",
+        "Lead with your hands",
+        "Don't shrug up"
+      ],
+      "commonMistakes": [
+        "Swinging the dumbbells up with the hips or torso.",
+        "Lifting the weights higher than shoulder level.",
+        "Shrugging the shoulders toward the ears.",
+        "Bending the elbows more as the weights rise."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-front-raise.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-front-raise.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-front-raise.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-front-raise.jpg"
+      }
+    },
+    {
+      "id": "1760",
+      "name": "Dumbbell Goblet Squat",
+      "bodyPart": "upper legs",
+      "target": "quads",
+      "secondaryMuscles": [
+        "glutes",
+        "hamstrings",
+        "calves"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A front-loaded squat holding one dumbbell at the chest to train the quads, glutes, and legs through a controlled deep squat.",
+      "steps": [
+        "Stand tall with your feet about shoulder-width apart and hold one dumbbell vertically at your chest with both hands.",
+        "Brace your midsection and keep your elbows pointed down close to your body.",
+        "Sit your hips down and back while bending your knees, and lower until your thighs are parallel to the floor or slightly lower.",
+        "Keep the dumbbell tight to your chest and your feet flat as your knees track over your toes.",
+        "Drive through your whole foot to stand back up until your hips and knees are fully extended.",
+        "Reset your stance and repeat the next rep."
+      ],
+      "formCues": [
+        "Chest up",
+        "Keep heels down",
+        "Knees track over toes",
+        "Hold the bell close"
+      ],
+      "commonMistakes": [
+        "Letting the dumbbell drift away from the chest",
+        "Heels lifting off the floor at the bottom",
+        "Knees collapsing inward during the squat",
+        "Folding the chest forward instead of staying upright"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-goblet-squat.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-goblet-squat.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-goblet-squat.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-goblet-squat.jpg"
+      }
+    },
+    {
+      "id": "0332",
+      "name": "Dumbbell Iron Cross",
+      "bodyPart": "shoulders",
+      "target": "delts",
+      "secondaryMuscles": [
+        "triceps",
+        "chest"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A shoulder isolation exercise where you raise dumbbells out to the sides to train the delts.",
+      "steps": [
+        "Stand tall with a dumbbell in each hand at your sides and your feet about hip-width apart.",
+        "Hold a slight bend in your elbows and turn your palms toward your sides.",
+        "Raise both arms out to the sides until your hands reach shoulder height.",
+        "Pause briefly with your shoulders level and your wrists in line with your elbows.",
+        "Lower the dumbbells back to your sides with control.",
+        "Repeat without swinging your torso or bouncing the weights."
+      ],
+      "formCues": [
+        "Lead with the elbows",
+        "Lift to shoulder height",
+        "Keep shoulders down",
+        "Move with control"
+      ],
+      "commonMistakes": [
+        "Swinging the torso to start each rep",
+        "Shrugging the shoulders toward the ears",
+        "Lifting the dumbbells higher than shoulder level",
+        "Straightening the elbows completely and locking the arms"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-iron-cross.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-iron-cross.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-iron-cross.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-iron-cross.jpg"
+      }
+    },
+    {
+      "id": "0333",
+      "name": "Dumbbell Kickback",
+      "bodyPart": "upper arms",
+      "target": "triceps",
+      "secondaryMuscles": [
+        "shoulders"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A bent-over triceps isolation exercise where you extend dumbbells behind you while keeping the upper arms still.",
+      "steps": [
+        "Stand with a dumbbell in each hand and hinge forward at the hips with a flat back.",
+        "Bend your elbows to about 90 degrees and pin your upper arms alongside your torso.",
+        "Brace your torso and keep your elbows still.",
+        "Straighten your arms by driving the dumbbells back until your elbows are fully extended.",
+        "Squeeze your triceps at the back of the movement.",
+        "Bend your elbows under control to return to the start position."
+      ],
+      "formCues": [
+        "Keep elbows glued in",
+        "Only move the forearms",
+        "Squeeze at full extension",
+        "Keep your back flat"
+      ],
+      "commonMistakes": [
+        "Swinging the dumbbells with the shoulders or torso",
+        "Letting the elbows drift away from the ribs",
+        "Dropping the upper arms during the set",
+        "Snapping the weights down instead of lowering slowly"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-kickback.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-kickback.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-kickback.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-kickback.jpg"
+      }
+    },
+    {
+      "id": "0334",
+      "name": "Dumbbell Lateral Raise",
+      "bodyPart": "shoulders",
+      "target": "delts",
+      "secondaryMuscles": [
+        "traps"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A shoulder isolation exercise where you lift dumbbells out to the sides to target the lateral delts.",
+      "steps": [
+        "Stand tall with a dumbbell in each hand at your sides, palms facing in.",
+        "Set your shoulders down and brace your midsection.",
+        "Raise both arms out to the sides until your hands reach about shoulder height, keeping a soft bend in your elbows.",
+        "Pause briefly at the top without shrugging your shoulders.",
+        "Lower the dumbbells back to your sides with control."
+      ],
+      "formCues": [
+        "Lead with your elbows",
+        "Stop at shoulder height",
+        "Keep shoulders down",
+        "Soft bend in elbows"
+      ],
+      "commonMistakes": [
+        "Shrugging the shoulders up toward the ears",
+        "Swinging the torso to heave the dumbbells upward",
+        "Lifting the hands well above shoulder height",
+        "Straightening the elbows and turning it into a front swing"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-lateral-raise.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-lateral-raise.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-lateral-raise.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-lateral-raise.jpg"
+      }
+    },
+    {
+      "id": "0336",
+      "name": "Dumbbell Lunge",
+      "bodyPart": "upper legs",
+      "target": "glutes",
+      "secondaryMuscles": [
+        "quadriceps",
+        "hamstrings",
+        "calves"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": true,
+      "shortDescription": "A lower-body exercise where you hold dumbbells and step into alternating lunges to train the glutes, quads, and legs.",
+      "steps": [
+        "Stand tall with a dumbbell in each hand at your sides and your feet hip-width apart.",
+        "Step one foot forward far enough that both knees can bend comfortably.",
+        "Lower your body until your front thigh is nearly parallel to the floor and your back knee drops toward the floor.",
+        "Keep your torso upright and your front foot flat as you pause briefly at the bottom.",
+        "Push through your front heel to return to standing.",
+        "Repeat on the other side, alternating legs each rep."
+      ],
+      "formCues": [
+        "Chest tall",
+        "Front heel stays down",
+        "Knees track over toes",
+        "Drop straight down"
+      ],
+      "commonMistakes": [
+        "Taking too short a step so the front knee shoots far past the toes.",
+        "Leaning the torso forward as you lower into the lunge.",
+        "Letting the front heel lift off the floor.",
+        "Pushing off the back foot instead of driving through the front leg."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-lunge.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-lunge.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-lunge.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-lunge.jpg"
+      }
+    },
+    {
+      "id": "1729",
+      "name": "Dumbbell Lying Alternate Extension",
+      "bodyPart": "upper arms",
+      "target": "triceps",
+      "secondaryMuscles": [
+        "shoulders"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": true,
+      "shortDescription": "A lying triceps isolation exercise where you lower one dumbbell at a time toward your forehead and extend the elbow back to the top.",
+      "steps": [
+        "Lie flat on a bench holding a dumbbell in each hand, and press both arms straight up over your chest with palms facing each other.",
+        "Keep one arm still above your chest as you bend the other elbow and lower that dumbbell beside your forehead.",
+        "Stop when your forearm points down and your upper arm stays mostly vertical.",
+        "Straighten the bent arm to bring the dumbbell back above your chest.",
+        "Repeat on the other side while keeping the first arm locked out.",
+        "Continue alternating sides with both shoulders and head resting on the bench."
+      ],
+      "formCues": [
+        "Elbows point to the ceiling",
+        "Only move at the elbow",
+        "Keep one arm locked out",
+        "Lower beside your forehead"
+      ],
+      "commonMistakes": [
+        "Elbows flare wide as the dumbbell lowers",
+        "Upper arms drift backward instead of staying upright",
+        "The non-working arm drops or bends",
+        "Turning it into a press from the chest"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-lying-alternate-extension.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-lying-alternate-extension.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-lying-alternate-extension.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-lying-alternate-extension.jpg"
+      }
+    },
+    {
+      "id": "0340",
+      "name": "Dumbbell Lying Hammer Press",
+      "bodyPart": "chest",
+      "target": "pectorals",
+      "secondaryMuscles": [
+        "triceps",
+        "shoulders"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A flat bench dumbbell press done with a neutral grip to train the chest, triceps, and shoulders.",
+      "steps": [
+        "Lie flat on a bench holding a dumbbell in each hand, and press the dumbbells above your chest with your palms facing each other.",
+        "Plant your feet on the floor and brace your torso while keeping your wrists stacked over your elbows.",
+        "Lower the dumbbells under control to either side of your chest, keeping your elbows slightly tucked from your shoulders.",
+        "Pause briefly when your upper arms reach bench level or the dumbbells lightly touch your chest line.",
+        "Press the dumbbells straight up until your arms are extended above your chest, keeping the palms facing each other throughout.",
+        "Bring the dumbbells back together over your chest and repeat."
+      ],
+      "formCues": [
+        "Keep palms facing in",
+        "Tuck elbows slightly",
+        "Press over mid-chest",
+        "Keep wrists straight"
+      ],
+      "commonMistakes": [
+        "Elbows flare straight out to the sides.",
+        "Dumbbells drift toward the face instead of staying over the chest.",
+        "Wrists bend back under the dumbbells.",
+        "Lowering too fast and bouncing at the bottom."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-lying-hammer-press.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-lying-hammer-press.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-lying-hammer-press.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-lying-hammer-press.jpg"
+      }
+    },
+    {
+      "id": "0343",
+      "name": "Dumbbell Lying Leg Curl",
+      "bodyPart": "upper legs",
+      "target": "hamstrings",
+      "secondaryMuscles": [
+        "gastrocnemius",
+        "glutes"
+      ],
+      "difficulty": "intermediate",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A hamstring isolation exercise where a dumbbell is held between the feet during leg curls.",
+      "steps": [
+        "Lie face down on a bench, legs straight, dumbbell held between your feet.",
+        "Hold onto the bench for stability.",
+        "Contract your hamstrings to curl the dumbbell upward toward your glutes.",
+        "Pause at the top of the movement.",
+        "Lower the dumbbell in a controlled motion to the starting position."
+      ],
+      "formCues": [
+        "Keep hips down",
+        "Squeeze at top",
+        "Control the descent",
+        "Engage hamstrings"
+      ],
+      "commonMistakes": [
+        "Allowing hips to lift",
+        "Letting dumbbell slip",
+        "Using momentum"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-lying-femoral.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-lying-femoral.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-lying-femoral.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-lying-femoral.jpg"
+      }
+    },
+    {
+      "id": "1328",
+      "name": "Dumbbell Lying Rear Delt Row",
+      "bodyPart": "back",
+      "target": "upper back",
+      "secondaryMuscles": [
+        "shoulders",
+        "biceps"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A chest-supported dumbbell row variation that targets the rear delts and upper back by pulling the elbows out wide.",
+      "steps": [
+        "Lie face down on a flat bench holding a dumbbell in each hand, with your chest supported and arms hanging straight down.",
+        "Set your feet firmly on the floor and turn your palms to face each other.",
+        "Pull your elbows out to the sides and row the dumbbells up toward your upper chest.",
+        "Squeeze your upper back at the top while keeping your chest on the bench.",
+        "Lower the dumbbells back down under control until your arms are straight again.",
+        "Repeat without swinging the weights or shrugging your shoulders."
+      ],
+      "formCues": [
+        "Lead with the elbows",
+        "Chest stays on the bench",
+        "Pull wide, not low",
+        "Squeeze shoulder blades together"
+      ],
+      "commonMistakes": [
+        "Pulling the elbows close to the ribs like a regular row",
+        "Shrugging the shoulders up toward the ears",
+        "Lifting the chest off the bench to move the weights",
+        "Swinging the dumbbells instead of lowering them with control"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-lying-rear-delt-row.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-lying-rear-delt-row.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-lying-rear-delt-row.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-lying-rear-delt-row.jpg"
+      }
+    },
+    {
+      "id": "0351",
+      "name": "Dumbbell Lying Triceps Extension",
+      "bodyPart": "upper arms",
+      "target": "triceps",
+      "secondaryMuscles": [
+        "shoulders"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A lying dumbbell triceps exercise where you bend and straighten the elbows to lower the weights toward the forehead and press them back up.",
+      "steps": [
+        "Lie flat on a bench holding a dumbbell in each hand, and press the dumbbells above your chest with your palms facing each other.",
+        "Pull your shoulders down into the bench and straighten your wrists so the dumbbells stay stacked over your elbows.",
+        "Bend your elbows and lower the dumbbells toward the sides of your forehead while keeping your upper arms mostly still.",
+        "Stop when your elbows are fully bent and the dumbbells are close to your head.",
+        "Straighten your elbows to drive the dumbbells back to the start position above your chest.",
+        "Repeat each rep without letting your elbows flare wide."
+      ],
+      "formCues": [
+        "Keep elbows tucked",
+        "Upper arms stay still",
+        "Bend only at elbows",
+        "Stack wrists over elbows"
+      ],
+      "commonMistakes": [
+        "Elbows flare out wide as the dumbbells lower.",
+        "Upper arms drift backward or forward during the rep.",
+        "Dumbbells drop too low behind the head instead of beside the forehead.",
+        "Wrists bend back instead of staying straight."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-lying-triceps-extension.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-lying-triceps-extension.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-lying-triceps-extension.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-lying-triceps-extension.jpg"
+      }
+    },
+    {
+      "id": "0355",
+      "name": "Dumbbell One Arm Lateral Raise",
+      "bodyPart": "shoulders",
+      "target": "delts",
+      "secondaryMuscles": [
+        "trapezius",
+        "triceps"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": true,
+      "shortDescription": "A single-arm shoulder isolation exercise where you raise a dumbbell out to the side to train the lateral delts.",
+      "steps": [
+        "Stand tall with feet about hip-width apart and hold a dumbbell at one side with a slight bend in your elbow.",
+        "Brace your core and keep your shoulders level as your free arm stays relaxed by your side or on your hip.",
+        "Lift the dumbbell out to the side until your hand reaches about shoulder height.",
+        "Pause briefly at the top without shrugging your shoulder toward your ear.",
+        "Lower the dumbbell back to your side with control.",
+        "Complete all reps on one arm, then switch sides."
+      ],
+      "formCues": [
+        "Lead with your elbow",
+        "Stop at shoulder height",
+        "Keep shoulders level",
+        "Lower with control"
+      ],
+      "commonMistakes": [
+        "Shrugging the working shoulder up toward the ear",
+        "Swinging the torso or leaning to start the lift",
+        "Raising the dumbbell higher than shoulder height",
+        "Locking the elbow completely straight"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-one-arm-lateral-raise.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-one-arm-lateral-raise.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-one-arm-lateral-raise.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-one-arm-lateral-raise.jpg"
+      }
+    },
+    {
+      "id": "0369",
+      "name": "Dumbbell Over Bench Wrist Curl",
+      "bodyPart": "lower arms",
+      "target": "forearms",
+      "secondaryMuscles": [
+        "biceps",
+        "brachialis"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A seated forearm isolation exercise where the wrists curl dumbbells upward with the forearms supported on a bench.",
+      "steps": [
+        "Sit at a bench and place your forearms on top with your palms facing up.",
+        "Hold a dumbbell in each hand and slide forward until your wrists hang just past the bench edge.",
+        "Let your hands lower to gently stretch your wrists at the bottom.",
+        "Curl your wrists up by lifting your knuckles toward your forearms.",
+        "Squeeze your forearms briefly at the top.",
+        "Lower the dumbbells back down under control until your wrists extend again."
+      ],
+      "formCues": [
+        "Move only your wrists",
+        "Forearms stay glued down",
+        "Curl through full range",
+        "Lower slowly"
+      ],
+      "commonMistakes": [
+        "Lifting the forearms off the bench during the curl.",
+        "Swinging the dumbbells instead of moving only the wrists.",
+        "Using partial range and stopping before the wrists fully lower.",
+        "Bending the elbows to help raise the weight."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-over-bench-wrist-curl.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-over-bench-wrist-curl.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-over-bench-wrist-curl.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-over-bench-wrist-curl.jpg"
+      }
+    },
+    {
+      "id": "1329",
+      "name": "Dumbbell Palm Rotational Bent Over Row",
+      "bodyPart": "back",
+      "target": "upper back",
+      "secondaryMuscles": [
+        "biceps",
+        "forearms"
+      ],
+      "difficulty": "intermediate",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A bent-over dumbbell row where you rotate your palms during the pull to train the upper back, biceps, and forearms.",
+      "steps": [
+        "Stand with your feet hip-width apart, holding a dumbbell in each hand with your arms straight and palms facing each other.",
+        "Hinge at your hips until your torso is leaned forward, soften your knees, and keep your back flat.",
+        "Let the dumbbells hang below your shoulders and brace your core.",
+        "Row both dumbbells toward your lower ribs by driving your elbows back.",
+        "Rotate your palms as you lift until they face more backward or away from your body at the top.",
+        "Pause and squeeze your upper back, then lower the dumbbells with control as you rotate your palms back to neutral."
+      ],
+      "formCues": [
+        "Keep your back flat",
+        "Drive elbows back",
+        "Rotate through the pull",
+        "Squeeze shoulder blades together"
+      ],
+      "commonMistakes": [
+        "Rounding the lower back as you hinge forward",
+        "Standing up taller to swing the dumbbells",
+        "Shrugging the shoulders toward the ears",
+        "Letting the wrists curl instead of rotating the forearms"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-palm-rotational-bent-over-row.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-palm-rotational-bent-over-row.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-palm-rotational-bent-over-row.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-palm-rotational-bent-over-row.jpg"
+      }
+    },
+    {
+      "id": "0373",
+      "name": "Dumbbell Pronate-grip Triceps Extension",
+      "bodyPart": "upper arms",
+      "target": "triceps",
+      "secondaryMuscles": [
+        "forearms"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A seated overhead triceps exercise using one dumbbell held with both hands to bend and straighten the elbows.",
+      "steps": [
+        "Sit tall on a bench or chair with both feet flat on the floor.",
+        "Hold one dumbbell with both hands by the handle using an overhand grip and press it straight overhead.",
+        "Bring your upper arms close to your ears and point your elbows forward.",
+        "Lower the dumbbell behind your head by bending only your elbows.",
+        "Stop when your forearms are below parallel and your upper arms stay mostly still.",
+        "Straighten your elbows to raise the dumbbell back to the overhead start position."
+      ],
+      "formCues": [
+        "Elbows stay close in",
+        "Upper arms stay still",
+        "Brace your ribs down",
+        "Lock out overhead"
+      ],
+      "commonMistakes": [
+        "Elbows flare wide out to the sides.",
+        "Upper arms drift backward and move during the rep.",
+        "Lower back arches as the weight goes overhead.",
+        "The dumbbell drops too low and bumps the upper back."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-pronate-grip-triceps-extension.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-pronate-grip-triceps-extension.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-pronate-grip-triceps-extension.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-pronate-grip-triceps-extension.jpg"
+      }
+    },
+    {
+      "id": "0377",
+      "name": "Dumbbell Rear Delt Row",
+      "bodyPart": "shoulders",
+      "target": "delts",
+      "secondaryMuscles": [
+        "trapezius",
+        "rhomboids"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A bent-over dumbbell row variation that targets the rear delts by pulling the elbows out wide to the sides.",
+      "steps": [
+        "Stand with your feet hip- to shoulder-width apart, holding a dumbbell in each hand at your sides.",
+        "Hinge at your hips until your torso is leaned forward, soften your knees, and let the dumbbells hang below your shoulders with your palms facing each other.",
+        "Brace your core and keep your back flat as you pull your elbows up and out to the sides.",
+        "Lift until your upper arms are roughly in line with your shoulders and squeeze your upper back.",
+        "Lower the dumbbells under control to the start position and repeat."
+      ],
+      "formCues": [
+        "Lead with your elbows.",
+        "Keep your back flat.",
+        "Raise arms out, not back.",
+        "Squeeze shoulder blades together."
+      ],
+      "commonMistakes": [
+        "Rounding the lower back as you hinge forward.",
+        "Shrugging the shoulders up toward the ears.",
+        "Pulling the dumbbells straight back close to the ribs.",
+        "Swinging the torso to start each rep."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-rear-delt-row.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-rear-delt-row.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-rear-delt-row.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-rear-delt-row.jpg"
+      }
+    },
+    {
+      "id": "1379",
+      "name": "Dumbbell Seated Calf Raise",
+      "bodyPart": "lower legs",
+      "target": "calves",
+      "secondaryMuscles": [
+        "hamstrings"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A seated calf exercise using a dumbbell on the thighs to train ankle plantarflexion through a full range of motion.",
+      "steps": [
+        "Sit on a bench or chair with your knees bent and place the balls of your feet on a small raised surface with your heels hanging off.",
+        "Set a dumbbell across the tops of your thighs just above your knees and hold it steady with both hands.",
+        "Let your heels drop down until you feel a stretch through your calves.",
+        "Press through the balls of your feet and raise your heels as high as you can.",
+        "Pause briefly at the top while keeping the dumbbell steady.",
+        "Lower your heels back down under control and repeat."
+      ],
+      "formCues": [
+        "Drive through big toe",
+        "Lift heels straight up",
+        "Use full ankle range",
+        "Control the lowering"
+      ],
+      "commonMistakes": [
+        "Bouncing the heels at the bottom instead of lowering under control.",
+        "Rolling the ankles inward or outward as the heels rise.",
+        "Placing the dumbbell too close to the knees so it slides during the set.",
+        "Using a very short range of motion and not dropping the heels below the step."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-seated-calf-raise.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-seated-calf-raise.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-seated-calf-raise.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-seated-calf-raise.jpg"
+      }
+    },
+    {
+      "id": "0392",
+      "name": "Dumbbell Seated Front Raise",
+      "bodyPart": "shoulders",
+      "target": "delts",
+      "secondaryMuscles": [
+        "trapezius",
+        "biceps"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A seated shoulder isolation exercise where you lift dumbbells straight in front to shoulder height to train the front delts.",
+      "steps": [
+        "Sit tall on a bench with your feet flat on the floor and a dumbbell in each hand at your sides.",
+        "Hold the dumbbells with your palms facing down or slightly toward each other, and brace your midsection.",
+        "Raise both arms straight forward until the dumbbells reach shoulder height.",
+        "Pause briefly at the top without leaning back or shrugging your shoulders.",
+        "Lower the dumbbells under control back to the starting position by your thighs.",
+        "Repeat each rep with the same seated posture and arm path."
+      ],
+      "formCues": [
+        "Lift to shoulder height",
+        "Keep torso still",
+        "Soft bend in elbows",
+        "Shoulders down and back"
+      ],
+      "commonMistakes": [
+        "Leaning the torso back to swing the dumbbells up",
+        "Raising the dumbbells above shoulder height",
+        "Shrugging the shoulders toward the ears",
+        "Dropping the weights quickly on the way down"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-seated-front-raise.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-seated-front-raise.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-seated-front-raise.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-seated-front-raise.jpg"
+      }
+    },
+    {
+      "id": "0394",
+      "name": "Dumbbell Seated Kickback",
+      "bodyPart": "upper arms",
+      "target": "triceps",
+      "secondaryMuscles": [
+        "shoulders"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A seated triceps isolation exercise where you hinge forward and extend dumbbells back by straightening the elbows.",
+      "steps": [
+        "Sit on a bench holding a dumbbell in each hand with your feet flat on the floor.",
+        "Hinge forward from your hips and keep your back flat with your chest angled toward your thighs.",
+        "Pull your elbows up beside your torso and bend them to about 90 degrees.",
+        "Keep your upper arms still and straighten your elbows to kick the dumbbells back behind you.",
+        "Squeeze your triceps with your arms fully extended.",
+        "Bend your elbows slowly to return the dumbbells to the start position."
+      ],
+      "formCues": [
+        "Keep elbows glued in",
+        "Only move the forearms",
+        "Back flat, chest up",
+        "Squeeze at full extension"
+      ],
+      "commonMistakes": [
+        "Swinging the dumbbells with the shoulders",
+        "Letting the elbows drift away from the torso",
+        "Dropping the upper arms during the rep",
+        "Rounding the back while leaning forward"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-seated-kickback.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-seated-kickback.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-seated-kickback.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-seated-kickback.jpg"
+      }
+    },
+    {
+      "id": "0396",
+      "name": "Dumbbell Seated Lateral Raise",
+      "bodyPart": "shoulders",
+      "target": "delts",
+      "secondaryMuscles": [
+        "traps",
+        "upper back"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A seated shoulder isolation exercise where you raise dumbbells out to the sides to target the delts.",
+      "steps": [
+        "Sit upright on a bench with your feet flat on the floor and a dumbbell in each hand at your sides.",
+        "Set your shoulders down and keep a soft bend in your elbows.",
+        "Raise both arms out to your sides until the dumbbells reach about shoulder height.",
+        "Pause briefly at the top without shrugging your shoulders.",
+        "Lower the dumbbells back to your sides with control and repeat."
+      ],
+      "formCues": [
+        "Lead with your elbows",
+        "Keep shoulders down",
+        "Lift to shoulder height",
+        "Control the lowering"
+      ],
+      "commonMistakes": [
+        "Swinging the torso to start the lift",
+        "Shrugging the shoulders up toward the ears",
+        "Lifting the dumbbells higher than shoulder level",
+        "Straightening the elbows into a stiff arm"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-seated-lateral-raise.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-seated-lateral-raise.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-seated-lateral-raise.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-seated-lateral-raise.jpg"
+      }
+    },
+    {
+      "id": "0397",
+      "name": "Dumbbell Seated Neutral Wrist Curl",
+      "bodyPart": "upper arms",
+      "target": "biceps",
+      "secondaryMuscles": [
+        "forearms"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A seated forearm isolation exercise where you curl dumbbells by bending at the wrists with a neutral grip.",
+      "steps": [
+        "Sit on a bench with your feet flat and hold a dumbbell in each hand with your palms facing each other.",
+        "Rest your forearms on your thighs near your knees and let your wrists hang just past your knees.",
+        "Start with your wrists straight and your hands hanging down under control.",
+        "Curl the dumbbells upward by bending only at your wrists while keeping your forearms pressed into your thighs.",
+        "Squeeze briefly at the top without turning your palms up or down.",
+        "Lower the dumbbells slowly back to the start until your wrists are fully extended."
+      ],
+      "formCues": [
+        "Move only your wrists",
+        "Keep palms facing in",
+        "Forearms stay glued down",
+        "Control the lowering"
+      ],
+      "commonMistakes": [
+        "Lifting the forearms off the thighs to swing the dumbbells up",
+        "Turning the palms up or down during the curl",
+        "Bouncing the dumbbells at the bottom",
+        "Using the shoulders or elbows to help the movement"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-seated-neutral-wrist-curl.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-seated-neutral-wrist-curl.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-seated-neutral-wrist-curl.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-seated-neutral-wrist-curl.jpg"
+      }
+    },
+    {
+      "id": "2188",
+      "name": "Dumbbell Seated Triceps Extension",
+      "bodyPart": "upper arms",
+      "target": "triceps",
+      "secondaryMuscles": [
+        "shoulders"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A seated overhead dumbbell triceps exercise where you lower the weight behind your head and extend your elbows to press it back up.",
+      "steps": [
+        "Sit tall on a bench with both feet flat on the floor.",
+        "Hold one dumbbell by the top end with both hands and press it straight overhead.",
+        "Keep your upper arms close to your head and brace your torso.",
+        "Bend your elbows to lower the dumbbell behind your head under control.",
+        "Stop when your forearms are below parallel and your elbows stay pointed up.",
+        "Straighten your elbows to raise the dumbbell back to the overhead start position."
+      ],
+      "formCues": [
+        "Elbows point up",
+        "Keep biceps by ears",
+        "Move only at elbows",
+        "Brace your ribs down"
+      ],
+      "commonMistakes": [
+        "Elbows flare wide out to the sides.",
+        "Lower back arches as the weight goes overhead.",
+        "Upper arms drift backward and forward during the rep.",
+        "The dumbbell drops too low with no control behind the head."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-seated-triceps-extension.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-seated-triceps-extension.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-seated-triceps-extension.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-seated-triceps-extension.jpg"
+      }
+    },
+    {
+      "id": "0406",
+      "name": "Dumbbell Shrug",
+      "bodyPart": "back",
+      "target": "traps",
+      "secondaryMuscles": [
+        "shoulders"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "An isolation exercise where you hold dumbbells at your sides and lift your shoulders up to train the trapezius muscles.",
+      "steps": [
+        "Stand tall with a dumbbell in each hand at your sides and your feet about hip-width apart.",
+        "Let your arms hang straight with your palms facing your body.",
+        "Lift your shoulders straight up toward your ears without bending your elbows.",
+        "Pause briefly at the top while keeping your torso still.",
+        "Lower your shoulders back down under control to the start position and repeat."
+      ],
+      "formCues": [
+        "Shoulders straight up",
+        "Arms stay long",
+        "Neck relaxed",
+        "Control the lowering"
+      ],
+      "commonMistakes": [
+        "Rolling the shoulders in circles instead of lifting straight up and down.",
+        "Bending the elbows and turning the move into an upright row.",
+        "Leaning the torso back or forward to swing the dumbbells.",
+        "Jutting the head forward as the shoulders rise."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-shrug.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-shrug.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-shrug.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-shrug.jpg"
+      }
+    },
+    {
+      "id": "0407",
+      "name": "Dumbbell Side Bend",
+      "bodyPart": "waist",
+      "target": "abs",
+      "secondaryMuscles": [
+        "obliques"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": true,
+      "shortDescription": "A standing oblique exercise where you hold one dumbbell and bend your torso sideways under control.",
+      "steps": [
+        "Stand tall with your feet about hip-width apart and hold a dumbbell in one hand at your side.",
+        "Place your other hand on your hip or behind your head and brace your stomach.",
+        "Keep your chest up and slowly bend your torso sideways away from the dumbbell.",
+        "Lower the dumbbell down the side of your leg as far as you can without twisting or leaning forward.",
+        "Squeeze your obliques and return to standing tall.",
+        "Complete all reps on one side, then switch hands and repeat."
+      ],
+      "formCues": [
+        "Bend only to the side",
+        "Keep chest tall",
+        "Brace your core",
+        "Move slowly and controlled"
+      ],
+      "commonMistakes": [
+        "Twisting the torso as you bend",
+        "Leaning forward instead of sideways",
+        "Shrugging the weighted shoulder up",
+        "Using momentum to swing back up"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-side-bend.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-side-bend.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-side-bend.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-side-bend.jpg"
+      }
+    },
+    {
+      "id": "0409",
+      "name": "Dumbbell Single Leg Calf Raise",
+      "bodyPart": "lower legs",
+      "target": "calves",
+      "secondaryMuscles": [
+        "ankles"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": true,
+      "shortDescription": "A single-leg calf exercise using a dumbbell and step to strengthen the calves through a full ankle range of motion.",
+      "steps": [
+        "Stand on the edge of a step with one foot, placing the ball of your foot on the step and letting your heel hang off.",
+        "Hold a dumbbell in one hand and lightly brace your other hand on a wall or rail.",
+        "Lift your nonworking foot off the step and straighten your standing leg.",
+        "Press through the ball of your foot to raise your heel as high as you can.",
+        "Pause briefly at the top while keeping your ankle stacked over your toes.",
+        "Lower your heel slowly below the step until you feel a stretch in your calf.",
+        "Complete all reps on one side, then switch legs."
+      ],
+      "formCues": [
+        "Push through your big toe",
+        "Rise straight up",
+        "Lower with control",
+        "Keep hips level"
+      ],
+      "commonMistakes": [
+        "Bouncing out of the bottom instead of lowering under control",
+        "Rolling the ankle inward or outward during the raise",
+        "Bending the standing knee to help drive up",
+        "Using the support hand to pull the body upward"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-single-leg-calf-raise.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-single-leg-calf-raise.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-single-leg-calf-raise.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-single-leg-calf-raise.jpg"
+      }
+    },
+    {
+      "id": "0411",
+      "name": "Dumbbell Single Leg Squat",
+      "bodyPart": "upper legs",
+      "target": "glutes",
+      "secondaryMuscles": [
+        "quadriceps",
+        "hamstrings",
+        "calves"
+      ],
+      "difficulty": "advanced",
+      "compound": true,
+      "unilateral": true,
+      "shortDescription": "A one-leg squat holding dumbbells that challenges the glutes, quads, balance, and lower-body control.",
+      "steps": [
+        "Stand tall holding a dumbbell in each hand at your sides.",
+        "Shift your weight onto one foot and lift the other leg straight in front of you.",
+        "Brace your torso and bend your standing knee and hip to lower under control.",
+        "Keep the lifted leg off the floor and lower as far as you can while staying balanced.",
+        "Drive through the standing foot to rise back to the starting position.",
+        "Complete all reps on one leg, then switch sides."
+      ],
+      "formCues": [
+        "Chest up",
+        "Sit back",
+        "Keep knee tracking forward",
+        "Control the descent"
+      ],
+      "commonMistakes": [
+        "Letting the lifted foot touch the floor between reps",
+        "Rounding the back at the bottom",
+        "Standing knee collapsing inward",
+        "Dropping too fast and losing balance"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-single-leg-squat.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-single-leg-squat.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-single-leg-squat.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-single-leg-squat.jpg"
+      }
+    },
+    {
+      "id": "0413",
+      "name": "Dumbbell Squat",
+      "bodyPart": "upper legs",
+      "target": "glutes",
+      "secondaryMuscles": [
+        "quadriceps",
+        "hamstrings",
+        "calves"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A squat holding a dumbbell in each hand at your sides to train the glutes, quads, and legs.",
+      "steps": [
+        "Stand tall with a dumbbell in each hand at your sides and place your feet about shoulder-width apart.",
+        "Brace your core, keep your chest up, and let your arms hang straight.",
+        "Bend your hips and knees together to sit down and slightly back.",
+        "Lower until your thighs are at least parallel to the floor or as low as you can while keeping your heels down.",
+        "Drive through your midfoot and heels to stand back up.",
+        "Finish tall with your hips and knees fully straight before the next rep."
+      ],
+      "formCues": [
+        "Chest up",
+        "Knees track over toes",
+        "Keep heels down",
+        "Stand tall at top"
+      ],
+      "commonMistakes": [
+        "Letting the knees cave inward on the way down or up.",
+        "Rising onto the toes and lifting the heels off the floor.",
+        "Rounding the upper or lower back at the bottom.",
+        "Dropping the chest forward so the dumbbells swing ahead of the legs."
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-squat.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-squat.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-squat.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-squat.jpg"
+      }
+    },
+    {
+      "id": "0417",
+      "name": "Dumbbell Standing Calf Raise",
+      "bodyPart": "lower legs",
+      "target": "calves",
+      "secondaryMuscles": [
+        "ankles"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A standing calf exercise where you hold dumbbells at your sides and raise your heels to train the calves and ankles.",
+      "steps": [
+        "Stand upright with a dumbbell in each hand and place your feet about hip-width apart.",
+        "Let your arms hang by your sides and keep your knees softly bent.",
+        "Press through the balls of your feet and lift your heels as high as you can.",
+        "Pause briefly at the top while staying tall through your torso.",
+        "Lower your heels back to the floor with control and repeat."
+      ],
+      "formCues": [
+        "Rise straight up",
+        "Press through big toe",
+        "Control the lowering",
+        "Keep torso tall"
+      ],
+      "commonMistakes": [
+        "Bouncing at the bottom instead of lowering under control",
+        "Rolling the ankles outward or inward",
+        "Bending the knees to turn it into a squat",
+        "Leaning the torso forward as the heels lift"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-standing-calf-raise.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-standing-calf-raise.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-standing-calf-raise.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-standing-calf-raise.jpg"
+      }
+    },
+    {
+      "id": "0432",
+      "name": "Dumbbell Stiff Leg Deadlift",
+      "bodyPart": "upper legs",
+      "target": "glutes",
+      "secondaryMuscles": [
+        "hamstrings",
+        "lower back"
+      ],
+      "difficulty": "intermediate",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A hip-hinge deadlift with dumbbells that emphasizes the hamstrings and glutes while keeping only a slight knee bend.",
+      "steps": [
+        "Stand tall with your feet hip-width apart, holding a dumbbell in each hand in front of your thighs.",
+        "Soften your knees slightly and brace your midsection.",
+        "Push your hips straight back and slide the dumbbells down the front of your legs.",
+        "Lower until the dumbbells reach mid-shin or you feel a strong hamstring stretch while keeping your back flat.",
+        "Drive your feet into the floor and extend your hips to stand back up.",
+        "Finish tall with the dumbbells at your thighs and repeat."
+      ],
+      "formCues": [
+        "Hips back, not down",
+        "Keep dumbbells close",
+        "Back flat the whole time",
+        "Feel the hamstring stretch"
+      ],
+      "commonMistakes": [
+        "Bending the knees too much and turning it into a squat",
+        "Letting the dumbbells drift away from the legs",
+        "Rounding the lower back on the way down",
+        "Looking up and cranking the neck"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-stiff-leg-deadlift.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-stiff-leg-deadlift.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-stiff-leg-deadlift.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-stiff-leg-deadlift.jpg"
+      }
+    },
+    {
+      "id": "new-dumbbell-sumo-squat",
+      "name": "Dumbbell Sumo Squat",
+      "bodyPart": "upper legs",
+      "target": "glutes",
+      "secondaryMuscles": [
+        "quadriceps",
+        "adductors",
+        "hamstrings"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A lower body exercise using a dumbbell in a sumo stance to target the glutes, quads, and adductors.",
+      "steps": [
+        "Stand with feet wide apart, toes angled outward.",
+        "Grip the dumbbell vertically between your legs.",
+        "Keep chest up and core braced.",
+        "Squat down, pushing knees outward.",
+        "Drive through heels to stand up."
+      ],
+      "formCues": [
+        "Knees out",
+        "Keep chest tall",
+        "Sit hips back",
+        "Drive through heels"
+      ],
+      "commonMistakes": [
+        "Letting knees cave in",
+        "Rounding the back",
+        "Shallow squats"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-bar-grip-sumo-squat.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/dumbbell-bar-grip-sumo-squat.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-bar-grip-sumo-squat.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/dumbbell-bar-grip-sumo-squat.jpg"
+      }
+    },
+    {
+      "id": "0437",
+      "name": "Dumbbell Upright Row",
+      "bodyPart": "shoulders",
+      "target": "delts",
+      "secondaryMuscles": [
+        "traps",
+        "biceps"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A standing shoulder and upper-trap exercise where you pull dumbbells up the front of your body with elbows leading.",
+      "steps": [
+        "Stand tall with a dumbbell in each hand in front of your thighs, palms facing your body.",
+        "Brace your midsection and keep your chest lifted.",
+        "Pull the dumbbells straight up along the front of your body by driving your elbows up and out.",
+        "Raise until the dumbbells reach about upper-chest height and your elbows stay higher than your hands.",
+        "Pause briefly, then lower the dumbbells back to your thighs with control."
+      ],
+      "formCues": [
+        "Lead with your elbows",
+        "Keep dumbbells close",
+        "Shoulders down and back",
+        "Lift to upper chest"
+      ],
+      "commonMistakes": [
+        "Pulling the dumbbells all the way to the chin",
+        "Letting the wrists bend sharply at the top",
+        "Swinging the torso to start the lift",
+        "Hands rising higher than the elbows"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/dumbbell-upright-row.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/dumbbell-upright-row.jpg"
+      }
+    },
+    {
+      "id": "1757",
+      "name": "Single Dumbbell Stiff-Leg Deadlift",
+      "bodyPart": "back",
+      "target": "hamstrings",
+      "secondaryMuscles": [
+        "glutes",
+        "lower back",
+        "erector spinae"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A stiff-legged deadlift variation using a single dumbbell to target the hamstrings and lower back.",
+      "steps": [
+        "Stand upright holding a dumbbell with both hands at your thighs.",
+        "Keep a slight bend in your knees and your back flat.",
+        "Hinge forward at the hips, lowering the dumbbell towards the floor.",
+        "Pause at the bottom while feeling a stretch in your hamstrings.",
+        "Return to the upright position by driving hips forward."
+      ],
+      "formCues": [
+        "Hips back",
+        "Flat back",
+        "Feel hamstring stretch",
+        "No rounding"
+      ],
+      "commonMistakes": [
+        "Rounding back",
+        "Excessive knee bend",
+        "Bouncing at bottom"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/single-dumbbell-stiff-leg-deadlift.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/single-dumbbell-stiff-leg-deadlift.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/single-dumbbell-stiff-leg-deadlift.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/single-dumbbell-stiff-leg-deadlift.jpg"
+      }
+    },
+    {
+      "id": "0777",
+      "name": "Spell Caster",
+      "bodyPart": "waist",
+      "target": "abs",
+      "secondaryMuscles": [
+        "obliques",
+        "lower back"
+      ],
+      "difficulty": "beginner",
+      "compound": true,
+      "unilateral": false,
+      "shortDescription": "A standing dumbbell core move where you hinge and rotate side to side, reaching the weight toward each foot to train the obliques.",
+      "steps": [
+        "Stand tall with your feet about shoulder-width apart, holding one dumbbell with both hands in front of your hips.",
+        "Soften your knees and hinge slightly at your hips while keeping your chest up and back flat.",
+        "Rotate your torso and lower the dumbbell toward the outside of one foot.",
+        "Drive through your hips and return to the center with the dumbbell back in front of your hips.",
+        "Rotate to the other side and lower the dumbbell toward the outside of the opposite foot.",
+        "Continue alternating sides with controlled movement."
+      ],
+      "formCues": [
+        "Rotate through your torso",
+        "Keep your back flat",
+        "Bend at the hips",
+        "Move with control"
+      ],
+      "commonMistakes": [
+        "Rounding the lower back as the dumbbell lowers",
+        "Bending mostly through the spine instead of hinging at the hips",
+        "Letting the knees cave inward during the reach",
+        "Swinging the dumbbell quickly instead of controlling each side"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/spell-caster.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/spell-caster.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/spell-caster.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/spell-caster.jpg"
+      }
+    },
+    {
+      "id": "0350",
+      "name": "Supine Dumbbell Biceps Curl",
+      "bodyPart": "upper arms",
+      "target": "biceps",
+      "secondaryMuscles": [
+        "brachialis",
+        "forearms"
+      ],
+      "difficulty": "beginner",
+      "compound": false,
+      "unilateral": false,
+      "shortDescription": "A biceps isolation curl performed lying face up for strict form and minimal cheating.",
+      "steps": [
+        "Lie flat on your back holding dumbbells at your sides, arms fully extended.",
+        "Keep palms facing forward (supinated grip).",
+        "Curl the dumbbells up toward your shoulders, elbows stationary.",
+        "Squeeze your biceps at the top.",
+        "Lower the weights slowly to the start position."
+      ],
+      "formCues": [
+        "Upper arms still",
+        "Don’t arch back",
+        "Full stretch at bottom",
+        "Slow negative"
+      ],
+      "commonMistakes": [
+        "Lifting shoulders off bench",
+        "Swinging arms",
+        "Partial range"
+      ],
+      "videos": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/male/lying-supine-dumbbell-curl.mp4",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-videos/female/lying-supine-dumbbell-curl.mp4"
+      },
+      "thumbnails": {
+        "male": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/male/lying-supine-dumbbell-curl.jpg",
+        "female": "https://pub-585d42eb1aa64a67aedf483ec328d3fe.r2.dev/exercise-posters/female/lying-supine-dumbbell-curl.jpg"
+      }
+    }
+  ]
+}

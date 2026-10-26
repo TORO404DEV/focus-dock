@@ -895,6 +895,7 @@ internal sealed class AgentToolbox
             "nota" or "note" or "notes" => "notes",
             "tareas" or "todo" => "todo",
             "hábito" or "habitos" or "hábitos" or "habits" => "habits",
+            "rutina" or "rutinas" or "workout" or "ejercicio" or "ejercicios" or "gym" or "mancuernas" => "workout",
             "agenda" or "calendar" => "calendar",
             "finanzas" or "finance" => "finance",
             "stats" or "enfoque" or "focus" => "stats",
@@ -924,9 +925,14 @@ internal sealed class AgentToolbox
         }
         if (kind == "window")
             throw new InvalidOperationException("Para incrustar una ventana indica el programa (app), por ejemplo brave, y opcionalmente url o query.");
-        if (kind is not ("notes" or "todo" or "habits" or "calendar" or "stats" or "finance" or "memento"))
+        if (kind is not ("notes" or "todo" or "habits" or "workout" or "calendar" or "stats" or "finance" or "memento"))
             throw new ArgumentException("Tipo de widget no permitido");
-        string widgetTitle = Text(args, "title", kind == "memento" ? L.T("widgets.kindMemento") : kind.ToUpperInvariant());
+        string widgetTitle = Text(args, "title", kind switch
+        {
+            "memento" => L.T("widgets.kindMemento"),
+            "workout" => L.T("widgets.kindWorkout"),
+            _ => kind.ToUpperInvariant()
+        });
         var created = owner.AddCard(new WidgetConfig { Kind = kind, Title = widgetTitle }, true);
         if (kind == "memento")
         {

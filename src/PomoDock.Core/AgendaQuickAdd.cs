@@ -111,8 +111,21 @@ public static class AgendaQuickAdd
     private static readonly Regex Until = R(@"\bhasta\s+(?:el\s+)?(?<p>" + DatePhrase + ")");
     private static readonly Regex Lasting = R(@"\b(?:durante|por)\s+(?<n>" + Num + @"|un\s+par\s+de)\s+(?<u>dias?|semanas?|mes(?:es)?|anos?)\b");
 
+    /// <summary>
+    /// Units for a delay from now. Longer words first so "6horas" is hours, not the clock mark "h".
+    /// Bare "m" is minutes; "mes/meses" stay months.
+    /// </summary>
+    private const string OffsetUnit =
+        @"minutos?|minutes?|mins?|horas?|hours?|hrs?|dias?|days?|semanas?|weeks?|mes(?:es)?|months?|anos?|years?|min|hs|hr|h|m|d|w";
+
     private static readonly Regex InOffset = R(
-        @"\b(?:en|dentro\s+de|in)\s+(?<n>" + Num + @"|un\s+par\s+de|media)\s+(?<u>minutos?|mins?|minutes?|horas?|hrs?|hours?|dias?|days?|semanas?|weeks?|mes(?:es)?|months?|anos?|years?)\b");
+        @"\b(?:en|dentro\s+de|in)\s*(?<n>" + Num + @"|un\s+par\s+de|media)\s*(?<u>" + OffsetUnit + @")\b");
+    /// <summary>
+    /// "6h", "6horas", "30min", "2d" without "en": a delay, not a clock. "a las 6h" and "18h"
+    /// stay clock readings via the look-behind and <see cref="LooksLikeClockHourMark"/>.
+    /// </summary>
+    private static readonly Regex BareOffset = R(
+        @"(?<!las?\s)(?<!durante\s)(?<!por\s)\b(?<n>" + Num + @"|un\s+par\s+de|media)\s*(?<u>" + OffsetUnit + @")\b(?!\s*\d{1,2}\s*(?:m|mins?)\b)");
 
     private static readonly Regex DateRange = R(
         @"\b(?:del|desde\s+el|desde)\s+(?<a>" + DatePhrase + @")\s+(?:al|hasta\s+el|hasta|a)\s+(?<b>" + DatePhrase + ")");
@@ -132,9 +145,9 @@ public static class AgendaQuickAdd
     private static readonly Regex DurationHourAndHalf = R(@"\b(?:durante\s+|por\s+)?(?:una\s+)?hora\s+y\s+media\b");
     private static readonly Regex DurationHalfHour = R(@"\b(?:durante\s+|por\s+)?media\s+hora\b");
     private static readonly Regex DurationOneHour = R(@"\b(?:durante|por)\s+(?:una|1)\s+hora\b");
-    private static readonly Regex DurationMinutes = R(@"\b(?:durante\s+|por\s+)?(?<m>\d{1,3})\s*(?:m|mins?|minutos?)\b");
-    private static readonly Regex DurationHoursWord = R(@"\b(?:durante\s+|por\s+)?(?<h>" + Num + @")(?:[.,](?<t>\d))?\s*horas\b(?<half>\s+y\s+media)?");
-    private static readonly Regex DurationShortHours = R(@"(?<!\bla\s)(?<!\blas\s)\b(?<h>[1-4])\s*h\b(?!\s*\d)");
+    private static readonly Regex DurationMinutes = R(@"\b(?:durante|por)\s+(?<m>\d{1,3})\s*(?:m|mins?|minutos?)\b");
+    private static readonly Regex DurationHoursWord = R(@"\b(?:durante|por)\s+(?<h>" + Num + @")(?:[.,](?<t>\d))?\s*horas\b(?<half>\s+y\s+media)?");
+    private static readonly Regex DurationShortHours = R(@"\b(?:durante|por)\s+(?<h>[1-4])\s*h\b(?!\s*\d)");
 
     private static readonly Regex TimeSpoken = R(@"\b(?:a|para|desde|sobre|como\s+a|antes\s+de)\s+las?\s+" + Clock("t") + @"(?!\d)");
     private static readonly Regex Noon = R(@"\b(?:al|a|en\s+el|para\s+el)\s+mediodia\b");
@@ -315,22 +328,12 @@ public static class AgendaQuickAdd
         (int Amount, string Unit)? lasting = null;
         if (line.Take(Lasting) is { } lastingMatch) lasting = (ToNumber(lastingMatch.Groups["n"].Value), lastingMatch.Groups["u"].Value);
 
-        // "en 30 minutos" is a moment; "en 3 días" is a day.
+        // "en 30 minutos" / "6h" / "6horas" is a moment; "en 3 días" is a day.
         DateOnly? date = null;
         TimeOnly? time = null;
         DateTime? exact = null;
-        if (line.Take(InOffset) is { } offset)
-        {
-            string unit = offset.Groups["u"].Value;
-            string amount = offset.Groups["n"].Value;
-            double value = amount == "media" ? .5 : ToNumber(amount);
-            if (unit.StartsWith("mes", StringComparison.Ordinal) || unit.StartsWith("mon", StringComparison.Ordinal)) date = today.AddMonths((int)Math.Max(1, value));
-            else if (unit.StartsWith('m')) exact = now.AddMinutes(value);
-            else if (unit.StartsWith('h')) exact = now.AddMinutes(value * 60);
-            else if (unit.StartsWith('d')) date = today.AddDays((int)Math.Max(1, value));
-            else if (unit.StartsWith('s') || unit.StartsWith('w')) date = today.AddDays(7 * (int)Math.Max(1, value));
-            else date = today.AddYears((int)Math.Max(1, value));
-        }
+        if ((line.Take(InOffset) ?? line.TakeWhere(BareOffset, match => !LooksLikeClockHourMark(match))) is { } offset)
+            (date, exact) = ApplyOffset(offset.Groups["n"].Value, offset.Groups["u"].Value, now, today);
 
         // Clock ranges first, so "de 5 a 7" is never read as a lone time and a duration.
         int? duration = null;
@@ -541,6 +544,32 @@ public static class AgendaQuickAdd
         return amount == "media" ? per / 2 : ToNumber(amount) * per;
     }
 
+    /// <summary>
+    /// "18h" / "21hs" / "06h" are clock times in Spanish. "6h" and "6horas" are six hours from now.
+    /// </summary>
+    private static bool LooksLikeClockHourMark(Match match)
+    {
+        string unit = match.Groups["u"].Value;
+        if (unit is not ("h" or "hr" or "hrs" or "hs")) return false;
+        string raw = match.Groups["n"].Value.Trim();
+        if (raw.Length >= 2 && raw[0] == '0') return true;
+        int n = ToNumber(raw);
+        return n is 0 or (>= 10 and <= 23);
+    }
+
+    private static (DateOnly? Date, DateTime? Exact) ApplyOffset(string amount, string unit, DateTime now, DateOnly today)
+    {
+        double value = amount == "media" ? .5 : ToNumber(amount);
+        string u = unit.Trim();
+        if (u.StartsWith("mes", StringComparison.Ordinal) || u.StartsWith("mon", StringComparison.Ordinal))
+            return (today.AddMonths((int)Math.Max(1, value)), null);
+        if (u.StartsWith('m')) return (null, now.AddMinutes(value));
+        if (u.StartsWith('h')) return (null, now.AddMinutes(value * 60));
+        if (u.StartsWith('d')) return (today.AddDays((int)Math.Max(1, value)), null);
+        if (u.StartsWith('s') || u.StartsWith('w')) return (today.AddDays(7 * (int)Math.Max(1, value)), null);
+        return (today.AddYears((int)Math.Max(1, value)), null);
+    }
+
     private static int HoursOf(Match match)
     {
         int whole = ToNumber(match.Groups["h"].Value);
@@ -577,7 +606,7 @@ public static class AgendaQuickAdd
         string meridiem = match.Groups[p + "a"].Value.Contains('p') ? "pm" : match.Groups[p + "a"].Success ? "am" : "";
         string part = match.Groups[p + "p"].Value;
         bool leadingZero = hourGroup.Value.Length == 2 && hourGroup.Value[0] == '0';
-        bool twentyFour = match.Groups[p + "x"].Success || leadingZero || hour >= 13 || hour == 0;
+        bool twentyFour = leadingZero || hour >= 13 || hour == 0;
         bool marked = meridiem.Length > 0 || part.Length > 0 || twentyFour;
 
         if (meridiem == "pm" && hour < 12) hour += 12;

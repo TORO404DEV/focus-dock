@@ -64,9 +64,9 @@ internal sealed class AgendaReminders
     private void Ring(ReminderCue cue, DateTime now)
     {
         if (owner is null) return;
-        owner.NotificationArrived(cue, now);
+        var note = owner.NotificationArrived(cue, now);
         owner.Sounds.Reminder();
-        AgendaToast.Present(owner, cue, now, Snooze, Complete);
+        owner.PresentReminderModal(note, cue, now, Snooze, Complete);
     }
 
     private void Snooze(ReminderCue cue, int minutes)
@@ -76,6 +76,9 @@ internal sealed class AgendaReminders
         AgendaToast.DismissReminder(cue);
         owner?.Status(L.T("agenda.snoozed", cue.Event.Title, minutes));
     }
+
+    /// <summary>Used by centered unread modals restored after restart.</summary>
+    internal void SnoozeFromUi(ReminderCue cue, int minutes) => Snooze(cue, minutes);
 
     internal bool TrySnooze(string query, int minutes, out string title)
     {
@@ -117,4 +120,7 @@ internal sealed class AgendaReminders
         agenda.Save();
         owner?.Status(L.T("agenda.markedDone", cue.Event.Title));
     }
+
+    /// <summary>Used by centered unread modals restored after restart.</summary>
+    internal void CompleteFromUi(ReminderCue cue) => Complete(cue);
 }

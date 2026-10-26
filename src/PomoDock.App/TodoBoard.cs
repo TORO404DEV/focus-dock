@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using PomoDock.Core;
@@ -30,8 +31,13 @@ internal sealed class TodoBoard : Grid, IReskinnable
     private readonly StackPanel filters;
     private readonly StackPanel tools;
     private readonly StackPanel list;
-    /// <summary>The task being renamed in place, if any.</summary>
-    private Guid editing;
+    private TodoTask? pressTask;
+    private Border? pressRow;
+    private Point pressAt;
+    private bool dragging;
+    private int dropIndex;
+    private Border? dropLine;
+    private const double DragSlop = 8;
 
     public TodoBoard(MainWindow owner, WidgetConfig config)
     {
@@ -111,6 +117,10 @@ internal sealed class TodoBoard : Grid, IReskinnable
         var scroller = new ScrollViewer { Content = list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         Grid.SetRow(scroller, 4);
         Children.Add(scroller);
+        MouseMove += BoardMouseMove;
+        PreviewMouseMove += BoardMouseMove;
+        MouseLeftButtonUp += BoardMouseUp;
+        LostMouseCapture += (_, _) => { if (dragging) FinishDrag(apply: false); };
 
         Loaded += (_, _) =>
         {
@@ -124,10 +134,11 @@ internal sealed class TodoBoard : Grid, IReskinnable
         Render();
     }
 
-    /// <summary>Another card or the calendar changed the list. A rename in progress is left alone.</summary>
+    /// <summary>Another card or the calendar changed the list.</summary>
     private void OnChanged()
     {
-        if (editing == Guid.Empty) Render();
+        if (dragging) return;
+        Render();
     }
 
     /// <summary>Rows currently drawn. The self test uses it to prove a stored list really renders.</summary>
@@ -260,6 +271,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
         }
 
         list.Children.Clear();
+        dropLine = null;
         var visible = book.Visible(today, filter);
         foreach (var task in visible) list.Children.Add(Row(task, today));
         if (visible.Count == 0) list.Children.Add(Empty(counts));
@@ -284,13 +296,15 @@ internal sealed class TodoBoard : Grid, IReskinnable
     {
         bool overdue = task.IsOverdue(today);
         var accent = AgendaVisuals.Solid(task.ColorKey());
+        NoteSkin? skin = task.HasNoteColor ? NoteSkin.For(task.Color) : null;
         var frame = new Border
         {
-            BorderBrush = AgendaVisuals.Fade("Line", 80),
+            BorderBrush = skin?.LineBrush ?? AgendaVisuals.Fade("Line", 80),
             BorderThickness = new Thickness(1),
-            Background = AgendaVisuals.Resource("Surface"),
+            Background = skin?.PaperBrush ?? AgendaVisuals.Resource("Surface"),
             Margin = new Thickness(0, 0, 0, 5),
-            Opacity = task.Done ? 0.6 : 1
+            Opacity = task.Done ? 0.6 : 1,
+            Cursor = Cursors.Hand
         };
         var line = new Grid();
         // A bar on the left edge carries the priority, so urgency reads before a single word does.
@@ -305,11 +319,15 @@ internal sealed class TodoBoard : Grid, IReskinnable
         {
             Content = task.Done ? "✓" : "○", Width = 26, Height = 26, FontSize = 12, Padding = new Thickness(0),
             Margin = new Thickness(5, 5, 6, 5),
-            Background = task.Done ? AgendaVisuals.Resource("Ink") : AgendaVisuals.Resource("Surface"),
-            Foreground = task.Done ? AgendaVisuals.Resource("Paper") : AgendaVisuals.Resource("Muted"),
+            Background = task.Done
+                ? (skin?.InkBrush ?? AgendaVisuals.Resource("Ink"))
+                : (skin?.ChromeBrush ?? AgendaVisuals.Resource("Surface")),
+            Foreground = task.Done
+                ? (skin?.PaperBrush ?? AgendaVisuals.Resource("Paper"))
+                : (skin?.MutedBrush ?? AgendaVisuals.Resource("Muted")),
             ToolTip = task.Done ? "Marcar como pendiente" : "Completar tarea"
         };
-        check.SetValue(AutomationProperties.NameProperty, (task.Done ? "Marcar pendiente: " : "Completar: ") + task.Title);
+        check.SetValue(AutomationProperties.NameProperty, (task.Done ? "Marcar pendiente: " : "Completar: ") + task.ListLabel());
         check.Click += (_, _) => { store.SetDone(task, !task.Done); Render(); };
         Grid.SetColumn(check, 1);
         line.Children.Add(new Border { Background = task.Priority == TodoPriority.None ? Brushes.Transparent : accent });
@@ -328,41 +346,18 @@ internal sealed class TodoBoard : Grid, IReskinnable
         Grid.SetColumn(priority, 2);
         line.Children.Add(priority);
 
-        if (editing == task.Id)
+        var title = new TextBlock
         {
-            var rename = new TextBox { Text = task.Title, FontSize = 12, Margin = new Thickness(0, 4, 4, 4), Padding = new Thickness(4, 2, 4, 2), MinWidth = 0 };
-            rename.SetValue(AutomationProperties.NameProperty, "Renombrar tarea");
-            void Finish(bool keep)
-            {
-                if (editing != task.Id) return;
-                editing = Guid.Empty;
-                var text = rename.Text.Trim();
-                if (keep && text.Length > 0) { task.Title = text; Save(); }
-                Render();
-            }
-            rename.KeyDown += (_, e) =>
-            {
-                if (e.Key == Key.Enter) { Finish(true); e.Handled = true; }
-                else if (e.Key == Key.Escape) { Finish(false); e.Handled = true; }
-            };
-            rename.LostFocus += (_, _) => Finish(true);
-            rename.Loaded += (_, _) => { rename.Focus(); rename.SelectAll(); };
-            Grid.SetColumn(rename, 3);
-            line.Children.Add(rename);
-        }
-        else
-        {
-            var title = new TextBlock
-            {
-                Text = task.Title, FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap,
-                Margin = new Thickness(0, 8, 4, 8),
-                Foreground = task.Done ? AgendaVisuals.Resource("Muted") : AgendaVisuals.Resource("Ink")
-            };
-            if (task.Done) title.TextDecorations = TextDecorations.Strikethrough;
-            Grid.SetColumn(title, 3);
-            line.Children.Add(title);
-        }
+            Text = task.ListLabel(), FontSize = 12, VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap,
+            Margin = new Thickness(0, 8, 4, 8),
+            Foreground = task.Done
+                ? (skin?.MutedBrush ?? AgendaVisuals.Resource("Muted"))
+                : (skin?.InkBrush ?? AgendaVisuals.Resource("Ink"))
+        };
+        if (task.Done) title.TextDecorations = TextDecorations.Strikethrough;
+        Grid.SetColumn(title, 3);
+        line.Children.Add(title);
 
         string due = task.DueLabel(today) + (task.Due is not null && task.At is { } at ? " " + at.ToString("HH:mm") : "");
         var date = new Button
@@ -374,7 +369,7 @@ internal sealed class TodoBoard : Grid, IReskinnable
             Margin = new Thickness(0, 5, 3, 5),
             BorderThickness = new Thickness(due.Length > 0 ? 1 : 0),
             Background = overdue ? AgendaVisuals.Wash("red") : Brushes.Transparent,
-            Foreground = overdue ? AgendaVisuals.Solid("red") : AgendaVisuals.Resource("Ink"),
+            Foreground = overdue ? AgendaVisuals.Solid("red") : (skin?.InkBrush ?? AgendaVisuals.Resource("Ink")),
             Opacity = due.Length > 0 ? 1 : 0.3,
             ToolTip = due.Length > 0 ? L.T("todo.dueTip", $"{task.Due:dd/MM/yyyy}") : L.T("todo.noDueTip")
         };
@@ -386,7 +381,9 @@ internal sealed class TodoBoard : Grid, IReskinnable
         var more = new Button
         {
             Content = "⋯", Width = 22, Height = 26, FontSize = 13, Padding = new Thickness(0), Margin = new Thickness(0, 5, 4, 5),
-            BorderThickness = new Thickness(0), Background = Brushes.Transparent, ToolTip = L.T("todo.moreActions")
+            BorderThickness = new Thickness(0), Background = Brushes.Transparent,
+            Foreground = skin?.InkBrush ?? AgendaVisuals.Resource("Ink"),
+            ToolTip = L.T("todo.moreActions")
         };
         more.SetValue(AutomationProperties.NameProperty, "Acciones de la tarea");
         more.Click += (_, _) => Actions(task);
@@ -394,19 +391,137 @@ internal sealed class TodoBoard : Grid, IReskinnable
         line.Children.Add(more);
 
         frame.Child = line;
-        frame.MouseLeftButtonDown += (_, e) =>
+        frame.Tag = task;
+        frame.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            if (e.ClickCount != 2 || e.OriginalSource is DependencyObject source && Ancestor<Button>(source) is not null) return;
-            editing = task.Id;
-            Render();
+            if (e.OriginalSource is DependencyObject source && Ancestor<Button>(source) is not null) return;
+            pressTask = task;
+            pressRow = frame;
+            pressAt = e.GetPosition(this);
+            dragging = false;
         };
         frame.ToolTip = Tooltip(task, today);
         return frame;
     }
 
+    private void BoardMouseMove(object sender, MouseEventArgs e)
+    {
+        if (pressTask is null || e.LeftButton != MouseButtonState.Pressed) return;
+        Point now = e.GetPosition(this);
+        if (!dragging)
+        {
+            double dx = now.X - pressAt.X, dy = now.Y - pressAt.Y;
+            if (dx * dx + dy * dy < DragSlop * DragSlop) return;
+            var peers = book.Visible(DateOnly.FromDateTime(DateTime.Now), filter)
+                .Where(item => item.Done == pressTask.Done).ToList();
+            if (peers.Count < 2) return;
+            dragging = true;
+            Cursor = Cursors.SizeNS;
+            if (pressRow is not null)
+            {
+                pressRow.Opacity = 0.45;
+                pressRow.ToolTip = null;
+            }
+            CaptureMouse();
+        }
+        dropIndex = DropIndex(pressTask, e.GetPosition(list));
+        PaintDropLine(pressTask, dropIndex);
+        e.Handled = true;
+    }
+
+    private void BoardMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (dragging)
+        {
+            FinishDrag(apply: true);
+            e.Handled = true;
+            return;
+        }
+        var task = pressTask;
+        pressTask = null;
+        pressRow = null;
+        if (task is null) return;
+        if (e.OriginalSource is DependencyObject source)
+        {
+            if (Ancestor<Button>(source) is not null) return;
+            if (TaskRow(source)?.Tag as TodoTask != task) return;
+        }
+        OpenNote(task);
+        e.Handled = true;
+    }
+
+    private void FinishDrag(bool apply)
+    {
+        if (!dragging) return;
+        var task = pressTask;
+        int index = dropIndex;
+        dragging = false;
+        pressTask = null;
+        pressRow = null;
+        Cursor = Cursors.Arrow;
+        if (IsMouseCaptured) ReleaseMouseCapture();
+        if (apply && task is not null)
+        {
+            var visible = book.Visible(DateOnly.FromDateTime(DateTime.Now), filter);
+            var shown = visible.Where(item => item.Done == task.Done).ToList();
+            int current = shown.IndexOf(task);
+            if (current >= 0 && index > current) index--;
+            if (book.PlaceVisible(task, index, visible)) Save();
+        }
+        Render();
+    }
+
+    private int DropIndex(TodoTask task, Point atList)
+    {
+        var rows = SameDoneRows(task);
+        if (rows.Count == 0) return 0;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            Point top = rows[i].TranslatePoint(new Point(0, 0), list);
+            if (atList.Y < top.Y + rows[i].ActualHeight / 2) return i;
+        }
+        return rows.Count;
+    }
+
+    private void PaintDropLine(TodoTask task, int index)
+    {
+        dropLine ??= new Border
+        {
+            Height = 3,
+            Background = AgendaVisuals.Resource("Ink"),
+            Margin = new Thickness(0, 0, 0, 2),
+            IsHitTestVisible = false
+        };
+        if (list.Children.Contains(dropLine)) list.Children.Remove(dropLine);
+        var rows = list.Children.OfType<Border>().Where(row => row.Tag is TodoTask).ToList();
+        var same = rows.Where(row => row.Tag is TodoTask item && item.Done == task.Done).ToList();
+        int visual = same.Count == 0
+            ? rows.Count
+            : index >= same.Count
+                ? list.Children.IndexOf(same[^1]) + 1
+                : list.Children.IndexOf(same[index]);
+        visual = Math.Clamp(visual, 0, list.Children.Count);
+        list.Children.Insert(visual, dropLine);
+    }
+
+    private List<Border> SameDoneRows(TodoTask task) =>
+        list.Children.OfType<Border>().Where(row => row.Tag is TodoTask item && item.Done == task.Done).ToList();
+
+    private static Border? TaskRow(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is Border border && border.Tag is TodoTask) return border;
+            source = VisualTreeHelper.GetParent(source);
+        }
+        return null;
+    }
+
+    private void OpenNote(TodoTask task) => TodoNoteWindow.OpenFor(owner, store, task);
+
     private static string Tooltip(TodoTask task, DateOnly today)
     {
-        var lines = new List<string> { task.Title, task.PriorityLabel() };
+        var lines = new List<string> { task.ListLabel(), task.PriorityLabel() };
         if (task.Due is { } due) lines.Add((task.IsOverdue(today) ? L.T("todo.overdueOn", $"{due:dd/MM/yyyy}") : L.T("todo.dueOn", $"{due:dd/MM/yyyy}")) + (task.At is { } at ? L.T("todo.atTime", $"{at:HH:mm}") : ""));
         if (task.EventId is not null) lines.Add(L.T("todo.inCalendar"));
         lines.Add(task.Done ? L.T("todo.doneRename") : L.T("todo.rename"));
@@ -415,13 +530,12 @@ internal sealed class TodoBoard : Grid, IReskinnable
 
     private void Actions(TodoTask task)
     {
-        int choice = Dialogs.Choose(owner, "TAREA", ["Renombrar", "Elegir fecha", "Quitar fecha", "Subir", "Bajar", "Eliminar"]);
+        int choice = Dialogs.Choose(owner, "TAREA", ["Abrir nota", "Elegir fecha", "Quitar fecha", "Subir", "Bajar", "Eliminar"]);
         var today = DateOnly.FromDateTime(DateTime.Now);
         switch (choice)
         {
             case 0:
-                editing = task.Id;
-                Render();
+                OpenNote(task);
                 return;
             case 1:
                 var typed = Dialogs.Prompt(owner, L.T("todo.dateTitle"), L.T("todo.dateLabel"), task.Due?.ToString("dd/MM/yyyy") ?? L.T("todo.dateDefault"));

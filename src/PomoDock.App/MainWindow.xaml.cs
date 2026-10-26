@@ -1140,7 +1140,8 @@ public partial class MainWindow : Window
             var card = AddCard(new() { Kind = "memento", Title = L.T("widgets.kindMemento") }, true);
             card.PromptMementoBirth();
         }
-        else if (choice == 9) AddTimerWidget();
+        else if (choice == 9) AddCard(new() { Kind = "workout", Title = L.T("widgets.kindWorkout") }, true);
+        else if (choice == 10) AddTimerWidget();
     }
     private void AddWindowClick(object sender, RoutedEventArgs e)
     {
@@ -1158,6 +1159,8 @@ public partial class MainWindow : Window
             var twoColumnWidth = (canvasWidth - 40) / 2;
             config.Width = config.Kind == "memento"
                 ? Math.Max(320, Math.Min(420, canvasWidth - 24))
+                : config.Kind == "workout"
+                    ? Math.Max(340, Math.Min(420, canvasWidth - 24))
                 : canvasWidth >= 560 ? Math.Max(240, twoColumnWidth) : Math.Max(280, canvasWidth - 24);
         }
         if (config.Height <= 0) config.Height = config.Kind switch
@@ -1167,6 +1170,7 @@ public partial class MainWindow : Window
             "notes" => 360,
             "todo" => 400,
             "habits" => 390,
+            "workout" => 680,
             "calendar" => 520,
             "finance" => 580,
             "agent" => 520,
@@ -1694,7 +1698,7 @@ public partial class MainWindow : Window
         wakeListen = null;
         listenPulse.Stop();
         HideAgentWidget();
-        HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll(); voiceDictation.Dispose();
+        HideReportModal(); HideTimerOverlay(); AgendaToast.CloseAll(); NotificationModal.CloseAll(); voiceDictation.Dispose();
         foreach (var card in interactionOverlays.Keys.ToArray()) HideInteractionOverlay(card);
         foreach (var card in overlayCards.Keys.ToArray()) HideOverlay(card);
         try

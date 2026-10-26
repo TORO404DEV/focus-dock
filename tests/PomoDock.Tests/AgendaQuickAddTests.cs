@@ -58,6 +58,41 @@ internal static class AgendaQuickAddTests
             Is("Estudiar a las cinco y media de la tarde", "Estudiar", new(2026, 9, 9, 17, 30, 0), false);
             Is("Llamada con cliente mañana 3pm", "Llamada con cliente", new(2026, 9, 10, 15, 0, 0), false);
             Is("Junta a las 3", "Junta", new(2026, 9, 9, 15, 0, 0), false);
+            // Compact delays: "6h" is six hours from now, never 06:00 tomorrow.
+            Is("Tarea 6h", "Tarea", new(2026, 9, 9, 18, 0, 0), false);
+            Is("Tarea 6horas", "Tarea", new(2026, 9, 9, 18, 0, 0), false);
+            Is("Tarea 6 horas", "Tarea", new(2026, 9, 9, 18, 0, 0), false);
+            Is("Tarea en 6h", "Tarea", new(2026, 9, 9, 18, 0, 0), false);
+            Is("Tarea en 6horas", "Tarea", new(2026, 9, 9, 18, 0, 0), false);
+            Is("Llamar 30min", "Llamar", new(2026, 9, 9, 12, 30, 0), false);
+            Is("Llamar 30m", "Llamar", new(2026, 9, 9, 12, 30, 0), false);
+            Is("Llamar en 45min", "Llamar", new(2026, 9, 9, 12, 45, 0), false);
+            Is("Revisar 2d", "Revisar", new(2026, 9, 11), true);
+            Is("Revisar 2dias", "Revisar", new(2026, 9, 11), true);
+            Is("Llamada 1h", "Llamada", new(2026, 9, 9, 13, 0, 0), false);
+            Is("Llamada 90min", "Llamada", new(2026, 9, 9, 13, 30, 0), false);
+            // Two-digit "h" stays a clock: 18h is 18:00, not eighteen hours.
+            Is("Concierto 18h", "Concierto", new(2026, 9, 9, 18, 0, 0), false);
+            Is("Concierto 21h", "Concierto", new(2026, 9, 9, 21, 0, 0), false);
+        });
+
+        test("compact hour delays cross midnight instead of snapping to 06:00", () =>
+        {
+            var evening = new DateTime(2026, 9, 15, 16, 0, 0); // Tuesday afternoon.
+            void At(string text, DateTime start)
+            {
+                var draft = AgendaQuickAdd.Parse(text, evening);
+                assert(draft is not null, $"'{text}' leyó algo por la tarde");
+                assert(draft!.Start == start, $"'{text}' → {draft.Start:yyyy-MM-dd HH:mm}, esperaba {start:yyyy-MM-dd HH:mm}");
+                assert(!draft.AllDay, $"'{text}' debe llevar hora");
+            }
+            At("Tarea 6h", new(2026, 9, 15, 22, 0, 0));
+            At("Tarea 6horas", new(2026, 9, 15, 22, 0, 0));
+            At("Tarea en 6h", new(2026, 9, 15, 22, 0, 0));
+            At("tarea 6h", new(2026, 9, 15, 22, 0, 0));
+            var late = AgendaQuickAdd.Parse("Tarea 6h", new(2026, 9, 15, 22, 0, 0));
+            assert(late is not null && late.Start == new DateTime(2026, 9, 16, 4, 0, 0),
+                "6h a las 22:00 cae a las 04:00 del miércoles, no a las 06:00");
         });
 
         test("quick add turns clock ranges and stays into lengths", () =>

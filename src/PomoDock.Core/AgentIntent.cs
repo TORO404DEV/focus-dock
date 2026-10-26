@@ -505,6 +505,9 @@ public static class AgentIntent
             kind = "stats";
         else if (Regex.IsMatch(text, @"\b(memento|memento\s*mori|mortalidad)\b", RegexOptions.IgnoreCase))
             kind = "memento";
+        else if (Regex.IsMatch(text, @"\b(rutina|rutinas|workout|ejercicios?|mancuernas|gym)\b", RegexOptions.IgnoreCase)
+            && Regex.IsMatch(text, @"widget|tablero|a[ñn]ade|crea|abre", RegexOptions.IgnoreCase))
+            kind = "workout";
         else if (Regex.IsMatch(text, @"\b(temporizador|timer)\b", RegexOptions.IgnoreCase) && Regex.IsMatch(text, @"widget|a[ñn]ade|crea", RegexOptions.IgnoreCase))
             kind = "timer";
         return kind.Length > 0;

@@ -97,6 +97,7 @@ public sealed class WidgetCard : Border
         else if (config.Kind == "notes") BuildNotes();
         else if (config.Kind == "todo") BuildTodo();
         else if (config.Kind == "habits") BuildHabits();
+        else if (config.Kind == "workout") BuildWorkout();
         else if (config.Kind == "calendar") BuildCalendar();
         else if (config.Kind == "finance") BuildFinance();
         else if (config.Kind == "agent") owner.AttachAgentBody(body);
@@ -136,7 +137,8 @@ public sealed class WidgetCard : Border
     /// surface (a Popup, which is its own HWND) can. A WebView2 counts even though it is not
     /// an "external" window: it breaks airspace exactly the same way.
     /// </summary>
-    internal bool HasNativeSurface => host?.Alive == true || web is not null;
+    internal bool HasNativeSurface => host?.Alive == true || web is not null
+        || body.Children.OfType<WorkoutBoard>().Any(board => board.HasDemoSurface);
     internal bool IsGestureActive => resizing || moveSurface.IsMouseCaptured || gestureHandles.Any(handle => handle.IsDragging);
     internal int StatsLayoutKeyForDiagnostics => statsLayoutKey;
     internal bool IsEmbeddedBrowser =>
@@ -266,6 +268,7 @@ public sealed class WidgetCard : Border
         "stats" => L.T("widgets.kindStats"),
         "todo" => L.T("widgets.kindTodo"),
         "habits" => L.T("widgets.kindHabits"),
+        "workout" => L.T("widgets.kindWorkout"),
         "calendar" => L.T("widgets.kindCalendar"),
         "finance" => L.T("widgets.kindFinance"),
         "memento" => L.T("widgets.kindMemento"),
@@ -362,6 +365,12 @@ public sealed class WidgetCard : Border
         // Habits live in the shared book, not in this card: the widget is only a lens.
         body.Children.Clear();
         body.Children.Add(new HabitsBoard(owner, Config));
+    }
+    private void BuildWorkout()
+    {
+        body.Children.Clear();
+        body.Children.Add(new WorkoutBoard(owner, Config, this));
+        ApplySkin(Brushes.Black, Brushes.White, new SolidColorBrush(Color.FromRgb(34, 34, 34)));
     }
     private void BuildFinance()
     {

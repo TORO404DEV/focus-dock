@@ -41,6 +41,18 @@ internal static class Win32
     internal const uint WM_CLOSE = 0x0010;
     [DllImport("user32.dll")] internal static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(nint hwnd);
+    [DllImport("user32.dll")] internal static extern bool FlashWindowEx(ref FlashInfo info);
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct FlashInfo
+    {
+        public uint Size;
+        public nint Hwnd;
+        public uint Flags;
+        public uint Count;
+        public uint Timeout;
+    }
+    internal const uint FLASHW_ALL = 3;
+    internal const uint FLASHW_TIMERNOFG = 12;
     [DllImport("user32.dll")] internal static extern nint GetAncestor(nint hwnd, uint flags);
     [DllImport("user32.dll")] internal static extern nint SetFocus(nint hwnd);
     [DllImport("user32.dll")] internal static extern nint GetFocus();

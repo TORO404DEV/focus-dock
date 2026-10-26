@@ -52,6 +52,10 @@ internal static class TodoTests
             assert(book.Ordered()[0] == second, "the moved task took the first slot");
             assert(!book.Move(book.Ordered()[0], -1), "the first task cannot move further up");
             assert(!book.Move(book.Ordered()[^1], 1), "the last task cannot move further down");
+            assert(book.PlaceVisible(book.Ordered()[2], 0, book.Ordered()), "a task can be dragged to the top");
+            assert(book.Ordered().Select(task => task.Title).SequenceEqual(["Primera", "Segunda", "Tercera"]), "drag to the top rewrites the order");
+            assert(book.PlaceVisible(book.Ordered()[0], 2, book.Ordered()), "a task can be dragged to the bottom of its half");
+            assert(book.Ordered().Select(task => task.Title).SequenceEqual(["Segunda", "Tercera", "Primera"]), "drag to the end rewrites the order");
         });
 
         Test("finished tasks sink, keep their moment and can be cleared", () =>
@@ -118,11 +122,27 @@ internal static class TodoTests
             var task = book.Items.Single();
             assert(task.Title == "Tarea vieja" && task.Done, "the old task survived");
             assert(task.Priority == TodoPriority.None && task.Due is null, "the new fields start empty");
+            assert(task.Color.Length == 0 && task.DocumentXaml.Length == 0, "a legacy task has no post-it colour yet");
             assert(task.DoneUtc is not null, "a task already done gets a completion moment");
 
             var round = JsonSerializer.Deserialize<TodoBook>(JsonSerializer.Serialize(book))!;
             round.Normalize();
             assert(round.Items.Single().Title == "Tarea vieja", "the list survives a save and reload");
+        });
+
+        Test("a task note keeps its colour and shows the first line in the list", () =>
+        {
+            var book = new TodoBook();
+            var task = book.Add("LANZAR QUICK KICK para ads de UVM", Today)!;
+            task.Title = "LANZAR QUICK KICK para ads de UVM\nMás detalle en la nota";
+            task.Color = "yellow";
+            task.DocumentXaml = "<unused/>";
+            book.Normalize();
+            assert(task.HasNoteColor && task.ListLabel() == "LANZAR QUICK KICK para ads de UVM", "the row shows the first line and keeps the post-it colour");
+            var round = JsonSerializer.Deserialize<TodoBook>(JsonSerializer.Serialize(book))!;
+            round.Normalize();
+            var again = round.Items.Single(item => item.Id == task.Id);
+            assert(again.Color == "yellow" && again.DocumentXaml == "<unused/>", "colour and note body survive a save");
         });
     }
 }

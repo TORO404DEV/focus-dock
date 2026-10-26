@@ -275,7 +275,7 @@ internal static class Diagnostics
             var soon = new AgendaEvent { Title = "Llamada de prueba", Start = DateTime.Now.AddMinutes(2), Minutes = 30, Color = "violet", Reminders = [10] };
             agenda.Book.Events.Add(soon); agenda.Save();
             reminders.Pulse(); await Task.Delay(200);
-            Assert(AgendaToast.OpenCount == 1, "a reminder that came due raises a notification card");
+            Assert(AgendaToast.OpenCount == 0 && main.NotificationModalCount == 1, "a reminder that came due raises a centered notification card");
             Assert(main.NotificationHistoryCount == historyBeforeReminder + 1 && main.NotificationUnreadCount > 0,
                 "a reminder is retained in the local notification history");
             Assert(main.IsNotificationBannerVisible, "a reminder appears temporarily beneath the workspace header");
@@ -289,21 +289,21 @@ internal static class Diagnostics
                 "the notification history blocks background page navigation");
             Render(main.NotificationHistorySurface, Path.Combine(directory, "notification-history.png"));
             main.CloseNotificationsForDiagnostics();
-            Render(AgendaToast.Newest!, Path.Combine(directory, "calendar-reminder.png"));
+            Render(NotificationModal.Newest!, Path.Combine(directory, "calendar-reminder.png"));
             int delivered = agenda.Book.Delivered.Count;
             reminders.Pulse(); await Task.Delay(100);
-            Assert(AgendaToast.OpenCount == 1 && agenda.Book.Delivered.Count == delivered, "a delivered reminder never rings twice");
+            Assert(main.NotificationModalCount == 1 && agenda.Book.Delivered.Count == delivered, "a delivered reminder never rings twice");
             var cue = agenda.Book.Cues(DateTime.Now.AddHours(-1), DateTime.Now).First(entry => entry.Event.Id == soon.Id);
             agenda.Book.Snoozed[cue.Key] = DateTime.Now.AddSeconds(-1);
             reminders.Pulse(); await Task.Delay(200);
-            Assert(AgendaToast.OpenCount == 2 && !agenda.Book.Snoozed.ContainsKey(cue.Key), "a postponed reminder rings again when its time arrives");
-            AgendaToast.CloseAll(); await Task.Delay(100);
-            Assert(AgendaToast.OpenCount == 0, "notification cards close with the app");
+            Assert(main.NotificationModalCount == 2 && !agenda.Book.Snoozed.ContainsKey(cue.Key), "a postponed reminder rings again when its time arrives");
+            NotificationModal.CloseAll(); await Task.Delay(100);
+            Assert(main.NotificationModalCount == 0, "notification cards close with the app");
             int historyBeforeTimer = main.NotificationHistoryCount;
             main.AnnounceTimerCompleteForDiagnostics(Phase.Focus, Phase.ShortBreak);
             await Task.Delay(200);
             Assert(main.IsNotificationBannerVisible, "a finished pomodoro raises the header notification");
-            Assert(AgendaToast.OpenCount >= 1, "a finished pomodoro raises an action card");
+            Assert(main.NotificationModalCount >= 1, "a finished pomodoro raises an action card");
             Assert(main.NotificationHistoryCount == historyBeforeTimer + 1, "a finished pomodoro is kept in notification history");
             Render(AgendaToast.Newest!, Path.Combine(directory, "timer-complete.png"));
             AgendaToast.CloseAll();

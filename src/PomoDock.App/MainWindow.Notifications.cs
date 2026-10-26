@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using PomoDock.App.Native;
 using PomoDock.Core;
 
 namespace PomoDock.App;
@@ -19,6 +20,16 @@ public partial class MainWindow
     private Phase lastTimerAlertCompleted = Phase.Focus;
     private Phase lastTimerAlertNext = Phase.ShortBreak;
     private bool timerAlertArmed;
+    private static readonly SolidColorBrush UnreadAlertFill = FreezeBrush(0xC4, 0x3B, 0x3B);
+    private static readonly SolidColorBrush UnreadAlertEdge = FreezeBrush(0x8F, 0x22, 0x22);
+    private static readonly SolidColorBrush UnreadAlertInk = FreezeBrush(0xFF, 0xFF, 0xFF);
+
+    private static SolidColorBrush FreezeBrush(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
 
     private void InitializeNotifications()
     {
@@ -34,8 +45,10 @@ public partial class MainWindow
         {
             RenderNotificationHistory();
             notifications.MarkAllRead();
+            NotificationModal.CloseAll();
             BringPopupToFront(NotificationsPopup);
         };
+        Loaded += (_, _) => Dispatcher.BeginInvoke(ShowUnreadNotificationModals);
         RefreshNotificationChrome();
     }
 
@@ -43,12 +56,24 @@ public partial class MainWindow
     /// Records and surfaces a due reminder. This deliberately does not touch its task: firing a
     /// reminder is information, while finishing the task remains an explicit user decision.
     /// </summary>
-    internal void NotificationArrived(ReminderCue cue, DateTime now)
+    internal ReminderNotification NotificationArrived(ReminderCue cue, DateTime now)
     {
-        notifications.Add(cue, now);
+        var note = notifications.Add(cue, now);
         ShowNotificationBanner(
             L.T(cue.Event.TaskId is null ? "notifications.bannerEvent" : "notifications.bannerTask"),
             cue.Event.Title);
+        if (IsAwayFromWorkspace()) FlashForAttention();
+        return note;
+    }
+
+    internal void PresentReminderModal(
+        ReminderNotification note,
+        ReminderCue cue,
+        DateTime now,
+        Action<ReminderCue, int> snooze,
+        Action<ReminderCue> complete)
+    {
+        NotificationModal.PresentReminder(this, note, cue, now, snooze, complete, AcknowledgeNotification);
     }
 
     internal void AnnounceTimerComplete(Phase completed, Phase next)
@@ -56,24 +81,22 @@ public partial class MainWindow
         string title = completed == Phase.Focus
             ? L.T("notifications.timerFocusTitle")
             : L.T("notifications.timerBreakTitle");
-        notifications.AddAlert("timer", completed == Phase.Focus ? "timer:focus" : "timer:break", title, DateTime.Now);
+        var note = notifications.AddAlert("timer", completed == Phase.Focus ? "timer:focus" : "timer:break", title, DateTime.Now);
         timerAlertSnooze?.Stop();
         lastTimerAlertCompleted = completed;
         lastTimerAlertNext = next;
         timerAlertArmed = true;
-        PresentTimerAlert(completed, next, record: false);
+        PresentTimerAlert(note, completed, next);
     }
 
     internal void AnnounceTimerCompleteForDiagnostics(Phase completed, Phase next) =>
         AnnounceTimerComplete(completed, next);
 
-    private void PresentTimerAlert(Phase completed, Phase next, bool record)
+    private void PresentTimerAlert(ReminderNotification note, Phase completed, Phase next)
     {
         string title = completed == Phase.Focus
             ? L.T("notifications.timerFocusTitle")
             : L.T("notifications.timerBreakTitle");
-        if (record)
-            notifications.AddAlert("timer", completed == Phase.Focus ? "timer:focus" : "timer:break", title, DateTime.Now);
         ShowNotificationBanner(
             L.T(completed == Phase.Focus ? "notifications.bannerFocus" : "notifications.bannerBreak"),
             title);
@@ -92,9 +115,16 @@ public partial class MainWindow
             actions.Add(new AlertAction(L.T("notifications.actionStartFocus"), () => StartPhaseFromAlert(Phase.Focus), true));
         }
         actions.Add(new AlertAction(L.T("agenda.snoozeButton", 5), () => SnoozeTimerAlert(5, completed, next)));
-        AgendaToast.PresentAlert(this, completed == Phase.Focus
-            ? L.T("notifications.bannerFocus")
-            : L.T("notifications.bannerBreak"), title, L.T("notifications.timerNext", nextName, minutes), "rose", actions);
+        NotificationModal.PresentAlert(
+            this,
+            note,
+            completed == Phase.Focus ? L.T("notifications.bannerFocus") : L.T("notifications.bannerBreak"),
+            title,
+            L.T("notifications.timerNext", nextName, minutes),
+            "rose",
+            actions,
+            AcknowledgeNotification);
+        if (IsAwayFromWorkspace()) FlashForAttention();
     }
 
     private void StartPhaseFromAlert(Phase phase)
@@ -118,11 +148,16 @@ public partial class MainWindow
     private void SnoozeTimerAlert(int minutes, Phase completed, Phase next)
     {
         timerAlertSnooze?.Stop();
-        timerAlertSnooze = new DispatcherTimer { Interval = TimeSpan.FromMinutes(minutes) };
+        timerAlertSnooze = new DispatcherTimer { Interval = TimeSpan.FromMinutes(Math.Max(1, minutes)) };
         timerAlertSnooze.Tick += (_, _) =>
         {
             timerAlertSnooze.Stop();
-            PresentTimerAlert(completed, next, record: false);
+            if (!timerAlertArmed) return;
+            var note = notifications.AddAlert("timer", completed == Phase.Focus ? "timer:focus" : "timer:break",
+                completed == Phase.Focus ? L.T("notifications.timerFocusTitle") : L.T("notifications.timerBreakTitle"),
+                DateTime.Now);
+            PresentTimerAlert(note, completed, next);
+            Status(L.T("notifications.timerSnoozed", minutes));
         };
         timerAlertSnooze.Start();
         Status(L.T("notifications.timerSnoozed", minutes));
@@ -130,14 +165,9 @@ public partial class MainWindow
 
     internal void AcknowledgeTimerAlerts()
     {
-        Sounds.StopAlarm();
-        Sounds.StopNoise();
-        timerAlertSnooze?.Stop();
         timerAlertArmed = false;
-        HideNotificationBanner();
+        timerAlertSnooze?.Stop();
         AgendaToast.DismissAlerts();
-        notifications.MarkKindRead("timer");
-        RefreshNotificationChrome();
     }
 
     internal AgentToolResult SnoozeTimerAlertFromAgent(int minutes)
@@ -147,6 +177,7 @@ public partial class MainWindow
             return AgentResult(false, EsPages() ? "No hay una alerta de pomodoro que posponer." : "There is no pomodoro alert to snooze.");
         SnoozeTimerAlert(minutes, lastTimerAlertCompleted, lastTimerAlertNext);
         AgendaToast.DismissAlerts();
+        NotificationModal.CloseAll();
         return AgentResult(true, EsPages()
             ? $"Pospué la alerta de pomodoro {minutes} minutos."
             : $"Snoozed the pomodoro alert for {minutes} minutes.");
@@ -165,6 +196,44 @@ public partial class MainWindow
         return AgentResult(true, EsPages()
             ? $"Pospué «{which}» {minutes} minutos."
             : $"Snoozed “{which}” for {minutes} minutes.");
+    }
+
+    internal void AcknowledgeNotification(Guid id)
+    {
+        if (notifications.MarkRead(id))
+            NotificationModal.Dismiss(id);
+        RefreshNotificationChrome();
+    }
+
+    /// <summary>Restores centered cards for anything still unread after a restart or missed toast.</summary>
+    private void ShowUnreadNotificationModals()
+    {
+        foreach (var note in notifications.History.Items.Where(item => !item.Read).Reverse())
+        {
+            if (NotificationModal.IsShowing(note.Id)) continue;
+            if (note.Kind == "timer")
+            {
+                NotificationModal.PresentUnread(this, note, AcknowledgeNotification);
+                continue;
+            }
+            var cue = ResolveReminderCue(note);
+            if (cue is { } live)
+            {
+                var reminders = AgendaReminders.For(Store);
+                NotificationModal.PresentReminder(
+                    this, note, live, DateTime.Now,
+                    (item, minutes) => reminders.SnoozeFromUi(item, minutes),
+                    item => reminders.CompleteFromUi(item),
+                    AcknowledgeNotification);
+            }
+            else NotificationModal.PresentUnread(this, note, AcknowledgeNotification);
+        }
+    }
+
+    private ReminderCue? ResolveReminderCue(ReminderNotification note)
+    {
+        if (string.IsNullOrWhiteSpace(note.CueKey)) return null;
+        return AgendaStore.For(Store).Book.CueFor(note.CueKey);
     }
 
     private void ShowNotificationBanner(string lead, string title)
@@ -225,10 +294,38 @@ public partial class MainWindow
         HideNotificationBanner();
     }
 
+    private bool IsAwayFromWorkspace()
+    {
+        if (!IsLoaded || !IsVisible) return true;
+        if (WindowState == WindowState.Minimized) return true;
+        if (!IsActive) return true;
+        if (hwnd != 0 && Win32.GetForegroundWindow() != hwnd) return true;
+        return false;
+    }
+
+    private void FlashForAttention()
+    {
+        if (hwnd == 0) return;
+        try
+        {
+            var info = new Win32.FlashInfo
+            {
+                Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<Win32.FlashInfo>(),
+                Hwnd = hwnd,
+                Flags = Win32.FLASHW_ALL | Win32.FLASHW_TIMERNOFG,
+                Count = 3,
+                Timeout = 0
+            };
+            Win32.FlashWindowEx(ref info);
+        }
+        catch { /* older shells may lack flash */ }
+    }
+
     /// <summary>Same as tapping × on the banner and every toast: hide them and silence the timer alarm.</summary>
     internal void DismissVisibleAlerts()
     {
         AgendaToast.CloseAll();
+        NotificationModal.CloseAll();
         AcknowledgeTimerAlerts();
         HideNotificationBanner();
     }
@@ -241,8 +338,24 @@ public partial class MainWindow
         NotificationsButton.ToolTip = unread > 0
             ? L.T("notifications.openUnread", unread)
             : L.T("notifications.open");
-        NotificationHistoryTitle.Text = L.T("notifications.title");
-        NotificationHistoryMeta.Text = L.T("notifications.meta", notifications.History.Items.Count, unread);
+        if (unread > 0)
+        {
+            NotificationsButton.Background = UnreadAlertFill;
+            NotificationsButton.Foreground = UnreadAlertInk;
+            NotificationsButton.BorderBrush = UnreadAlertEdge;
+            NotificationsButton.BorderThickness = new Thickness(1.5);
+            NotificationHistoryTitle.Text = L.T("notifications.pendingTitle");
+            NotificationHistoryMeta.Text = L.T("notifications.pendingMeta", unread);
+        }
+        else
+        {
+            NotificationsButton.ClearValue(BackgroundProperty);
+            NotificationsButton.ClearValue(ForegroundProperty);
+            NotificationsButton.ClearValue(BorderBrushProperty);
+            NotificationsButton.ClearValue(BorderThicknessProperty);
+            NotificationHistoryTitle.Text = L.T("notifications.title");
+            NotificationHistoryMeta.Text = L.T("notifications.meta", notifications.History.Items.Count, unread);
+        }
         NotificationsButton.SetValue(AutomationProperties.NameProperty, NotificationsButton.ToolTip?.ToString() ?? L.T("notifications.open"));
         if (NotificationsPopup.IsOpen) RenderNotificationHistory();
     }
@@ -272,7 +385,7 @@ public partial class MainWindow
 
             var marker = new Border
             {
-                Background = item.Read ? ResourceBrush("Line") : ResourceBrush("Accent")
+                Background = item.Read ? ResourceBrush("Line") : UnreadAlertFill
             };
             row.Children.Add(marker);
 
@@ -290,10 +403,12 @@ public partial class MainWindow
             });
             copy.Children.Add(new TextBlock
             {
-                Text = $"{kind}  ·  {delivered}",
+                Text = item.Read
+                    ? $"{kind}  ·  {delivered}"
+                    : $"{kind}  ·  {delivered}  ·  {L.T("notifications.pendingTitle")}",
                 FontFamily = new FontFamily("Consolas"),
                 FontSize = 8.5,
-                Foreground = ResourceBrush("Muted"),
+                Foreground = item.Read ? ResourceBrush("Muted") : UnreadAlertFill,
                 Margin = new Thickness(0, 4, 0, 0)
             });
             Grid.SetColumn(copy, 1);
@@ -301,8 +416,8 @@ public partial class MainWindow
 
             var frame = new Border
             {
-                BorderBrush = ResourceBrush("Edge"),
-                BorderThickness = new Thickness(1),
+                BorderBrush = item.Read ? ResourceBrush("Edge") : UnreadAlertEdge,
+                BorderThickness = new Thickness(item.Read ? 1 : 1.5),
                 Background = ResourceBrush("Paper"),
                 Child = row
             };
@@ -317,6 +432,7 @@ public partial class MainWindow
     internal int NotificationHistoryCount => notifications.History.Items.Count;
     internal int NotificationUnreadCount => notifications.History.Unread;
     internal bool IsNotificationBannerVisible => NotificationBannerPopup.IsOpen;
+    internal int NotificationModalCount => NotificationModal.OpenCount;
     internal FrameworkElement NotificationBannerSurface => NotificationBanner;
     internal FrameworkElement NotificationHistorySurface => (FrameworkElement)NotificationsPopup.Child;
     internal void OpenNotificationsForDiagnostics() => NotificationsPopup.IsOpen = true;
