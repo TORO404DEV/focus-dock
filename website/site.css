@@ -182,7 +182,7 @@ h1 {
   border: 2px solid var(--ink);
   background: var(--surface);
 }
-.shot img { width: 100%; height: auto; object-fit: contain; }
+.shot img, .shot video { display: block; width: 100%; height: auto; object-fit: contain; }
 .shot figcaption {
   margin: 0;
   padding: .55rem .75rem;
