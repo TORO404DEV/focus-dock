@@ -16,8 +16,6 @@ namespace PomoDock.Web;
 public partial class MainWindow : ComponentBase
 {
     public const string LandingUrl = "/es/";
-    /// <summary>Always the newest installer, so the web never points at a stale version.</summary>
-    private const string DownloadUrl = "https://github.com/TORO404DEV/focus-dock/releases/latest";
     [Inject] private IJSRuntime Runtime { get; set; } = null!;
 
     internal Browser Browser { get; private set; } = null!;

@@ -5,14 +5,6 @@
     return;
 }
 <div class="window @(fullscreen ? "is-fullscreen" : "")">
-    <div class="titlebar">
-        <span class="titlebar-text">@L.T("web.subtitle")</span>
-        <div class="titlebar-actions">
-            <a class="btn" href="@DownloadUrl" title="@L.T("web.downloadTip")">@L.T("web.downloadShort")<span class="long">&nbsp;@L.T("web.downloadRest")</span></a>
-            <a class="btn primary" href="@Landing" title="@L.T("web.siteTip")">@L.T("web.site") ↗</a>
-        </div>
-    </div>
-
     <div class="header">
         <div class="header-clock">
             <span class="header-date"><TickText Owner="this" Value="() => headerDate" /></span>
@@ -23,6 +15,7 @@
             }
         </div>
         <div class="header-actions">
+            <a class="btn glyph" href="@Landing" title="@L.T("web.siteTip")">↗</a>
             <button class="btn glyph" title="@L.T("agent.open")" @onclick="AgentClick">✦</button>
             <button class="btn accent" title="@L.T("chrome.report")" @onclick="ReportClick">@ChromeIcon.Report()</button>
             <button class="btn" title="@L.T("chrome.tasks")" @onclick="TasksClick">@ChromeIcon.Tasks()</button>

@@ -97,23 +97,10 @@ body.is-gesturing, body.is-gesturing * { user-select: none !important; }
 .window {
   height: 100%;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto 1fr;
   border: 2px solid var(--edge);
   background: var(--paper);
 }
-.titlebar {
-  height: 42px; display: flex; align-items: center; justify-content: space-between;
-  background: var(--chrome); color: var(--chrome-ink);
-  padding-left: 16px;
-}
-.titlebar-text { font-size: 11px; font-weight: 700; white-space: pre; overflow: hidden; text-overflow: ellipsis; }
-.titlebar-actions { display: flex; height: 100%; }
-.titlebar-actions .btn {
-  height: 100%; margin: 0; border: 0; border-left: 1px solid rgba(241, 240, 233, .16);
-  background: transparent; color: var(--chrome-ink); font-size: 10px; font-weight: 700; padding: 0 14px;
-}
-.titlebar-actions .btn.primary { background: var(--chrome-ink); color: var(--chrome); }
-.window.is-fullscreen .titlebar { display: none; }
 
 .header {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -442,9 +429,6 @@ body.is-gesturing, body.is-gesturing * { user-select: none !important; }
 /* ------------------------------------------------------------------ narrow screens */
 
 @media (max-width: 640px) {
-  .titlebar-text { font-size: 10px; }
-  .titlebar-actions .btn { padding: 0 10px; }
-  .titlebar-actions .long { display: none; }
   .header { margin: 5px 8px 6px; flex-wrap: wrap; }
   .header-time { font-size: 16px; }
   .header-timer { font-size: 16px; }
